@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Brain, CheckCircle2, Circle, Cpu, FileText, History, Keyboard, Sparkles, Zap, ArrowRight, MousePointerClick, UserRound } from 'lucide-react';
-import { AUTHOR } from '@/lib/about';
+import { Brain, CheckCircle2, Circle, Cpu, FileText, History, Keyboard, Sparkles, Zap, ArrowRight, MousePointerClick } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Kbd, PageHeader } from '@/components/ui';
 import { rpc, type Stats } from '@/lib/messages';
 import { providerConfigured } from '@/lib/settings';
@@ -123,26 +122,6 @@ export function Overview({ settings, go }: PageProps) {
           </div>
         </Card>
       </div>
-
-      <Card className="mt-6">
-        <CardHeader
-          icon={<UserRound className="size-4" />}
-          title="About FormPilot"
-          description={
-            <>
-              Developed by <span className="font-medium text-zinc-700 dark:text-zinc-300">{AUTHOR.name}</span> ·{' '}
-              <a className="text-brand hover:underline" href={`mailto:${AUTHOR.email}`}>
-                {AUTHOR.email}
-              </a>{' '}
-              ·{' '}
-              <a className="text-brand hover:underline" href={AUTHOR.repo} target="_blank" rel="noreferrer">
-                Source on GitHub
-              </a>
-            </>
-          }
-          actions={<span className="font-mono text-xs text-zinc-400">v{chrome.runtime.getManifest().version}</span>}
-        />
-      </Card>
 
       {stats && (
         <p className="mt-6 text-center text-xs text-zinc-400">

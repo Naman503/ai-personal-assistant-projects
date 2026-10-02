@@ -182,7 +182,7 @@ test('options and popup pages render', async ({ context, sw, extId }) => {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  for (const section of ['overview', 'providers', 'local', 'memory', 'generation', 'behavior', 'cache', 'privacy', 'appearance', 'logs']) {
+  for (const section of ['overview', 'providers', 'local', 'memory', 'generation', 'behavior', 'cache', 'privacy', 'appearance', 'logs', 'about']) {
     await page.goto(`chrome-extension://${extId}/options.html#${section}`);
     await expect(page.locator('h1')).toBeVisible();
   }

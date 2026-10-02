@@ -1,136 +1,236 @@
-# FormPilot: AI form filler for Chrome and Brave
+<div align="center">
 
-**Developed by Naman Pathak** · [namanpathak503@gmail.com](mailto:namanpathak503@gmail.com)
+<img src="public/icon/128.png" width="88" alt="FormPilot icon" />
 
-FormPilot is a browser extension (Manifest V3) that fills web forms with AI, using **your own documents** as its memory. Click into any field and suggestions appear right underneath, the same way Chrome's password manager does. Pick one with ↑ ↓ and press Enter.
+# FormPilot
 
-It works on ordinary forms, on React/Vue/Angular apps, in rich-text editors, and inside **popup chat questionnaires**, such as Naukri's "answer the recruiter's questions" drawer.
+**AI form filling, grounded in your own documents.**
+Suggestions appear right under the field, like a password manager, and repeat questions fill instantly.
 
----
+![Manifest V3](https://img.shields.io/badge/Manifest-V3-7c3aed)
+![Chrome | Brave](https://img.shields.io/badge/Chrome%20%7C%20Brave-supported-4285F4?logo=googlechrome&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Tests](https://img.shields.io/badge/tests-120%20unit%20%C2%B7%2019%20e2e-16a34a)
+![Free providers](https://img.shields.io/badge/AI-free%20%26%20local%20options-f59e0b)
 
-## Features
+<img src="docs/screenshots/dropdown-light.png" width="720" alt="FormPilot suggestions under a form field" />
 
-### Suggestions under every field
-- A dropdown anchored under the focused field. It flips above the field when there's no room below, and stays above modals and drawers.
-- **Several options per field**, each tagged with where it came from: *Memory*, *History*, *AI* or *Cached*.
-- **The AI decides the length**: a few words for "City", a paragraph for "Why do you want to join?". It always respects the field's `maxlength`.
-- Streaming output, so text appears while it's being written.
-- Actions in the dropdown: **Regenerate**, **Shorter**, **Longer**, **Refine…** (free-text instructions) and **Save my answer**.
-- **Fill whole form** (Alt+Shift+J) in a single AI request, with **Undo**.
-
-### Memory
-- Upload **PDF, DOCX, TXT, MD, CSV, JSON or HTML** files, or write notes. Files are parsed locally in the browser.
-- **Key facts** (email, phone, LinkedIn, notice period…) are extracted automatically, and you can edit them.
-- **Hybrid retrieval**: BM25 keyword search, plus optional Gemini embeddings, combined with reciprocal-rank fusion. If all your documents fit in the context budget, they're sent in full.
-- **Learns from your corrections.** Type the right answer yourself and FormPilot offers to remember it. Next time that exact question gets your answer instantly, with no AI call.
-
-### Speed on repeated questions
-| Layer | What it does | Typical latency |
-|---|---|---|
-| Key facts | `Email` → your saved email | < 30 ms, no network |
-| Saved answers / history | Same question on any site → your previous answer | < 30 ms, no network |
-| Response cache | Identical question + context + model | ≈ 1 ms |
-| AI | Streams through the provider chain | depends on the provider |
-
-### AI providers (free options included)
-Providers are tried in your order, with **automatic fallback**, retries and backoff:
-- **Google Gemini**: a free API key from AI Studio.
-- **Chrome built-in AI** (Gemini Nano, on-device): Chrome 138+ only, not Brave. It's skipped automatically when unavailable.
-- **OpenRouter** free models (`openrouter/free` auto-router, `:free` models).
-- **Groq** free tier.
-- **Ollama** (local). FormPilot strips the extension's Origin header for you, so you don't need to set `OLLAMA_ORIGINS`.
-- **LM Studio**, or **any OpenAI-compatible** endpoint.
-
-The **model picker** lists every model your key can use, live from the provider. It shows context window, price per 1M tokens, free badges, parameters, quantization and size. The **Local Models** page lists the models installed in Ollama and a catalog of open models with specs and RAM needs, and installs or deletes them with one click.
-
-### Popups and chat questionnaires
-- The dropdown renders in the browser's **top layer**, so it sits above any overlay whatever its z-index.
-- When a field is inside a popup or drawer, the dropdown is **mounted inside that popup**. The site's "click outside closes the popup" logic then counts clicks on FormPilot as inside.
-- **Chat questionnaire sites** (default: `naukri.com`, editable in settings): suggestions open the moment the chat box gets focus, with no click needed. The bot's latest question is read using three methods:
-  1. the site's own message markup (on Naukri, the last visible `.botMsg`; the greeting is skipped);
-  2. what is **visually above** the input, found with `elementsFromPoint`;
-  3. a backwards scan through the page's HTML.
-- After each reply, suggestions refresh for the next question.
-
-### Privacy and safety
-- FormPilot **never reads, sends or fills** passwords, card numbers, CVV, OTP/2FA codes, CAPTCHAs, PINs, government IDs or bank details.
-- Secrets are redacted before anything is sent: Luhn-checked card numbers, IBANs, API keys and `password: …` lines.
-- **Local-only mode** restricts it to on-device providers.
-- API keys stay in local extension storage. They are never synced, and only ever sent to their own provider.
-- Per-site blocklist or allowlist, plus a one-click **pause on this site**.
-- Forms are never submitted automatically, and consent checkboxes are never ticked.
+</div>
 
 ---
 
-## Install
+## Contents
+- [Why FormPilot](#why-formpilot)
+- [Quick start](#quick-start)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [How it works](#how-it-works)
+- [AI providers](#ai-providers)
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Privacy](#privacy)
+- [Development](#development)
+- [Troubleshooting & FAQ](#troubleshooting--faq)
 
-You need **Node 20+** and **pnpm**.
+---
 
+## Why FormPilot
+
+Job applications, onboarding forms, profiles and screening chatbots ask the same questions again and again. FormPilot:
+
+- **knows you.** Answers come from your resume, notes and key facts, not from guesses.
+- **stays out of the way.** A small dropdown under the field: ↑ ↓ to choose, Enter to insert.
+- **gets faster with use.** Known facts, answers you used before and cached responses fill in milliseconds, with no AI call.
+- **learns from corrections.** Type the right answer once and it's remembered for next time.
+- **works where others break**: React-controlled inputs, rich-text editors, modals, drawers and chat-style questionnaires such as Naukri's recruiter bot.
+- **costs nothing to run.** Free Gemini/Groq/OpenRouter tiers, Chrome's on-device AI, or fully local models through Ollama.
+
+---
+
+## Quick start
+
+**1. Build.** You need Node 20+ and pnpm.
 ```bash
 cd formpilot
 pnpm install
 pnpm build
 ```
 
-Then:
-1. Open `chrome://extensions` (or `brave://extensions`).
-2. Turn on **Developer mode** and click **Load unpacked**.
-3. Select `formpilot/.output/chrome-mv3`.
+**2. Load it into Chrome or Brave.**
+1. Open `chrome://extensions` (or `brave://extensions`) and turn on **Developer mode**.
+2. Click **Load unpacked** and select `formpilot/.output/chrome-mv3`.
 
-`.output` is a hidden folder. In the file picker on macOS, press **⌘ + Shift + .** to show it.
+`.output` is a hidden folder. In the macOS file picker, press **⌘ + Shift + .** to show it.
 
-The settings page opens on first install. The quickest free setup is to paste a Gemini key from <https://aistudio.google.com/app/apikey> under **AI Providers**, then click **Test connection**.
+**3. Connect an AI provider.** The settings page opens automatically. Paste a free key from [Google AI Studio](https://aistudio.google.com/app/apikey) under **AI Providers**, then click **Test connection**. Optionally upload your resume under **Memory**.
 
-### After changing code
+Now click into any form field on any website.
 
-| How you run it | What to do |
-|---|---|
-| `pnpm dev` (recommended) | Nothing. WXT rebuilds, reloads the extension and refreshes open tabs. It launches its own Chrome window with the extension loaded and a demo form. |
-| `pnpm build` + Load unpacked | Run `pnpm build`, click **↻** on FormPilot in `chrome://extensions`, then **refresh the web page**. |
-
-If you reload the extension without refreshing an open page, the dropdown says "FormPilot was updated. Refresh this page."
+> **After changing code:** with `pnpm dev`, the extension and open tabs reload automatically. With `pnpm build`, click **↻** on FormPilot in `chrome://extensions` and then refresh the page.
 
 ---
 
-## Using it
+## Features
 
-| Action | How |
+<table>
+<tr><td width="50%" valign="top">
+
+### ✦ Suggestions under every field
+- Several options per field, tagged **Memory / History / AI / Cached**
+- **The AI picks the length**: a few words for "City", a paragraph for "Why do you want to join?". It respects `maxlength`.
+- Streaming output; **Regenerate · Shorter · Longer · Refine…**
+- **Fill the whole form** in one request, with **Undo**
+
+</td><td width="50%" valign="top">
+
+### 🧠 Memory
+- Upload **PDF, DOCX, TXT, MD, CSV, JSON, HTML**, or write notes. Files are parsed locally.
+- **Key facts** extracted automatically, and editable
+- Hybrid search: **BM25 + embeddings**, fused with reciprocal-rank fusion
+- Small memories are sent in full; retrieval only kicks in when needed
+
+</td></tr>
+<tr><td valign="top">
+
+### ⚡ Speed on repeats
+| Layer | Latency |
 |---|---|
-| Show suggestions | Click into a field, press **Alt+J**, or right-click → *FormPilot: suggest* |
-| Navigate / insert / close | **↑ ↓** / **Enter** / **Esc** |
-| Fill the whole form | **Alt+Shift+J**, the ☑ icon in the dropdown, or the toolbar popup |
-| Teach the right answer | Type it yourself and choose **Remember**, or use **Save my answer** / right-click → *remember my answer* |
-| Pause on a site | ⏸ in the dropdown, or the toolbar popup |
+| Key facts (`Email` → your email) | < 30 ms |
+| Saved answers / history | < 30 ms |
+| Response cache | ≈ 1 ms |
+| AI (streamed) | depends on provider |
 
-You can change the shortcuts at `chrome://extensions/shortcuts`.
+</td><td valign="top">
+
+### 🎯 Learns from you
+- Type your own answer where a suggestion was wrong, and FormPilot asks **"Remember this answer?"**
+- That exact question is then answered instantly, with no AI call
+- Short answers become **key facts**; long answers go into a **Saved answers** note
+- Modes: **Ask me** / **Save automatically** / **Off**
+
+</td></tr>
+<tr><td valign="top">
+
+### 💬 Popups & chat questionnaires
+- Renders in the browser **top layer**, above any overlay
+- Mounted **inside** the popup, so "click outside to close" doesn't fire
+- **Chat questionnaire sites** (Naukri by default): opens the moment the chat box is focused, reads the bot's latest question, and refreshes after every reply
+
+</td><td valign="top">
+
+### 🔌 Providers & models
+- Gemini · Chrome built-in AI · OpenRouter · Groq · Ollama · LM Studio · any OpenAI-compatible API
+- **Automatic fallback**, retries, backoff
+- **Live model picker** with context window, pricing, free badges and sizes
+- **Local Models** page: one-click install of open models
+
+</td></tr>
+</table>
 
 ---
 
-## Settings overview
+## Screenshots
 
-| Page | Highlights |
+| Light | Dark |
 |---|---|
-| Overview | Status, setup checklist, stats, shortcuts |
-| AI Providers | Provider order, fallback, keys, live model picker, test connection, local-only mode |
-| Local Models | Ollama status, installed models, catalog with specs, one-click install/delete |
-| Memory | Upload documents, notes, key facts, retrieval playground, chunking, embeddings |
-| Generation | Suggestions per field, length, tone, language, grounding (strict/balanced/creative), persona, custom instructions, page context, temperature, thinking level, streaming, timeout, retries |
-| Behavior | When the dropdown opens (focus / icon / shortcut), field types, insert mode, chat questionnaire sites, site rules |
-| Speed & History | Learning from corrections (ask / auto / off), instant facts, history threshold, response cache, learned answers |
-| Privacy & Data | Redaction, local-only mode, export/import backup, delete everything |
-| Appearance | Theme, accent colour, density, dropdown width, reduced motion |
-| Logs & Diagnostics | Live log viewer, log level, copy diagnostics (API keys excluded) |
+| <img src="docs/screenshots/dropdown-light.png" alt="Dropdown, light theme" /> | <img src="docs/screenshots/dropdown-dark.png" alt="Dropdown, dark theme" /> |
+
+| Chat questionnaire in a popup drawer | Toolbar popup |
+|---|---|
+| <img src="docs/screenshots/chat-drawer.png" alt="Suggestions inside a recruiter chat drawer" /> | <img src="docs/screenshots/popup.png" alt="Toolbar popup" width="300" /> |
+
+<details>
+<summary><b>Settings pages</b> (click to expand)</summary>
+
+**Overview**
+<img src="docs/screenshots/settings-overview.png" alt="Overview" />
+
+**Live model picker**
+<img src="docs/screenshots/settings-model-picker.png" alt="Model picker" />
+
+**Local Models (Ollama)**
+<img src="docs/screenshots/settings-local-models.png" alt="Local models" />
+
+**Memory**
+<img src="docs/screenshots/settings-memory.png" alt="Memory" />
+
+**About**
+<img src="docs/screenshots/settings-about.png" alt="About" />
+
+</details>
+
+The screenshots use demo data (a fictional "Alex Doe") and a mock AI server.
 
 ---
 
-## Debugging
+## How it works
 
-Every step is logged with a **FormPilot** prefix:
-- **The website's DevTools console** (filter `FormPilot`): field detection, why a field was skipped, the chat question found and how, the insert method.
-- **The service worker console** (`chrome://extensions` → FormPilot → *service worker*): retrieval, provider calls, timings and fallbacks.
-- **Settings → Logs & Diagnostics**: a live log viewer that also includes warnings forwarded from web pages.
+```mermaid
+flowchart LR
+  subgraph Page["Web page (content script)"]
+    F[Focused field] --> X[Field context<br/>label, constraints,<br/>chat question, page text]
+    UI[Dropdown<br/>closed shadow root,<br/>top layer]
+  end
+  X -- stream port --> E
+  subgraph BG["Background service worker"]
+    E[Suggest engine] --> I{Instant?}
+    I -- facts / saved answers --> R[Results]
+    I -- no --> C{Cached?}
+    C -- yes --> R
+    C -- no --> M[Retrieve memory<br/>BM25 + embeddings]
+    M --> P[Prompt] --> L[Provider chain<br/>retry + fallback]
+    L -- streamed JSON --> R
+  end
+  R --> UI
+  UI -- insert --> F
+  DB[(IndexedDB<br/>docs · facts · history · cache)] <--> E
+```
 
-On chat-questionnaire sites, a `chat field diagnostics` line shows the detected question, what each detection method found, and where the dropdown was mounted.
+1. **Understand the field.** FormPilot works out what the field is asking from its label, ARIA text, help text, section, constraints and options. For chat questionnaires it reads the bot's latest question.
+2. **Answer instantly when possible**, from key facts, your saved answers, or the cache.
+3. **Otherwise, ask the AI.** It retrieves only the relevant parts of your memory, builds a compact prompt and streams suggestions back, falling back to the next provider if one fails.
+4. **Insert reliably.** It uses native editing commands so React/Vue/Angular see a real input event, with fallbacks for rich-text editors.
+
+The research behind these choices (form-filling benchmarks, retrieval papers, similar projects) is in **[PLAN.md](PLAN.md)**.
+
+---
+
+## AI providers
+
+| Provider | Cost | Runs where | Notes |
+|---|---|---|---|
+| **Google Gemini** | Free tier | Cloud | Recommended default (`gemini-3.5-flash-lite`). Key from AI Studio. |
+| **Chrome built-in AI** | Free | On device | Gemini Nano, Chrome 138+ desktop. Not available in Brave; skipped automatically. |
+| **OpenRouter** | Free models | Cloud | `openrouter/free` auto-router or any `:free` model. |
+| **Groq** | Free tier | Cloud | Very fast inference. |
+| **Ollama** | Free | Your machine | Install models from the **Local Models** page. No `OLLAMA_ORIGINS` setup needed. |
+| **LM Studio** / OpenAI-compatible | Varies | Either | Any `/chat/completions` endpoint. |
+
+Providers are tried top to bottom. Turn on **Local-only mode** to never leave your machine.
+
+---
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+|---|---|
+| Show suggestions for the focused field | <kbd>Alt</kbd> + <kbd>J</kbd> |
+| Fill the whole form | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>J</kbd> |
+| Move / insert / close | <kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Enter</kbd> · <kbd>Esc</kbd> |
+| Save your typed answer | **Save my answer** in the dropdown, or right-click → *remember my answer* |
+
+Change them at `chrome://extensions/shortcuts`.
+
+---
+
+## Privacy
+
+- FormPilot **never reads, sends or fills** passwords, card numbers, CVV, OTP/2FA codes, CAPTCHAs, PINs, government IDs or bank details.
+- Secrets in memory are **redacted** before sending: Luhn-checked card numbers, IBANs, API keys and `password: …` lines.
+- Your memory lives in this browser's IndexedDB. Only the excerpts relevant to a field go to the provider you chose.
+- API keys stay in local extension storage. They are never synced, and only ever sent to their own provider.
+- Forms are never submitted automatically, and consent checkboxes are never ticked.
+- Per-site blocklist or allowlist, and one-click **pause on this site**.
 
 ---
 
@@ -138,80 +238,88 @@ On chat-questionnaire sites, a `chat field diagnostics` line shows the detected 
 
 | Command | Purpose |
 |---|---|
-| `pnpm dev` / `pnpm dev:brave` | Dev mode with auto-reload, plus the demo form at <http://localhost:4173/form.html> |
+| `pnpm dev` / `pnpm dev:brave` | Dev mode with auto-reload, plus a demo form at <http://localhost:4173/form.html> |
 | `pnpm build` / `pnpm zip` | Production build / zip for the Chrome Web Store |
 | `pnpm compile` | Type-check |
-| `pnpm test` | Unit tests (Vitest + happy-dom) |
-| `pnpm test:e2e` | Builds, then runs Playwright against real Chromium with the extension loaded |
-| `node scripts/fixture-server.mjs` | Demo/test pages on :4173 and a mock OpenAI-compatible LLM on :4174 |
-| `pnpm icons` | Regenerate the extension icons |
+| `pnpm test` | 120 unit tests (Vitest + happy-dom) |
+| `pnpm test:e2e` | 19 end-to-end tests: Playwright drives real Chromium with the extension loaded. Run `npx playwright install chromium` once first. |
+| `node scripts/fixture-server.mjs` | Demo/test pages on `:4173` plus a mock OpenAI-compatible AI on `:4174` |
 
-The end-to-end tests cover:
-- streaming suggestions;
-- keyboard navigation;
-- React-controlled inputs;
-- instant facts;
-- sensitive-field protection;
-- whole-form fill;
-- rich-text editors;
-- provider errors;
-- modals with focus traps;
-- drawers with capture-phase click-outside handlers;
-- a copy of Naukri's drawer structure;
-- chats whose messages are visually above the input but later in the HTML;
+**The end-to-end tests cover:**
+- streaming suggestions and keyboard navigation;
+- React-controlled inputs and rich-text editors;
+- instant facts and sensitive-field protection;
+- whole-form fill and provider errors;
+- modals with focus traps, and drawers with capture-phase click-outside handlers;
+- a copy of Naukri's chat drawer structure, and chats whose messages are visually above the input but later in the HTML;
 - learning from corrections.
 
-Before the first e2e run, install the browser with `npx playwright install chromium`.
+**Tech stack:** [WXT](https://wxt.dev) (MV3, Vite) · React 19 · TypeScript · Tailwind CSS v4 · Radix UI · Floating UI · Dexie · MiniSearch · pdf.js · mammoth · zod · Vitest · Playwright
 
-### Tech stack
-[WXT](https://wxt.dev) (MV3, Vite) · React 19 · TypeScript · Tailwind CSS v4 · Radix UI · Floating UI · Dexie (IndexedDB) · MiniSearch (BM25) · pdf.js · mammoth · zod · Vitest · Playwright
+<details>
+<summary><b>Project structure</b></summary>
 
-### Project structure
 ```
 formpilot/
 ├─ src/
 │  ├─ entrypoints/
-│  │  ├─ background.ts        # service worker: suggestion engine, providers, RPC, commands, context menu
-│  │  ├─ content/             # in-page dropdown (closed shadow root, top layer), field watcher, filler
-│  │  ├─ options/             # settings app (10 pages)
-│  │  ├─ popup/               # toolbar popup
-│  │  └─ offscreen/           # hosts Chrome's on-device model (the Prompt API is window-only)
+│  │  ├─ background.ts     # service worker: engine, providers, RPC, commands, context menu
+│  │  ├─ content/          # in-page dropdown, field watcher, chat-question detection, filler
+│  │  ├─ options/          # settings app (11 pages, including About)
+│  │  ├─ popup/            # toolbar popup
+│  │  └─ offscreen/        # hosts Chrome's on-device model (Prompt API is window-only)
 │  ├─ lib/
-│  │  ├─ fields/              # field context & labels, classification, eligibility, insertion
-│  │  ├─ engine/              # suggest engine, prompts, tolerant JSON parsing, cache, history, redaction
-│  │  ├─ llm/                 # Gemini, OpenAI-compatible, Ollama, Chrome AI, provider chain, model catalog
-│  │  ├─ memory/              # IndexedDB schema, parsers, chunker, hybrid retrieval, facts
-│  │  ├─ settings*.ts         # zod schema (validated) + zod-free defaults for the content script
-│  │  └─ logger.ts            # namespaced logger + ring buffer
-│  └─ components/             # UI kit, model picker
-├─ tests/
-│  ├─ unit/                   # Vitest
-│  ├─ e2e/                    # Playwright (real Chromium + extension)
-│  └─ fixtures/               # demo form, modal, drawer and chatbot test pages
-├─ scripts/                   # fixture server + mock LLM, icon generator
-└─ PLAN.md                    # research summary, architecture, edge cases, test strategy
+│  │  ├─ fields/           # field context, classification, eligibility, insertion
+│  │  ├─ engine/           # suggest engine, prompts, JSON parsing, cache, history, redaction
+│  │  ├─ llm/              # Gemini, OpenAI-compatible, Ollama, Chrome AI, provider chain, catalog
+│  │  ├─ memory/           # IndexedDB, parsers, chunker, hybrid retrieval, facts
+│  │  └─ settings*.ts      # zod schema + zod-free defaults for the content script
+│  └─ components/          # UI kit, model picker
+├─ tests/ (unit · e2e · fixtures)
+├─ scripts/                # fixture server + mock AI, icon generator
+├─ docs/screenshots/
+└─ PLAN.md                 # research, architecture, edge cases, test strategy
 ```
-
-See **[PLAN.md](PLAN.md)** for the research behind the design (form-filling and retrieval papers, similar projects), the architecture diagram, the performance budget and the full list of edge cases.
-
----
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| "Invalid or missing API key" | Settings → AI Providers → fix the key → **Test connection** |
-| Rate limited | Free tiers have per-minute limits; add a second provider so fallback kicks in |
-| Ollama 403 | Reload the extension once after adding Ollama (the Origin-fix rule is installed on load) |
-| "Chrome AI not available" | Needs Chrome 138+ on desktop with enough disk/RAM; Brave doesn't ship it. It's skipped automatically. |
-| Dropdown doesn't open on a chat popup | Add the site under Settings → Behavior → *Chat questionnaire sites*, refresh the page, and check the `chat field diagnostics` console line |
-| Nothing happens on a page | Refresh the page after installing or reloading the extension |
-| Old errors on the extension's Errors page | They persist until you click **Clear all** there |
+</details>
 
 ---
 
-## Author
+## Troubleshooting & FAQ
 
-**Naman Pathak**, [namanpathak503@gmail.com](mailto:namanpathak503@gmail.com)
+<details>
+<summary><b>Nothing happens on a page</b></summary>
 
-Questions, bugs and ideas are welcome: open an issue or send an email.
+Refresh the page after installing or reloading the extension. Pages opened before the extension was loaded don't have it yet.
+</details>
+
+<details>
+<summary><b>"Invalid or missing API key" / "Rate limited"</b></summary>
+
+Fix the key in **Settings → AI Providers** and click **Test connection**. Free tiers have per-minute limits, so add a second provider and fallback takes over automatically.
+</details>
+
+<details>
+<summary><b>The dropdown doesn't open in a site's chat popup</b></summary>
+
+Add the site under **Settings → Behavior → Chat questionnaire sites** and refresh the page. Then open DevTools on that page, filter the console by `FormPilot`, and check the `chat field diagnostics` line. It shows which question was found and how.
+</details>
+
+<details>
+<summary><b>Ollama returns 403</b></summary>
+
+Reload the extension once after adding the Ollama provider; the Origin-fix rule is installed on load.
+</details>
+
+<details>
+<summary><b>"Chrome built-in AI is not available"</b></summary>
+
+It needs Chrome 138+ on desktop with enough disk space and RAM, and Brave doesn't ship it. FormPilot skips it automatically; you can turn that provider off.
+</details>
+
+<details>
+<summary><b>Where are the logs?</b></summary>
+
+- **On the website:** its DevTools console, filtered by `FormPilot`.
+- **In the background:** `chrome://extensions` → FormPilot → *service worker*.
+- **In the extension:** **Settings → Logs & Diagnostics**, which has a live viewer and **Copy diagnostics** (API keys excluded).
+</details>

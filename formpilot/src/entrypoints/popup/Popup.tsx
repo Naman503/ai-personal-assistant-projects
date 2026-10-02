@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sparkles, Settings2, Brain, ListChecks, Globe, Power, Cpu, ChevronRight, ScrollText } from 'lucide-react';
+import { Sparkles, Settings2, Brain, ListChecks, Globe, Power, Cpu, ChevronRight, ScrollText, Mail } from 'lucide-react';
 import { Badge, Switch } from '@/components/ui';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { siteAllowed } from '@/lib/fields/eligibility';
@@ -120,10 +120,23 @@ export function Popup() {
           <Power className="size-3" /> v{chrome.runtime.getManifest().version}
         </span>
       </div>
-      <div className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] text-zinc-400 dark:border-zinc-800">
-        Developed by {AUTHOR.name} ·{' '}
-        <a className="text-brand hover:underline" href={`mailto:${AUTHOR.email}`} target="_blank" rel="noreferrer">
-          {AUTHOR.email}
+      <div className="flex items-center gap-2 border-t border-zinc-100 bg-zinc-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/40">
+        <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => openOptions('about')} title="About FormPilot">
+          <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand via-fuchsia-500 to-amber-400 text-[9px] font-semibold text-white">
+            {AUTHOR.initials}
+          </span>
+          <span className="truncate text-[11px] text-zinc-500">
+            Made by <span className="font-medium text-zinc-700 dark:text-zinc-300">{AUTHOR.name}</span>
+          </span>
+        </button>
+        <a
+          href={`mailto:${AUTHOR.email}`}
+          target="_blank"
+          rel="noreferrer"
+          title={AUTHOR.email}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-brand transition hover:bg-brand/10"
+        >
+          <Mail className="size-3" /> Email
         </a>
       </div>
     </div>

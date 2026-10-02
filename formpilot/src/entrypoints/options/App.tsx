@@ -15,6 +15,8 @@ import {
   Loader2,
   AlertCircle,
   HardDrive,
+  Info,
+  Mail,
 } from 'lucide-react';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { cn } from '@/components/ui/cn';
@@ -30,6 +32,7 @@ import { Privacy } from './pages/Privacy';
 import { Appearance } from './pages/Appearance';
 import { Logs } from './pages/Logs';
 import { LocalModels } from './pages/LocalModels';
+import { About, Avatar } from './pages/About';
 
 export interface PageProps {
   settings: Settings;
@@ -48,6 +51,7 @@ const NAV: { id: string; label: string; icon: ComponentType<{ className?: string
   { id: 'privacy', label: 'Privacy & Data', icon: ShieldCheck, page: Privacy, group: 'System' },
   { id: 'appearance', label: 'Appearance', icon: Palette, page: Appearance, group: 'System' },
   { id: 'logs', label: 'Logs & Diagnostics', icon: ScrollText, page: Logs, group: 'System' },
+  { id: 'about', label: 'About', icon: Info, page: About, group: 'System' },
 ];
 
 function useHashRoute(): [string, (id: string) => void] {
@@ -106,10 +110,20 @@ export function App() {
             </div>
           ))}
         </nav>
-        <div className="mx-1 mb-1 rounded-xl border border-zinc-200/80 bg-white/70 px-3 py-2.5 text-[11.5px] leading-snug text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60">
-          Developed by <span className="font-medium text-zinc-700 dark:text-zinc-300">{AUTHOR.name}</span>
-          <a className="mt-0.5 block truncate text-brand hover:underline" href={`mailto:${AUTHOR.email}`}>
-            {AUTHOR.email}
+        <div className="group mx-1 mb-1 flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white/80 p-2 pr-1.5 shadow-xs transition hover:border-brand/30 dark:border-zinc-800 dark:bg-zinc-900/70">
+          <button onClick={() => go('about')} className="flex min-w-0 flex-1 items-center gap-2.5 text-left" title="About FormPilot">
+            <Avatar />
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-medium text-zinc-800 dark:text-zinc-200">{AUTHOR.name}</span>
+              <span className="block truncate text-[11px] text-zinc-500">Developer · About</span>
+            </span>
+          </button>
+          <a
+            href={`mailto:${AUTHOR.email}`}
+            title={`Email ${AUTHOR.email}`}
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-zinc-400 transition hover:bg-brand/10 hover:text-brand"
+          >
+            <Mail className="size-4" />
           </a>
         </div>
         <div className="flex items-center gap-2 px-2.5 pt-3 text-xs text-zinc-500">
