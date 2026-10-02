@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Senior Frontend Engineer — Acme Careers</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, system-ui, sans-serif; }
+      body { margin: 0; background: #f6f6f8; color: #111; }
+      main { max-width: 720px; margin: 40px auto; padding: 0 20px; }
+      .card { background: #fff; border: 1px solid #e4e4e7; border-radius: 16px; padding: 28px; margin-bottom: 20px; }
+      h1 { font-size: 24px; margin: 0 0 6px; }
+      p.lead { color: #52525b; margin: 0 0 18px; line-height: 1.6; }
+      label { display: block; font-size: 14px; font-weight: 600; margin: 18px 0 6px; }
+      input, textarea, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 10px; font: inherit; background: #fff; }
+      textarea { min-height: 110px; resize: vertical; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .hint { font-size: 12px; color: #71717a; margin-top: 4px; }
+      .radios label { display: inline-flex; gap: 6px; font-weight: 400; margin-right: 18px; }
+      .radios input { width: auto; }
+      [contenteditable] { min-height: 70px; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 10px; background: #fff; }
+      header { display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e4e4e7; }
+      header input { max-width: 260px; }
+      button[type=submit] { margin-top: 24px; background: #111; color: #fff; border: 0; padding: 12px 18px; border-radius: 10px; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <header role="banner">
+      <strong>Acme</strong>
+      <form role="search"><input id="site-search" type="search" placeholder="Search jobs" /></form>
+    </header>
+    <main>
+      <section class="card">
+        <h1>Senior Frontend Engineer</h1>
+        <p class="lead">
+          Acme builds developer tools used by millions. You'll own our React + TypeScript design system, mentor engineers, and work closely with design. Remote-friendly,
+          India or EU time zones.
+        </p>
+      </section>
+
+      <form class="card" id="apply" aria-label="Job application" onsubmit="event.preventDefault(); document.getElementById('submitted').textContent = 'submitted';">
+        <h2>Apply</h2>
+        <div class="row">
+          <div>
+            <label for="first">First name</label>
+            <input id="first" name="firstName" autocomplete="given-name" />
+          </div>
+          <div>
+            <label for="last">Last name</label>
+            <input id="last" name="lastName" />
+          </div>
+        </div>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" />
+
+        <label for="company">Current company</label>
+        <!-- Simulates a React controlled input: state only updates from input events, and the DOM value is re-rendered from state. -->
+        <input id="company" name="company" />
+
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          <option value="">Select…</option>
+          <option value="IN">India</option>
+          <option value="US">United States</option>
+          <option value="DE">Germany</option>
+        </select>
+
+        <fieldset class="radios" style="border: 0; padding: 0; margin: 18px 0 0">
+          <legend style="font-weight: 600; font-size: 14px">Are you willing to relocate?</legend>
+          <label><input type="radio" name="relocate" value="yes" /> Yes</label>
+          <label><input type="radio" name="relocate" value="no" /> No</label>
+        </fieldset>
+
+        <label for="why">Why do you want to join Acme?</label>
+        <textarea id="why" name="why" maxlength="600" aria-describedby="why-hint"></textarea>
+        <div class="hint" id="why-hint">Up to 600 characters.</div>
+
+        <label id="note-label">Anything else? (rich text)</label>
+        <div id="note" contenteditable="true" aria-labelledby="note-label"></div>
+
+        <label for="pw">Create a password</label>
+        <input id="pw" type="password" name="password" />
+
+        <label><input type="checkbox" id="agree" style="width: auto" /> I agree to the privacy policy</label>
+        <button type="submit">Submit application</button>
+        <div id="submitted"></div>
+      </form>
+    </main>
+    <script>
+      // Minimal "controlled input" like React: the source of truth is `state`, synced only via input events.
+      const company = document.getElementById('company');
+      let state = '';
+      company.addEventListener('input', (e) => {
+        state = e.target.value;
+        window.__companyState = state;
+      });
+      // Re-render periodically from state (React would do this on every render).
+      setInterval(() => {
+        if (company.value !== state) company.value = state;
+      }, 50);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chat with messages after the input in the DOM</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .w { position: fixed; right: 0; top: 0; bottom: 0; width: 460px; background: #fff; display: flex; flex-direction: column-reverse; justify-content: flex-end; padding: 24px; box-sizing: border-box; z-index: 10; }
+      .m { background: #f5f5f7; border-radius: 16px; padding: 14px 18px; margin: 8px 0; }
+      .in { border: 1.5px solid #275df5; border-radius: 28px; padding: 14px 18px; min-height: 22px; outline: none; }
+      .in:empty::before { content: attr(data-placeholder); color: #9aa; }
+      .footer-note { color: #888; font-size: 12px; margin-top: 30px; }
+    </style>
+  </head>
+  <body>
+    <p>Earlier on the page: Do you like our site?</p>
+    <div class="w">
+      <!-- DOM order: footer note, input, then messages. Visually (column-reverse) the messages are ABOVE the input. -->
+      <div class="footer-note">Powered by SomeBot. Need help?</div>
+      <div class="in" id="in" contenteditable="true" data-placeholder="Type message here..."></div>
+      <div class="msgs"><div class="m">How many years of experience do you have in SQL Database?</div></div>
+    </div>
+  </body>
+</html>

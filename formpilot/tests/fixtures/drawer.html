@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Software Engineer — Tech Mahindra (drawer chatbot)</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #f4f5f7; }
+      main { max-width: 760px; margin: 30px auto; padding: 0 20px; }
+      .x1a { background: #fff; border-radius: 16px; padding: 24px; }
+      ._ov { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000; }
+      ._dr { position: fixed; top: 0; right: 0; bottom: 0; width: 480px; background: #fff; z-index: 1001; transform: translateX(0); padding: 28px; box-sizing: border-box; overflow: hidden; }
+      ._b { background: #f5f5f7; border-radius: 16px; padding: 14px 18px; margin: 10px 0; max-width: 85%; }
+      ._me { background: #275df5; color: #fff; margin-left: auto; }
+      ._in { border: 1.5px solid #275df5; border-radius: 28px; padding: 14px 18px; margin-top: 14px; min-height: 22px; outline: none; }
+      ._in:empty::before { content: attr(data-placeholder); color: #9aa; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="x1a">
+        <h1>Software Engineer</h1>
+        <p>Experience with PostgreSQL, RDS, Aurora, and AWS.</p>
+        <button id="apply">Apply</button>
+      </div>
+    </main>
+    <div id="root"></div>
+    <script>
+      const Q = ['How many years of experience do you have in SQL Database?', 'Are you willing to relocate to Pune?'];
+      let drawer = null;
+      let step = 0;
+      function close() {
+        drawer?.remove();
+        document.querySelector('._ov')?.remove();
+        drawer = null;
+        window.__closed = (window.__closed || 0) + 1;
+      }
+      function ask(log) {
+        const b = document.createElement('div');
+        b.className = '_b';
+        b.textContent = Q[step];
+        log.appendChild(b);
+      }
+      document.getElementById('apply').addEventListener('click', () => {
+        const ov = document.createElement('div');
+        ov.className = '_ov';
+        drawer = document.createElement('div');
+        drawer.className = '_dr';
+        drawer.innerHTML = '<div class="_lg"></div><div class="_in" contenteditable="true" data-placeholder="Type message here..."></div>';
+        document.getElementById('root').append(ov, drawer);
+        const input = drawer.querySelector('._in');
+        input.focus(); // input is focused BEFORE the bot's question renders
+        setTimeout(() => ask(drawer.querySelector('._lg')), 600);
+        input.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' || !input.textContent.trim()) return;
+          e.preventDefault();
+          const me = document.createElement('div');
+          me.className = '_b _me';
+          me.textContent = input.textContent;
+          drawer.querySelector('._lg').appendChild(me);
+          window.__answers = [...(window.__answers || []), input.textContent];
+          input.textContent = '';
+          step++;
+          if (step < Q.length) setTimeout(() => ask(drawer.querySelector('._lg')), 500);
+        });
+      });
+      // Worst case: click-outside handler in the CAPTURE phase (can't be stopped by the extension).
+      document.addEventListener(
+        'mousedown',
+        (e) => {
+          if (drawer && !drawer.contains(e.target) && e.target.id !== 'apply') close();
+        },
+        true,
+      );
+    </script>
+  </body>
+</html>

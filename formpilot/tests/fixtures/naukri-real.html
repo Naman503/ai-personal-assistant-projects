@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Software Engineer - Tech Mahindra (Naukri drawer structure)</title>
+    <!-- Structure mirrors Naukri's apply chatbot as documented by open-source Naukri automation projects. -->
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .chatbot_Overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; }
+      .chatbot_Drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 470px; background: #fff; z-index: 1001; animation: slide .25s ease-out; }
+      @keyframes slide { from { transform: translateX(100%); } }
+      .chatbot_DrawerContentWrapper { display: flex; flex-direction: column; height: 100%; padding: 24px; box-sizing: border-box; }
+      .chatbot_MessageContainer { flex: 1; overflow-y: auto; }
+      .list { list-style: none; padding: 0; margin: 0; }
+      .botMsg { background: #f5f5f7; border-radius: 16px; padding: 14px 18px; margin: 8px 0; max-width: 85%; }
+      .userItem .botMsg, .userMsg { background: #275df5; color: #fff; margin-left: auto; border-radius: 16px; padding: 10px 14px; width: fit-content; }
+      .textArea { border: 1.5px solid #275df5; border-radius: 28px; padding: 14px 18px; min-height: 22px; outline: none; }
+      .textArea:empty::before { content: attr(data-placeholder); color: #9aa; }
+      .sendMsg { margin-top: 12px; text-align: center; padding: 12px; border-radius: 24px; background: #275df5; color: #fff; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div id="job_header"><h1>Software Engineer</h1><p>React.js, Node.js, PostgreSQL</p><button id="apply-button">Apply</button></div>
+    <script>
+      const QUESTIONS = ['How many years of experience do you have in React.Js Or Nodejs?', 'What is your notice period?'];
+      let step = 0;
+      document.getElementById('apply-button').addEventListener('click', () => {
+        const c = document.createElement('div');
+        c.id = '_pnx31cdubChatbotContainer';
+        c.className = '_chatBotContainer';
+        c.innerHTML = `
+          <div id="_pnx31cdubDrawer" class="chatbot_Drawer chatbot_right">
+            <div class="chatbot_DrawerContentWrapper">
+              <div class="chatbot_Nav"><div class="crossIcon chatBot chatBot-ic-cross"></div></div>
+              <div class="chatbot_MessageContainer" id="_pnx31cdubMessages">
+                <ul class="list" id="chatList__pnx31cdubMessages">
+                  <li class="botLogo chatbot_ListItem"><div class="chipMsg"><span>N</span></div></li>
+                  <li class="botItem chatbot_ListItem"><div class="botMsg msg"><div><span>Hi Alex, thank you for showing interest. Kindly answer all the recruiter's questions to successfully apply for the job.</span></div></div></li>
+                </ul>
+                <div class="footerWrapper"><div class="footerInputBoxWrapper"><div class="chatbot_SendMessageContainer"><div class="chatbot_InputContainer"><div class="textAreaWrapper">
+                  <div id="userInput__pnx31cdubInputBox" class="textArea" contenteditable="true" data-placeholder="Type message here..."></div>
+                </div></div></div></div></div>
+              </div>
+              <div id="sendMsgbtn_container__pnx31cdubInputBox" class="sendMsgbtn_container"><div class="send"><div class="sendMsg" tabindex="0">Save</div></div></div>
+            </div>
+          </div>
+          <div class="chatbot_Overlay show"></div>`;
+        document.body.appendChild(c);
+        const list = c.querySelector('.list');
+        const input = c.querySelector('.textArea');
+        input.focus();
+        const ask = () => {
+          const li = document.createElement('li');
+          li.className = 'botItem chatbot_ListItem';
+          li.innerHTML = `<div class="botMsg msg"><div><span>${QUESTIONS[step]}</span></div></div>`;
+          list.appendChild(li);
+        };
+        setTimeout(ask, 1500); // questions come from an API after the drawer opens
+        const send = () => {
+          const v = input.textContent.trim();
+          if (!v) return;
+          const li = document.createElement('li');
+          li.className = 'userItem chatbot_ListItem';
+          li.innerHTML = `<div class="userMsg"><span>${v}</span></div>`;
+          list.appendChild(li);
+          window.__answers = [...(window.__answers || []), v];
+          input.textContent = '';
+          step++;
+          if (step < QUESTIONS.length) setTimeout(ask, 700);
+        };
+        c.querySelector('.sendMsg').addEventListener('click', send);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+        // Click-outside (capture) closes the drawer, like the real overlay.
+        document.addEventListener('mousedown', (e) => {
+          const d = c.querySelector('.chatbot_Drawer');
+          if (d && !d.contains(e.target)) { c.remove(); window.__closed = (window.__closed || 0) + 1; }
+        }, true);
+      });
+    </script>
+  </body>
+</html>

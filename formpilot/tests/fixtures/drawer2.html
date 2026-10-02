@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Job — drawer inside a fixed wrapper</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      ._wrap { position: fixed; inset: 0; z-index: 99999; }
+      ._bg { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+      ._panel { position: absolute; top: 0; right: 0; bottom: 0; width: 460px; background: #fff; z-index: 2; padding: 28px; box-sizing: border-box; }
+      ._b { background: #f5f5f7; border-radius: 16px; padding: 14px 18px; margin: 10px 0; }
+      ._box { position: relative; border: 1.5px solid #275df5; border-radius: 28px; margin-top: 14px; }
+      ._ph { position: absolute; left: 18px; top: 14px; color: #9aa; pointer-events: none; }
+      ._in { padding: 14px 18px; min-height: 22px; outline: none; }
+    </style>
+  </head>
+  <body>
+    <button id="apply">Apply</button>
+    <script>
+      let wrap = null;
+      document.getElementById('apply').addEventListener('click', () => {
+        wrap = document.createElement('div');
+        wrap.className = '_wrap';
+        wrap.innerHTML = '<div class="_bg"></div><div class="_panel"><div class="_lg"></div><div class="_box"><span class="_ph">Type message here...</span><div class="_in" contenteditable="true"></div></div></div>';
+        document.body.appendChild(wrap);
+        const input = wrap.querySelector('._in');
+        input.addEventListener('input', () => (wrap.querySelector('._ph').style.display = input.textContent ? 'none' : ''));
+        input.focus();
+        setTimeout(() => {
+          const b = document.createElement('div');
+          b.className = '_b';
+          b.textContent = 'How many years of experience do you have in SQL Database?';
+          wrap.querySelector('._lg').appendChild(b);
+        }, 1200);
+      });
+      // Click-outside checked against the inner PANEL, in the capture phase.
+      document.addEventListener('mousedown', (e) => {
+        const panel = wrap?.querySelector('._panel');
+        if (panel && !panel.contains(e.target) && e.target.id !== 'apply') {
+          wrap.remove();
+          wrap = null;
+          window.__closed = (window.__closed || 0) + 1;
+        }
+      }, true);
+    </script>
+  </body>
+</html>

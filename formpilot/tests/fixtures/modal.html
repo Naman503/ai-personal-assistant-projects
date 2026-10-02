@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Software Engineer — Job portal (modal questionnaire)</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #f4f5f7; }
+      main { max-width: 760px; margin: 30px auto; padding: 0 20px; }
+      .card { background: #fff; border-radius: 16px; padding: 24px; }
+      /* Overlay + drawer like popular job portals: max z-index, transform (own containing block), aria-modal. */
+      #overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 2147483647; }
+      #drawer {
+        position: fixed; top: 0; right: 0; bottom: 0; width: 460px; background: #fff; z-index: 2147483647;
+        transform: translateX(0); overflow: hidden; display: flex; flex-direction: column; padding: 24px; box-sizing: border-box;
+      }
+      .bubble { background: #f1f2f4; border-radius: 14px; padding: 12px 14px; margin: 8px 0; max-width: 85%; }
+      .bot-name { font-weight: 700; color: #275df5; }
+      #chat-input { border: 1px solid #275df5; border-radius: 24px; padding: 12px 16px; min-height: 22px; margin-top: 12px; }
+      #chat-input:empty::before { content: attr(data-placeholder); color: #999; }
+      #plain { margin-top: 12px; width: 100%; padding: 12px 16px; border-radius: 24px; border: 1px solid #ccc; box-sizing: border-box; }
+      #save { margin-top: auto; padding: 12px; border-radius: 24px; background: #275df5; color: #fff; border: 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>Software Engineer</h1>
+        <p>Experience with PostgreSQL, RDS, Aurora, and AWS. Manage and maintain PostgreSQL databases on AWS RDS and Aurora.</p>
+      </div>
+    </main>
+    <div id="overlay"></div>
+    <div id="drawer" role="dialog" aria-modal="true">
+      <div class="bot-name">Recruiter bot</div>
+      <div class="chat">
+        <div class="bubble">Hi! Please answer a few questions.</div>
+        <div class="bubble">How many years of experience do you have in Postgresql?</div>
+      </div>
+      <div id="chat-input" contenteditable="true" data-placeholder="Type message here..."></div>
+      <input id="plain" placeholder="Type message here..." />
+      <button id="save">Save</button>
+      <div id="status">open</div>
+    </div>
+    <script>
+      const drawer = document.getElementById('drawer');
+      // "Click outside closes the modal" (bubble-phase document listener, like most UI libraries).
+      document.addEventListener('mousedown', (e) => {
+        if (!drawer.contains(e.target)) {
+          document.getElementById('status').textContent = 'closed';
+          window.__closedByOutsideClick = true;
+        }
+      });
+      // Focus trap: focus that leaves the drawer is pulled back in.
+      document.addEventListener('focusin', (e) => {
+        if (!drawer.contains(e.target)) document.getElementById('chat-input').focus();
+      });
+    </script>
+  </body>
+</html>
