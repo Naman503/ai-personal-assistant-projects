@@ -47,6 +47,24 @@ const K_VAULT = 'vault';
 const K_DEVICE = 'vaultDevice';
 const K_SECRETS = 'vaultSecrets';
 const K_SESSION = 'vaultSession';
+const K_ATTEMPTS = 'vaultAttempts';
+/** After this many wrong passwords in a row, unlocking pauses (30 s, doubling each round, max 15 min). */
+export const MAX_ATTEMPTS = 5;
+
+interface Attempts {
+  fails: number;
+  until: number;
+}
+
+async function getAttempts(): Promise<Attempts> {
+  return ((await chrome.storage.local.get(K_ATTEMPTS))[K_ATTEMPTS] as Attempts | undefined) ?? { fails: 0, until: 0 };
+}
+
+/** Seconds until another unlock attempt is allowed (0 = now). */
+export async function unlockCooldown(): Promise<number> {
+  const a = await getAttempts();
+  return Math.max(0, Math.ceil((a.until - Date.now()) / 1000));
+}
 export const DEFAULT_ITERATIONS = 600_000;
 
 // ---------- encoding helpers ----------
@@ -94,9 +112,16 @@ async function getSecrets(): Promise<Record<string, Sealed>> {
 }
 
 export class WrongPasswordError extends Error {
-  constructor() {
+  constructor(public attemptsLeft?: number) {
     super('Wrong password');
     this.name = 'WrongPasswordError';
+  }
+}
+
+export class TooManyAttemptsError extends Error {
+  constructor(public retryInSec: number) {
+    super(`Too many wrong attempts. Try again in ${retryInSec}s.`);
+    this.name = 'TooManyAttemptsError';
   }
 }
 
@@ -107,10 +132,17 @@ export class VaultLockedError extends Error {
   }
 }
 
+/** A 4-digit PIN is allowed: the main goal is keeping people out of the settings, and wrong attempts are throttled. */
+export const MIN_PASSWORD_LENGTH = 4;
+
 export function passwordProblem(pw: string): string | null {
-  if (pw.length < 8) return 'Use at least 8 characters.';
-  if (!/[a-zA-Z]/.test(pw) || !/[0-9\W_]/.test(pw)) return 'Mix letters with numbers or symbols.';
+  if (pw.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters (a 4-digit PIN is fine).`;
   return null;
+}
+
+/** Short numeric codes are fine for the default mode; suggest a longer password for strict mode. */
+export function isSimplePin(pw: string): boolean {
+  return pw.length > 0 && pw.length < 8;
 }
 
 /** 0–4 rough strength score for the UI meter. */
@@ -152,13 +184,23 @@ export async function createVault(password: string, mode: VaultMode = 'standard'
 export async function unlockVault(password: string): Promise<CryptoKey> {
   const v = await getVault();
   if (!v) throw new Error('No password has been set yet.');
+  const wait = await unlockCooldown();
+  if (wait > 0) throw new TooManyAttemptsError(wait);
   const kek = await deriveKek(password, unb64(v.salt), v.iterations);
   let raw: Uint8Array<ArrayBuffer>;
   try {
     raw = await open(kek, v.wrapped);
   } catch {
-    throw new WrongPasswordError();
+    // Throttle guessing (stored, so reloading the page doesn't reset it).
+    const a = await getAttempts();
+    const fails = a.fails + 1;
+    const rounds = Math.floor(fails / MAX_ATTEMPTS);
+    const until = fails % MAX_ATTEMPTS === 0 ? Date.now() + Math.min(15 * 60_000, 30_000 * 2 ** (rounds - 1)) : a.until;
+    await chrome.storage.local.set({ [K_ATTEMPTS]: { fails, until } satisfies Attempts });
+    if (fails % MAX_ATTEMPTS === 0) throw new TooManyAttemptsError(Math.ceil((until - Date.now()) / 1000));
+    throw new WrongPasswordError(MAX_ATTEMPTS - (fails % MAX_ATTEMPTS));
   }
+  await chrome.storage.local.remove(K_ATTEMPTS);
   if (v.mode === 'strict') await chrome.storage.session.set({ [K_SESSION]: b64(raw) });
   return importDek(raw);
 }
@@ -201,7 +243,7 @@ async function storeUsableCopy(raw: Uint8Array<ArrayBuffer>, mode: VaultMode) {
 
 /** Forget everything (e.g. forgotten password). All stored keys are deleted. */
 export async function resetVault(): Promise<void> {
-  await chrome.storage.local.remove([K_VAULT, K_DEVICE, K_SECRETS]);
+  await chrome.storage.local.remove([K_VAULT, K_DEVICE, K_SECRETS, K_ATTEMPTS]);
   await chrome.storage.session.remove(K_SESSION);
   log.warn('vault reset: all stored API keys deleted');
 }

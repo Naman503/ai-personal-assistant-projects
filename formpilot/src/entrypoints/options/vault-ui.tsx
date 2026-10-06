@@ -6,7 +6,9 @@ import { Button, Input, Switch } from '@/components/ui';
 import { cn } from '@/components/ui/cn';
 import {
   createVault,
+  isSimplePin,
   passwordProblem,
+  TooManyAttemptsError,
   passwordStrength,
   resetVault,
   unlockVault,
@@ -55,8 +57,8 @@ function PasswordField({ value, onChange, placeholder, autoFocus, id }: { value:
 
 function StrengthMeter({ pw }: { pw: string }) {
   const s = passwordStrength(pw);
-  const labels = ['Too weak', 'Weak', 'Okay', 'Good', 'Strong'];
-  const colors = ['bg-red-500', 'bg-orange-500', 'bg-amber-400', 'bg-emerald-500', 'bg-emerald-600'];
+  const labels = [pw.length >= 4 ? 'Simple PIN' : 'Too short', 'Okay', 'Good', 'Strong', 'Strong'];
+  const colors = [pw.length >= 4 ? 'bg-amber-400' : 'bg-red-500', 'bg-amber-400', 'bg-lime-500', 'bg-emerald-500', 'bg-emerald-600'];
   return (
     <div className="mt-2 flex items-center gap-2">
       <div className="flex flex-1 gap-1">
@@ -64,7 +66,7 @@ function StrengthMeter({ pw }: { pw: string }) {
           <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', pw && i < Math.max(1, s) ? colors[s] : 'bg-zinc-200 dark:bg-zinc-700')} />
         ))}
       </div>
-      <span className="w-16 text-right text-[11px] text-zinc-500">{pw ? labels[s] : ''}</span>
+      <span className="w-20 text-right text-[11px] text-zinc-500">{pw ? labels[s] : ''}</span>
     </div>
   );
 }
@@ -151,7 +153,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       pending.current?.resolve(k);
       close(false);
     } catch (e) {
-      setError(e instanceof WrongPasswordError ? 'Wrong password. Try again.' : (e as Error).message);
+      setError(
+        e instanceof WrongPasswordError
+          ? `Wrong password. ${e.attemptsLeft && e.attemptsLeft <= 3 ? `${e.attemptsLeft} attempt${e.attemptsLeft > 1 ? 's' : ''} left before a short pause.` : 'Try again.'}`
+          : e instanceof TooManyAttemptsError
+            ? `Too many wrong attempts. Try again in ${e.retryInSec} seconds.`
+            : (e as Error).message,
+      );
     } finally {
       setBusy(false);
     }
@@ -188,7 +196,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             <Dialog.Title className="text-lg font-semibold tracking-tight">{dialog?.kind === 'create' ? 'Protect your API keys' : 'Enter your FormPilot password'}</Dialog.Title>
             <Dialog.Description className="mt-1 text-[13px] leading-relaxed text-zinc-500">
               {dialog?.kind === 'create'
-                ? 'Create a password. Your keys are encrypted with it, and it is needed to see, change or remove them. FormPilot never stores the password itself.'
+                ? 'Create a password or a 4-digit PIN. Your keys are encrypted with it, and it is needed to see, change or remove them. FormPilot never stores it.'
                 : dialog?.reason}
             </Dialog.Description>
 
@@ -201,12 +209,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                 }}
               >
                 <div>
-                  <PasswordField value={pw} onChange={setPw} placeholder={dialog?.kind === 'create' ? 'New password' : 'Password'} autoFocus />
+                  <PasswordField value={pw} onChange={setPw} placeholder={dialog?.kind === 'create' ? 'New password or PIN' : 'Password'} autoFocus />
                   {dialog?.kind === 'create' && <StrengthMeter pw={pw} />}
+                  {dialog?.kind === 'create' && isSimplePin(pw) && pw.length >= 4 && (
+                    <p className="mt-1.5 text-xs text-zinc-500">
+                      A short PIN is fine for keeping people out of these settings. If you turn on the lock below, a longer password is safer.
+                    </p>
+                  )}
                 </div>
                 {dialog?.kind === 'create' && (
                   <>
-                    <PasswordField value={pw2} onChange={setPw2} placeholder="Confirm password" />
+                    <PasswordField value={pw2} onChange={setPw2} placeholder="Confirm password or PIN" />
                     <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
                       <Switch checked={strict} onCheckedChange={setStrict} />
                       <span className="text-[13px]">

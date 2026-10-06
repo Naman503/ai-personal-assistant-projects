@@ -15,6 +15,9 @@ import {
   vaultStatus,
   VaultLockedError,
   WrongPasswordError,
+  TooManyAttemptsError,
+  MAX_ATTEMPTS,
+  unlockCooldown,
   _clearVaultCache,
 } from '@/lib/vault';
 import { resolveProvider, generateWithFallback } from '@/lib/llm/registry';
@@ -100,10 +103,27 @@ describe('vault', () => {
     expect(await vaultStatus()).toMatchObject({ exists: false, keys: [] });
   });
 
-  it('password rules', () => {
-    expect(passwordProblem('short1')).toMatch(/8 characters/);
-    expect(passwordProblem('onlyletters')).toMatch(/numbers or symbols/);
-    expect(passwordProblem('letters123')).toBeNull();
+  it('password rules: a 4-digit PIN is allowed', () => {
+    expect(passwordProblem('123')).toMatch(/4 characters/);
+    expect(passwordProblem('1234')).toBeNull();
+    expect(passwordProblem('correct horse')).toBeNull();
+  });
+
+  it('a PIN works, and repeated wrong guesses are throttled (persisted across reloads)', async () => {
+    const dek = await createVault('1234', 'standard', FAST);
+    await setSecret(dek, 'a', 'k1');
+    for (let i = 1; i < MAX_ATTEMPTS; i++) {
+      await expect(unlockVault('0000')).rejects.toMatchObject({ name: 'WrongPasswordError', attemptsLeft: MAX_ATTEMPTS - i });
+    }
+    await expect(unlockVault('0000')).rejects.toBeInstanceOf(TooManyAttemptsError);
+    // Even the right PIN must wait during the pause.
+    await expect(unlockVault('1234')).rejects.toBeInstanceOf(TooManyAttemptsError);
+    expect(await unlockCooldown()).toBeGreaterThan(20);
+    // After the pause the right PIN works and the counter resets.
+    const rec = (await chrome.storage.local.get('vaultAttempts')).vaultAttempts as { fails: number; until: number };
+    await chrome.storage.local.set({ vaultAttempts: { ...rec, until: Date.now() - 1 } });
+    expect(await getSecret(await unlockVault('1234'), 'a')).toBe('k1');
+    expect(await unlockCooldown()).toBe(0);
   });
 });
 

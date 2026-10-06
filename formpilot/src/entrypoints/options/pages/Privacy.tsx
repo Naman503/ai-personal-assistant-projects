@@ -97,7 +97,7 @@ function SecurityCard({ update }: { update: PageProps['update'] }) {
       </Row>
       {changing && (
         <div className="animate-fade-up space-y-2 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800/70">
-          <Input type="password" autoFocus placeholder="New password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          <Input type="password" autoFocus placeholder="New password or PIN (4+ characters)" value={pw} onChange={(e) => setPw(e.target.value)} />
           <Input type="password" placeholder="Confirm new password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void saveNew()} />
           {err && <p className="text-[13px] text-red-600">{err}</p>}
           <div className="flex justify-end gap-2">

@@ -423,8 +423,8 @@ test.describe('password-protected API keys', () => {
     await opts.getByPlaceholder('Paste your key').fill('secret-123');
     await opts.getByRole('button', { name: 'Save key' }).click();
     await expect(opts.getByText('Protect your API keys')).toBeVisible();
-    await opts.getByPlaceholder('New password').fill('Sup3r-secret');
-    await opts.getByPlaceholder('Confirm password').fill('Sup3r-secret');
+    await opts.getByPlaceholder('New password or PIN').fill('Sup3r-secret');
+    await opts.getByPlaceholder('Confirm password or PIN').fill('Sup3r-secret');
     await opts.getByRole('button', { name: 'Set password' }).click();
     await expect(opts.getByTitle('Show key (needs password)')).toBeVisible();
 
