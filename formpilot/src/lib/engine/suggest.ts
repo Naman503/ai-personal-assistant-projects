@@ -18,7 +18,7 @@ import { cacheGet, cacheSet } from './cache';
 import { BATCH_SCHEMA, FACTS_SCHEMA, FACTS_SYSTEM, SUGGESTION_SCHEMA, buildBatchPrompt, buildFactsPrompt, buildSuggestPrompt, systemPrompt } from './prompt';
 import { parseBatch, parseFacts, parseSuggestions, parseSuggestionsPartial } from './parse';
 import { redactSecrets } from './redact';
-import { activeProviders, adapterFor, generateWithFallback } from '../llm/registry';
+import { activeProviders, adapterFor, generateWithFallback, resolveProvider } from '../llm/registry';
 import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
 import { clampToLength, hash, isAbort, uid } from '../util';
@@ -77,7 +77,7 @@ export class SuggestEngine {
   }
 
   private embedProvider() {
-    return this.settings().providers.find((p) => p.kind === 'gemini' && p.enabled && p.apiKey.trim());
+    return this.settings().providers.find((p) => p.kind === 'gemini' && p.enabled && (p.apiKey.trim() || p.hasKey));
   }
 
   private async embedQuery(q: string): Promise<number[] | null> {
@@ -86,7 +86,7 @@ export class SuggestEngine {
     const k = hash(q);
     const hit = this.queryEmb.get(k);
     if (hit) return hit;
-    const [v] = await adapterFor(p).embed!(p, [q], this.settings().memory.embeddingModel);
+    const [v] = await adapterFor(p).embed!(await resolveProvider(p), [q], this.settings().memory.embeddingModel);
     if (this.queryEmb.size > 300) this.queryEmb.clear();
     if (v) this.queryEmb.set(k, v);
     return v ?? null;
@@ -102,7 +102,7 @@ export class SuggestEngine {
     const pending = this.index.pendingEmbeddings(model);
     if (!pending.length) return 0;
     const end = log.time(`embedding ${pending.length} chunks`);
-    const vecs = await adapterFor(p).embed!(p, pending.map((c) => c.text), model, signal);
+    const vecs = await adapterFor(p).embed!(await resolveProvider(p), pending.map((c) => c.text), model, signal);
     await db().chunks.bulkPut(pending.map((c, i) => ({ ...c, emb: vecs[i], embModel: model })));
     await bumpMemoryVersion();
     end();

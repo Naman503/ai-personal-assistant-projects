@@ -33,6 +33,7 @@ import { Appearance } from './pages/Appearance';
 import { Logs } from './pages/Logs';
 import { LocalModels } from './pages/LocalModels';
 import { About, Avatar } from './pages/About';
+import { VaultProvider } from './vault-ui';
 
 export interface PageProps {
   settings: Settings;
@@ -79,6 +80,7 @@ export function App() {
   }, [current.label]);
 
   return (
+    <VaultProvider>
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-zinc-200/80 bg-white/60 px-3 py-5 backdrop-blur md:flex dark:border-zinc-800/80 dark:bg-zinc-900/40">
         <div className="mb-6 flex items-center gap-2.5 px-2">
@@ -159,5 +161,6 @@ export function App() {
       </main>
       <Toaster position="bottom-right" richColors closeButton theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} />
     </div>
+    </VaultProvider>
   );
 }

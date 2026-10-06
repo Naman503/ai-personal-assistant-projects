@@ -14,6 +14,7 @@ import { openai } from './openai';
 import { ollama } from './ollama';
 import { chromeAi, chromeAiAvailability } from './chrome-ai';
 import { isAbort, sleep } from '../util';
+import { resolveStoredKey, VaultLockedError } from '../vault';
 import { createLogger } from '../logger';
 
 const log = createLogger('bg:llm');
@@ -32,6 +33,23 @@ export function adapterFor(p: ProviderConfig): ProviderAdapter {
 /** Providers that will be tried, in order. */
 export function activeProviders(s: Settings): ProviderConfig[] {
   return s.providers.filter((p) => providerConfigured(p) && (!s.privacy.localOnly || isLocalProvider(p)));
+}
+
+/**
+ * Fill in a provider's API key from the encrypted vault (keys are never kept in settings).
+ * Throws an LLMError('locked') when the vault is locked (strict mode, before the user unlocks).
+ */
+export async function resolveProvider(p: ProviderConfig): Promise<ProviderConfig> {
+  if (p.apiKey.trim() || !p.hasKey) return p;
+  try {
+    const key = await resolveStoredKey(p.id);
+    return key ? { ...p, apiKey: key } : p;
+  } catch (e) {
+    if (e instanceof VaultLockedError) {
+      throw new LLMError('locked', 'FormPilot is locked.', { provider: p.label, hint: 'Enter your FormPilot password once to use your saved API keys.' });
+    }
+    throw new LLMError('auth', `Could not read the saved key: ${(e as Error).message}`, { provider: p.label, hint: 'Re-enter the API key in settings.' });
+  }
 }
 
 /** Providers that recently failed hard (bad key, unavailable) are skipped for a while. */
@@ -79,7 +97,7 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
       const t0 = performance.now();
       try {
         log.info(`→ ${p.label} · ${p.model}${attempt ? ` (retry ${attempt})` : ''}`);
-        const r = await adapterFor(p).generate(p, req);
+        const r = await adapterFor(p).generate(await resolveProvider(p), req);
         const ms = Math.round(performance.now() - t0);
         attempts.push({ provider: p.label, ms });
         log.info(`← ${p.label} answered in ${ms}ms (${r.text.length} chars)`, r.usage);
@@ -99,6 +117,7 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
         } else if (err.code === 'unavailable' && p.kind === 'chrome-ai') {
           cooldown.set(p.id, Date.now() + 10 * 60_000);
         }
+        if (err.code === 'locked') break; // no point retrying; try the next (maybe local) provider
         if (!err.retryable || attempt >= s.generation.maxRetries) break;
         const wait = err.retryAfterMs ?? 600 * 2 ** attempt + Math.random() * 300;
         if (wait > 8000) {

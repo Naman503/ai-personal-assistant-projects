@@ -17,6 +17,7 @@ import {
   Zap,
   Info,
   BookmarkPlus,
+  Lock,
 } from 'lucide-react';
 import type { Suggestion } from '@/lib/types';
 import { useStore, visibleItems, type Store } from '../store';
@@ -248,9 +249,15 @@ function Panel({ store, actions }: { store: Store; actions: Actions }) {
                 <button className="fp-chip" onClick={() => actions.regenerate()}>
                   <RefreshCw size={12} /> Retry
                 </button>
-                <button className="fp-chip" onClick={() => actions.openSettings(st.error?.code === 'auth' || st.error?.code === 'no-provider' ? 'providers' : 'logs')}>
-                  {st.error.code === 'auth' || st.error.code === 'no-provider' ? 'Fix in settings' : 'View logs'}
-                </button>
+                {st.error.code === 'locked' ? (
+                  <button className="fp-chip" data-primary="true" onClick={() => actions.openSettings('providers?unlock=1')}>
+                    <Lock size={12} /> Unlock
+                  </button>
+                ) : (
+                  <button className="fp-chip" onClick={() => actions.openSettings(st.error?.code === 'auth' || st.error?.code === 'no-provider' ? 'providers' : 'logs')}>
+                    {st.error.code === 'auth' || st.error.code === 'no-provider' ? 'Fix in settings' : 'View logs'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -387,6 +394,8 @@ function errorTitle(code: string): string {
       return 'Not allowed';
     case 'unavailable':
       return 'Provider unavailable';
+    case 'locked':
+      return 'Locked';
     default:
       return 'Something went wrong';
   }

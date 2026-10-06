@@ -410,3 +410,74 @@ test.describe('Naukri drawer structure + visual question detection', () => {
     expect((await requests()).some((r) => r.prompt.includes('Question: How many years of experience do you have in SQL Database?'))).toBe(true);
   });
 });
+
+test.describe('password-protected API keys', () => {
+  test('save key → create password → encrypted at rest → reveal needs password → AI uses it; strict mode locks after restart', async ({ context, sw, extId }) => {
+    await configure(sw, {
+      providers: [{ id: 'mock', kind: 'openai', label: 'Mock LLM', enabled: true, apiKey: '', hasKey: false, baseUrl: 'http://localhost:4174/v1', model: 'mock-model', jsonMode: true, headers: {} }],
+    });
+    const opts = await context.newPage();
+    await opts.goto(`chrome-extension://${extId}/options.html#providers`);
+
+    // 1) Paste a key → asked to create a password
+    await opts.getByPlaceholder('Paste your key').fill('secret-123');
+    await opts.getByRole('button', { name: 'Save key' }).click();
+    await expect(opts.getByText('Protect your API keys')).toBeVisible();
+    await opts.getByPlaceholder('New password').fill('Sup3r-secret');
+    await opts.getByPlaceholder('Confirm password').fill('Sup3r-secret');
+    await opts.getByRole('button', { name: 'Set password' }).click();
+    await expect(opts.getByTitle('Show key (needs password)')).toBeVisible();
+
+    // 2) Nothing readable in storage: neither the key nor the password
+    const raw = await sw.evaluate(async () => JSON.stringify(await chrome.storage.local.get(null)));
+    expect(raw).not.toContain('secret-123');
+    expect(raw).not.toContain('Sup3r-secret');
+
+    // 3) A fresh settings page must ask for the password to show the key
+    await opts.reload();
+    await opts.getByTitle('Show key (needs password)').click();
+    await expect(opts.getByText('Enter your FormPilot password')).toBeVisible();
+    await opts.getByPlaceholder('Password', { exact: true }).fill('wrong-pass1');
+    await opts.getByRole('button', { name: 'Unlock' }).click();
+    await expect(opts.getByText('Wrong password. Try again.')).toBeVisible();
+    await opts.getByPlaceholder('Password', { exact: true }).fill('Sup3r-secret');
+    await opts.getByRole('button', { name: 'Unlock' }).click();
+    await expect(opts.getByText('secret-123')).toBeVisible();
+
+    // 4) Suggestions use the decrypted key, with no password prompt (standard mode)
+    const page = await context.newPage();
+    await page.goto(FORM);
+    await page.click('#why');
+    await waitReady(page);
+    await expect(host(page)).toHaveAttribute('data-status', 'done');
+    expect((await requests()).at(-1)?.auth).toBe('Bearer secret-123');
+
+    // 5) Strict mode: lock after a browser restart
+    await opts.goto(`chrome-extension://${extId}/options.html#privacy`);
+    await opts.locator('div.flex').filter({ has: opts.locator('label', { hasText: 'Lock after the browser restarts' }) }).last().getByRole('switch').click();
+    // Changing the mode needs the password; this tab may still be unlocked from step 3 (5-minute window).
+    if (await opts.getByPlaceholder('Password', { exact: true }).isVisible().catch(() => false)) {
+      await opts.getByPlaceholder('Password', { exact: true }).fill('Sup3r-secret');
+      await opts.getByRole('button', { name: 'Unlock' }).click();
+    }
+    await expect.poll(async () => sw.evaluate(async () => ((await chrome.storage.local.get('vault')).vault as { mode: string }).mode)).toBe('strict');
+    await sw.evaluate(async () => chrome.storage.session.clear()); // what a browser restart does
+    await fetch(`${LLM}/reset`);
+    await page.reload();
+    await page.click('#company'); // a new question (cached answers still work while locked; they need no key)
+    await expect(host(page)).toHaveAttribute('data-status', 'error', { timeout: 15_000 });
+    expect(await requests()).toHaveLength(0);
+
+    // Unlock from the deep link the dropdown's "Unlock" button opens
+    const unlock = await context.newPage();
+    await unlock.goto(`chrome-extension://${extId}/options.html#providers?unlock=1`);
+    await unlock.getByPlaceholder('Password', { exact: true }).fill('Sup3r-secret');
+    await unlock.getByRole('button', { name: 'Unlock' }).click();
+    await expect(unlock.getByText(/Unlocked/)).toBeVisible();
+    await page.reload();
+    await page.click('#company');
+    await waitReady(page);
+    await expect(host(page)).toHaveAttribute('data-status', 'done');
+    expect((await requests()).at(-1)?.auth).toBe('Bearer secret-123');
+  });
+});

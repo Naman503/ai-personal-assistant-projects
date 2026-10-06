@@ -80,6 +80,7 @@ export interface ErrorInfo {
     | 'unavailable'
     | 'cors'
     | 'blocked'
+    | 'locked'
     | 'unknown';
   message: string;
   hint?: string;

@@ -4,7 +4,8 @@ import { SUGGEST_PORT, type CommandName, type PortEvent, type PortRequest, type 
 import { SuggestEngine, counters } from '@/lib/engine/suggest';
 import { recordAccepted, invalidateHistoryCache } from '@/lib/engine/history';
 import { cacheClear, cacheCount, cachePrune } from '@/lib/engine/cache';
-import { adapterFor, resetCooldowns } from '@/lib/llm/registry';
+import { adapterFor, resetCooldowns, resolveProvider } from '@/lib/llm/registry';
+import { installVaultCacheInvalidation } from '@/lib/vault';
 import { chromeAiAvailability, installChromeAiRelay } from '@/lib/llm/chrome-ai';
 import { ollamaOriginRule } from '@/lib/llm/ollama';
 import { LLMError } from '@/lib/llm/types';
@@ -38,6 +39,7 @@ export default defineBackground({
     });
 
     installChromeAiRelay();
+    installVaultCacheInvalidation();
 
     // ---------- Ollama Origin fix (declarativeNetRequest) ----------
     async function syncOllamaRules(s: Settings) {
@@ -141,7 +143,7 @@ export default defineBackground({
           const p = msg.provider ?? settings.providers.find((x) => x.id === msg.providerId);
           if (!p) throw new LLMError('no-provider', 'Unknown provider');
           const t0 = performance.now();
-          const r = await adapterFor(p).generate(p, {
+          const r = await adapterFor(p).generate(await resolveProvider(p), {
             system: 'You are a connectivity test. Reply with JSON only.',
             prompt: 'Return {"suggestions":[{"title":"ok","text":"FormPilot is connected"}]}',
             schema: { type: 'object', properties: { suggestions: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, text: { type: 'string' } } } } } },
@@ -156,7 +158,7 @@ export default defineBackground({
         case 'list-models': {
           const p = msg.provider ?? settings.providers.find((x) => x.id === msg.providerId);
           if (!p) throw new LLMError('no-provider', 'Unknown provider');
-          return adapterFor(p).listModels(p, AbortSignal.timeout(15_000));
+          return adapterFor(p).listModels(await resolveProvider(p), AbortSignal.timeout(15_000));
         }
         case 'chrome-ai-status':
           return chromeAiAvailability(true);

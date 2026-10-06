@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowUp, CheckCircle2, Cpu, Download, ExternalLink, Gauge, Plus, RefreshCw, Trash2, XCircle, Laptop, Cloud, Sparkles } from 'lucide-react';
+import { ArrowDown, ArrowUp, CheckCircle2, Cpu, Download, ExternalLink, Gauge, Plus, RefreshCw, Trash2, XCircle, Laptop, Cloud, Sparkles, Lock, Eye, EyeOff, Pencil, TriangleAlert, ShieldCheck } from 'lucide-react';
+import { useVault } from '../vault-ui';
+import { deleteSecret, getSecret, setSecret } from '@/lib/vault';
 import { ModelPicker } from '@/components/ModelPicker';
-import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, SecretInput, Switch } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Switch } from '@/components/ui';
 import { cn } from '@/components/ui/cn';
 import { PROVIDER_PRESETS, isLocalProvider, providerConfigured, providerFromPreset, type ProviderConfig } from '@/lib/settings';
 import { rpc } from '@/lib/messages';
@@ -77,6 +79,138 @@ function ChromeAiStatus() {
   );
 }
 
+/** API key input backed by the encrypted vault. Seeing, changing or removing a saved key needs the password. */
+function ApiKeyField({ p, onChange }: { p: ProviderConfig; onChange: (fn: (p: ProviderConfig) => void) => void }) {
+  const vault = useVault();
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
+  useEffect(() => {
+    if (!vault.unlocked) setRevealed(null); // auto-lock also hides any shown key
+  }, [vault.unlocked]);
+
+  const save = async (value: string) => {
+    const v = value.trim();
+    if (!v) return;
+    setBusy(true);
+    try {
+      const dek = await vault.requireDek(`Enter your password to save the ${p.label} key.`);
+      await setSecret(dek, p.id, v);
+      onChange((d) => {
+        d.hasKey = true;
+        d.apiKey = '';
+      });
+      setDraft('');
+      setEditing(false);
+      setRevealed(null);
+      toast.success(`${p.label} key saved and encrypted`);
+    } catch (e) {
+      if ((e as Error).message !== 'cancelled') toast.error(`Couldn't save the key: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reveal = async () => {
+    if (revealed) return setRevealed(null);
+    try {
+      const dek = await vault.requireDek(`Enter your password to see the ${p.label} key.`);
+      setRevealed((await getSecret(dek, p.id)) ?? '');
+      clearTimeout(hideTimer.current);
+      hideTimer.current = setTimeout(() => setRevealed(null), 30_000);
+    } catch (e) {
+      if ((e as Error).message !== 'cancelled') toast.error((e as Error).message);
+    }
+  };
+
+  const change = async () => {
+    try {
+      await vault.requireDek(`Enter your password to change the ${p.label} key.`);
+      setEditing(true);
+      setRevealed(null);
+    } catch {
+      /* cancelled */
+    }
+  };
+
+  const remove = async () => {
+    try {
+      await vault.requireDek(`Enter your password to remove the ${p.label} key.`);
+      await deleteSecret(p.id);
+      onChange((d) => {
+        d.hasKey = false;
+        d.apiKey = '';
+      });
+      setRevealed(null);
+      toast.success('Key removed');
+    } catch {
+      /* cancelled */
+    }
+  };
+
+  // Legacy plaintext key saved before the vault existed.
+  if (p.apiKey && !p.hasKey) {
+    return (
+      <div className="w-80">
+        <div className="flex gap-2">
+          <div className="flex h-9 flex-1 items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 font-mono text-[13px] text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+            <TriangleAlert className="size-3.5 shrink-0" /> {'•'.repeat(12)}
+          </div>
+          <Button variant="primary" loading={busy} onClick={() => save(p.apiKey)}>
+            {!busy && <Lock className="size-3.5" />} Protect
+          </Button>
+        </div>
+        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">Not password-protected yet. Click Protect to encrypt it.</p>
+      </div>
+    );
+  }
+
+  if (p.hasKey && !editing) {
+    return (
+      <div className="flex w-80 items-center gap-1.5">
+        <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <Lock className="size-3.5 shrink-0 text-emerald-600" />
+          <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-zinc-600 dark:text-zinc-300" title={revealed ? undefined : 'Encrypted. Enter your password to see it.'}>
+            {revealed ?? '•'.repeat(16)}
+          </span>
+        </div>
+        <Button size="icon" variant="ghost" onClick={reveal} title={revealed ? 'Hide key' : 'Show key (needs password)'}>
+          {revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </Button>
+        <Button size="icon" variant="ghost" onClick={change} title="Change key (needs password)">
+          <Pencil className="size-4" />
+        </Button>
+        <Button size="icon" variant="ghost" className="hover:text-red-600" onClick={remove} title="Remove key (needs password)">
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="flex w-80 gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save(draft);
+      }}
+    >
+      <Input type="password" value={draft} autoComplete="off" spellCheck={false} placeholder={editing ? 'Paste the new key' : 'Paste your key'} className="font-mono text-[13px]" autoFocus={editing} onChange={(e) => setDraft(e.target.value)} />
+      <Button type="submit" variant="primary" loading={busy} disabled={!draft.trim()}>
+        {!busy && <Lock className="size-3.5" />} Save key
+      </Button>
+      {editing && (
+        <Button type="button" variant="ghost" onClick={() => (setEditing(false), setDraft(''))}>
+          Cancel
+        </Button>
+      )}
+    </form>
+  );
+}
+
 function ProviderCard({
   p,
   index,
@@ -141,7 +275,7 @@ function ProviderCard({
             <ChromeAiStatus />
           ) : (
             <>
-              {(preset?.needsKey || p.apiKey) && (
+              {(preset?.needsKey || p.apiKey || p.hasKey) && (
                 <Row
                   label="API key"
                   description={
@@ -150,11 +284,11 @@ function ProviderCard({
                         Get a free key <ExternalLink className="size-3" />
                       </a>
                     ) : (
-                      'Stored only on this device.'
+                      'Encrypted with your FormPilot password.'
                     )
                   }
                 >
-                  <SecretInput className="w-80" value={p.apiKey} placeholder="Paste your key" onChange={(v) => onChange((d) => void (d.apiKey = v.trim()))} />
+                  <ApiKeyField p={p} onChange={onChange} />
                 </Row>
               )}
               {p.kind !== 'gemini' && (
@@ -214,6 +348,52 @@ const BUILTIN = new Set(['gemini', 'chrome-ai', 'openrouter', 'groq', 'ollama'])
 export function Providers({ settings, update }: PageProps) {
   const [adding, setAdding] = useState(false);
   const providers = settings.providers;
+  const vault = useVault();
+  const legacy = providers.filter((p) => p.apiKey.trim() && !p.hasKey);
+
+  // After "Forgot password → reset", no key is stored any more.
+  useEffect(
+    () =>
+      vault.onReset(() =>
+        update((d) =>
+          d.providers.forEach((p) => {
+            p.hasKey = false;
+            p.apiKey = '';
+          }),
+        ),
+      ),
+    [vault, update],
+  );
+
+  // Deep link from the in-page dropdown: #providers?unlock=1
+  useEffect(() => {
+    if (!location.hash.includes('unlock=1')) return;
+    history.replaceState(null, '', '#providers');
+    vault
+      .requireDek('Enter your password to turn AI suggestions back on.')
+      .then(() => toast.success('Unlocked. AI suggestions work again until the browser restarts.'))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const protectAll = async () => {
+    try {
+      const dek = await vault.requireDek('Enter your password to encrypt your existing API keys.');
+      for (const p of legacy) await setSecret(dek, p.id, p.apiKey);
+      const ids = new Set(legacy.map((p) => p.id));
+      update((d) =>
+        d.providers.forEach((p) => {
+          if (ids.has(p.id)) {
+            p.hasKey = true;
+            p.apiKey = '';
+          }
+        }),
+      );
+      toast.success(`${legacy.length} key${legacy.length > 1 ? 's' : ''} encrypted`);
+    } catch (e) {
+      if ((e as Error).message !== 'cancelled') toast.error((e as Error).message);
+    }
+  };
 
   const move = (i: number, dir: -1 | 1) =>
     update((d) => {
@@ -259,6 +439,25 @@ export function Providers({ settings, update }: PageProps) {
         </Card>
       )}
 
+      {legacy.length > 0 && (
+        <Card className="mb-5 border-amber-300 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/5">
+          <div className="flex flex-wrap items-center gap-4 p-5">
+            <div className="grid size-10 place-items-center rounded-xl bg-amber-500/15 text-amber-600">
+              <TriangleAlert className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold">
+                {legacy.length} API key{legacy.length > 1 ? 's are' : ' is'} not password-protected
+              </div>
+              <p className="text-[13px] text-zinc-600 dark:text-zinc-400">Anyone who opens these settings can see {legacy.length > 1 ? 'them' : 'it'}. Set a password to encrypt your keys.</p>
+            </div>
+            <Button variant="primary" size="md" onClick={protectAll}>
+              <ShieldCheck className="size-4" /> Protect with a password
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <Card className="mb-5">
         <Row label="Automatic fallback" description="If the first provider fails, try the next one. Turn off to always use only the top provider.">
           <Switch checked={settings.generation.fallback} onCheckedChange={(v) => update((d) => void (d.generation.fallback = v))} />
@@ -277,7 +476,14 @@ export function Providers({ settings, update }: PageProps) {
             total={providers.length}
             onMove={(dir) => move(i, dir)}
             onChange={(fn) => update((d) => fn(d.providers[i]))}
-            onRemove={providers.length > 1 ? () => update((d) => void d.providers.splice(i, 1)) : undefined}
+            onRemove={
+              providers.length > 1
+                ? () => {
+                    void deleteSecret(p.id);
+                    update((d) => void d.providers.splice(i, 1));
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

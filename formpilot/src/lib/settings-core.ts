@@ -112,6 +112,7 @@ export function providerFromPreset(presetId: string, overrides: Partial<Provider
     label: p.label,
     enabled: true,
     apiKey: '',
+    hasKey: false,
     baseUrl: p.baseUrl,
     model: p.model,
     jsonMode: true,
@@ -225,10 +226,11 @@ export function watchSettingsLite(cb: (s: Settings) => void): () => void {
 /** Is a provider usable without a network round-trip (has key when needed)? */
 export function providerConfigured(p: ProviderConfig): boolean {
   if (!p.enabled) return false;
-  if (p.kind === 'gemini') return !!p.apiKey.trim();
+  const hasKey = !!p.apiKey.trim() || !!p.hasKey;
+  if (p.kind === 'gemini') return hasKey;
   if (p.kind === 'openai') {
     const preset = PROVIDER_PRESETS.find((x) => x.baseUrl && p.baseUrl.startsWith(x.baseUrl));
-    if (preset?.needsKey && !p.apiKey.trim()) return false;
+    if (preset?.needsKey && !hasKey) return false;
     return !!p.baseUrl && !!p.model;
   }
   if (p.kind === 'ollama') return !!p.baseUrl && !!p.model;

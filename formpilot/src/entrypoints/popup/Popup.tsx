@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sparkles, Settings2, Brain, ListChecks, Globe, Power, Cpu, ChevronRight, ScrollText, Mail } from 'lucide-react';
+import { Sparkles, Settings2, Brain, ListChecks, Globe, Power, Cpu, ChevronRight, ScrollText, Mail, Lock } from 'lucide-react';
 import { Badge, Switch } from '@/components/ui';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { siteAllowed } from '@/lib/fields/eligibility';
@@ -7,6 +7,7 @@ import { providerConfigured, isLocalProvider } from '@/lib/settings';
 import { hostMatches } from '@/lib/util';
 import { rpc, type Stats } from '@/lib/messages';
 import { AUTHOR } from '@/lib/about';
+import { vaultStatus } from '@/lib/vault';
 
 function openOptions(section?: string) {
   void rpc({ type: 'open-options', section }).then(() => window.close());
@@ -17,6 +18,10 @@ export function Popup() {
   useApplyAppearance(settings);
   const [tab, setTab] = useState<chrome.tabs.Tab | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    vaultStatus().then((v) => setLocked(v.exists && v.mode === 'strict' && !v.usable)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => setTab(t ?? null));
@@ -90,13 +95,21 @@ export function Popup() {
           </div>
         </button>
 
-        <button className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => openOptions('providers')}>
+        <button className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => openOptions(locked ? 'providers?unlock=1' : 'providers')}>
           <Cpu className="size-4 text-zinc-400" />
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-medium">AI provider</div>
             <div className="truncate text-xs text-zinc-500">{providers.length ? providers.map((p) => p.label).join(' → ') : 'Not configured'}</div>
           </div>
-          {providers.length ? <Badge tone="green">Ready</Badge> : <Badge tone="amber">Set up</Badge>}
+          {locked ? (
+            <Badge tone="amber">
+              <Lock className="size-3" /> Locked
+            </Badge>
+          ) : providers.length ? (
+            <Badge tone="green">Ready</Badge>
+          ) : (
+            <Badge tone="amber">Set up</Badge>
+          )}
         </button>
 
         <button className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => openOptions('memory')}>

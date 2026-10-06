@@ -87,7 +87,7 @@ export function useModelList(p: ProviderConfig) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.id, p.baseUrl, p.kind, canFetch && p.apiKey]);
+  }, [p.id, p.baseUrl, p.kind, canFetch && (p.apiKey || p.hasKey)]);
 
   return { models, at, loading, error, refresh, canFetch };
 }

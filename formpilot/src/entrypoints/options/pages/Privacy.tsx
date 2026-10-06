@@ -1,22 +1,170 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ShieldCheck, Download, Upload, Trash2, Lock } from 'lucide-react';
-import { Button, Card, CardHeader, PageHeader, Row, Switch } from '@/components/ui';
+import { ShieldCheck, Download, Upload, Trash2, Lock, KeyRound } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Switch } from '@/components/ui';
+import { useVault } from '../vault-ui';
+import { changePassword, lockVault, passwordProblem, resetVault, setVaultMode } from '@/lib/vault';
 import { db, bumpMemoryVersion } from '@/lib/memory/db';
 import { DEFAULT_SETTINGS, parseSettings, saveSettings } from '@/lib/settings';
 import { rpc } from '@/lib/messages';
 import type { PageProps } from '../App';
+
+function SecurityCard({ update }: { update: PageProps['update'] }) {
+  const vault = useVault();
+  const st = vault.status;
+  const [changing, setChanging] = useState(false);
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const setUp = () => vault.requireDek('').then(() => {}).catch(() => {});
+
+  const toggleStrict = async (on: boolean) => {
+    try {
+      const dek = await vault.requireDek('Enter your password to change how keys are locked.');
+      await setVaultMode(dek, on ? 'strict' : 'standard');
+      await vault.refresh();
+      toast.success(on ? 'Keys will lock when the browser restarts' : 'Keys stay usable after restarts');
+    } catch {
+      /* cancelled */
+    }
+  };
+
+  const startChange = async () => {
+    try {
+      await vault.requireDek('Enter your current password.');
+      setChanging(true);
+      setPw('');
+      setPw2('');
+      setErr(null);
+    } catch {
+      /* cancelled */
+    }
+  };
+
+  const saveNew = async () => {
+    const problem = passwordProblem(pw);
+    if (problem) return setErr(problem);
+    if (pw !== pw2) return setErr("Passwords don't match.");
+    setBusy(true);
+    try {
+      const dek = await vault.requireDek('Enter your current password.');
+      await changePassword(dek, pw);
+      setChanging(false);
+      toast.success('Password changed');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    if (!confirm('Remove your password AND every saved API key? You will need to paste your keys again.')) return;
+    await resetVault();
+    vault.lockView();
+    update((d) =>
+      d.providers.forEach((p) => {
+        p.hasKey = false;
+        p.apiKey = '';
+      }),
+    );
+    await vault.refresh();
+    toast.success('Password and saved keys removed');
+  };
+
+  return (
+    <Card className="mb-5">
+      <CardHeader
+        icon={<KeyRound className="size-4" />}
+        title="API key protection"
+        description="Your AI provider keys are encrypted with your FormPilot password (AES-256-GCM, PBKDF2 with 600,000 iterations). The password itself is never stored."
+      />
+      <Row label="Password" description={st?.exists ? `Set. Protecting ${st.keys.length} key${st.keys.length === 1 ? '' : 's'}. Seeing, changing or removing a key asks for it.` : 'Not set yet. You will be asked to create one when you save your first key.'}>
+        {st?.exists ? (
+          <div className="flex items-center gap-2">
+            <Badge tone="green">
+              <Lock className="size-3" /> Protected
+            </Badge>
+            <Button onClick={startChange}>Change password</Button>
+          </div>
+        ) : (
+          <Button variant="primary" onClick={setUp}>
+            <ShieldCheck className="size-3.5" /> Set a password
+          </Button>
+        )}
+      </Row>
+      {changing && (
+        <div className="animate-fade-up space-y-2 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800/70">
+          <Input type="password" autoFocus placeholder="New password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          <Input type="password" placeholder="Confirm new password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void saveNew()} />
+          {err && <p className="text-[13px] text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setChanging(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={busy} onClick={saveNew}>
+              Save new password
+            </Button>
+          </div>
+        </div>
+      )}
+      {st?.exists && (
+        <>
+          <Row
+            label="Lock after the browser restarts"
+            description={
+              st.mode === 'strict'
+                ? 'Strongest: after every browser restart, AI suggestions pause until you enter the password once. Protects against anyone with technical access to this computer.'
+                : 'Off: AI keeps working without asking. Only viewing or changing keys needs the password. Protects against anyone opening these settings.'
+            }
+          >
+            <Switch checked={st.mode === 'strict'} onCheckedChange={toggleStrict} />
+          </Row>
+          <Row
+            label="Lock now"
+            description={
+              st.mode === 'strict'
+                ? st.usable
+                  ? 'Unlocked for this browser session. Lock to pause AI suggestions and hide keys until you enter the password again.'
+                  : 'Locked: AI suggestions that need a saved key are paused.'
+                : 'Hide keys on this page right away (it also locks by itself after 5 minutes).'
+            }
+          >
+            <Button
+              onClick={async () => {
+                vault.lockView();
+                if (st.mode === 'strict') await lockVault();
+                await vault.refresh();
+                toast.success('Locked');
+              }}
+            >
+              <Lock className="size-3.5" /> Lock
+            </Button>
+          </Row>
+          <Row label="Forgot your password?" description="Reset removes the password and all saved API keys. Memory, facts and settings are kept.">
+            <Button variant="ghost" className="text-red-600" onClick={reset}>
+              Reset password &amp; keys
+            </Button>
+          </Row>
+        </>
+      )}
+    </Card>
+  );
+}
 
 export function Privacy({ settings, update }: PageProps) {
   const p = settings.privacy;
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => update((d) => void (d.privacy[k] = v));
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const exportAll = async (withKeys: boolean) => {
+  const exportAll = async () => {
     const data = {
       app: 'formpilot',
       exportedAt: new Date().toISOString(),
-      settings: withKeys ? settings : { ...settings, providers: settings.providers.map((x) => ({ ...x, apiKey: '' })) },
+      // API keys are never exported; they stay encrypted on this device.
+      settings: { ...settings, providers: settings.providers.map((x) => ({ ...x, apiKey: '', hasKey: false })) },
       docs: await db().docs.toArray(),
       facts: await db().facts.toArray(),
       history: await db().history.toArray(),
@@ -33,8 +181,11 @@ export function Privacy({ settings, update }: PageProps) {
       if (data.app !== 'formpilot') throw new Error('Not a FormPilot backup file');
       if (!confirm('Import this backup? Documents, facts and history will be merged; settings will be replaced.')) return;
       const s = parseSettings(data.settings);
-      // Keep existing keys when the backup has none.
-      s.providers = s.providers.map((x) => ({ ...x, apiKey: x.apiKey || settings.providers.find((y) => y.id === x.id)?.apiKey || '' }));
+      // Keys are not in backups: keep whatever this device already has stored for each provider.
+      s.providers = s.providers.map((x) => {
+        const cur = settings.providers.find((y) => y.id === x.id);
+        return { ...x, apiKey: x.apiKey || cur?.apiKey || '', hasKey: cur?.hasKey ?? false };
+      });
       await saveSettings(s);
       await db().transaction('rw', db().docs, db().facts, db().history, async () => {
         if (Array.isArray(data.docs)) await db().docs.bulkPut(data.docs);
@@ -54,7 +205,7 @@ export function Privacy({ settings, update }: PageProps) {
 
   const wipe = async () => {
     if (!confirm('Delete ALL FormPilot data: documents, facts, history, cache and settings? This cannot be undone.')) return;
-    await Promise.all([db().docs.clear(), db().chunks.clear(), db().facts.clear(), db().history.clear(), db().cache.clear()]);
+    await Promise.all([db().docs.clear(), db().chunks.clear(), db().facts.clear(), db().history.clear(), db().cache.clear(), resetVault()]);
     await bumpMemoryVersion();
     await saveSettings(DEFAULT_SETTINGS);
     await rpc({ type: 'memory-changed' }).catch(() => {});
@@ -65,6 +216,8 @@ export function Privacy({ settings, update }: PageProps) {
   return (
     <>
       <PageHeader title="Privacy & Data" description="Your memory is stored locally in this browser. Only the excerpts relevant to a field are sent to the AI provider you choose." />
+
+      <SecurityCard update={update} />
 
       <Card className="mb-5">
         <CardHeader icon={<ShieldCheck className="size-4" />} title="Protection" />
@@ -82,7 +235,7 @@ export function Privacy({ settings, update }: PageProps) {
             <Lock className="size-3.5" /> Enforced
           </span>
         </Row>
-        <Row label="API keys" description="Stored in this browser's local extension storage, never synced, and only ever sent to their own provider.">
+        <Row label="API keys" description="Encrypted with your password, never synced or exported, and only ever sent to their own provider.">
           <span className="flex items-center gap-1.5 text-[13px] text-emerald-600">
             <Lock className="size-3.5" /> Local
           </span>
@@ -91,13 +244,10 @@ export function Privacy({ settings, update }: PageProps) {
 
       <Card>
         <CardHeader title="Backup & reset" />
-        <Row label="Export" description="Download settings, documents, facts and learned answers as JSON.">
+        <Row label="Export" description="Download settings, documents, facts and learned answers as JSON. API keys are never included.">
           <div className="flex gap-2">
-            <Button onClick={() => exportAll(false)}>
+            <Button onClick={() => exportAll()}>
               <Download className="size-3.5" /> Export
-            </Button>
-            <Button variant="ghost" onClick={() => exportAll(true)} title="Includes API keys in plain text">
-              With API keys
             </Button>
           </div>
         </Row>

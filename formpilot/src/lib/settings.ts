@@ -22,7 +22,10 @@ const ProviderSchema = z.object({
   kind: z.enum(PROVIDER_KINDS),
   label: z.string().catch('Provider'),
   enabled: z.boolean().catch(true),
+  /** Legacy plaintext key. New keys live encrypted in the vault (src/lib/vault.ts); this stays ''. */
   apiKey: z.string().catch(''),
+  /** A key for this provider is stored in the encrypted vault. */
+  hasKey: z.boolean().catch(false),
   baseUrl: z.string().catch(''),
   model: z.string().catch(''),
   /** OpenAI-compatible only: send `response_format: json_object` (some free models reject it). */

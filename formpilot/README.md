@@ -11,7 +11,7 @@ Suggestions appear right under the field, like a password manager, and repeat qu
 ![Chrome | Brave](https://img.shields.io/badge/Chrome%20%7C%20Brave-supported-4285F4?logo=googlechrome&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![Tests](https://img.shields.io/badge/tests-120%20unit%20%C2%B7%2019%20e2e-16a34a)
+![Tests](https://img.shields.io/badge/tests-130%20unit%20%C2%B7%2020%20e2e-16a34a)
 ![Free providers](https://img.shields.io/badge/AI-free%20%26%20local%20options-f59e0b)
 
 <img src="docs/screenshots/dropdown-light.png" width="720" alt="FormPilot suggestions under a form field" />
@@ -228,7 +228,10 @@ Change them at `chrome://extensions/shortcuts`.
 - FormPilot **never reads, sends or fills** passwords, card numbers, CVV, OTP/2FA codes, CAPTCHAs, PINs, government IDs or bank details.
 - Secrets in memory are **redacted** before sending: Luhn-checked card numbers, IBANs, API keys and `password: …` lines.
 - Your memory lives in this browser's IndexedDB. Only the excerpts relevant to a field go to the provider you chose.
-- API keys stay in local extension storage. They are never synced, and only ever sent to their own provider.
+- **API keys are password-protected.** When you save your first key, you create a FormPilot password. Keys are encrypted with AES-256-GCM, using a key derived from the password with PBKDF2-SHA256 at 600,000 iterations. Seeing, changing or removing a key asks for the password; the password itself is never stored. Keys are never synced or exported, and only ever sent to their own provider.
+  - **Standard (default):** set the password once. AI suggestions keep working without asking.
+  - **Strict:** *Privacy & Data → Lock after the browser restarts*. Suggestions pause after each browser restart until you enter the password once. This also protects against someone with technical access to the computer.
+  - **Forgot the password?** *Reset password & keys* removes the password and the saved keys. Memory and settings are kept.
 - Forms are never submitted automatically, and consent checkboxes are never ticked.
 - Per-site blocklist or allowlist, and one-click **pause on this site**.
 
@@ -241,8 +244,8 @@ Change them at `chrome://extensions/shortcuts`.
 | `pnpm dev` / `pnpm dev:brave` | Dev mode with auto-reload, plus a demo form at <http://localhost:4173/form.html> |
 | `pnpm build` / `pnpm zip` | Production build / zip for the Chrome Web Store |
 | `pnpm compile` | Type-check |
-| `pnpm test` | 120 unit tests (Vitest + happy-dom) |
-| `pnpm test:e2e` | 19 end-to-end tests: Playwright drives real Chromium with the extension loaded. Run `npx playwright install chromium` once first. |
+| `pnpm test` | 130 unit tests (Vitest + happy-dom) |
+| `pnpm test:e2e` | 20 end-to-end tests: Playwright drives real Chromium with the extension loaded. Run `npx playwright install chromium` once first. |
 | `node scripts/fixture-server.mjs` | Demo/test pages on `:4173` plus a mock OpenAI-compatible AI on `:4174` |
 
 **The end-to-end tests cover:**
@@ -252,7 +255,8 @@ Change them at `chrome://extensions/shortcuts`.
 - whole-form fill and provider errors;
 - modals with focus traps, and drawers with capture-phase click-outside handlers;
 - a copy of Naukri's chat drawer structure, and chats whose messages are visually above the input but later in the HTML;
-- learning from corrections.
+- learning from corrections;
+- password-protected API keys, including strict-mode lock and unlock.
 
 **Tech stack:** [WXT](https://wxt.dev) (MV3, Vite) · React 19 · TypeScript · Tailwind CSS v4 · Radix UI · Floating UI · Dexie · MiniSearch · pdf.js · mammoth · zod · Vitest · Playwright
 
@@ -314,6 +318,12 @@ Reload the extension once after adding the Ollama provider; the Origin-fix rule 
 <summary><b>"Chrome built-in AI is not available"</b></summary>
 
 It needs Chrome 138+ on desktop with enough disk space and RAM, and Brave doesn't ship it. FormPilot skips it automatically; you can turn that provider off.
+</details>
+
+<details>
+<summary><b>I forgot my FormPilot password</b></summary>
+
+There's no way to recover it, because the keys are encrypted with it. Click **Forgot password?** in the password prompt, or go to **Privacy & Data → Reset password & keys**, then paste your API keys again. Your memory, facts and settings are kept.
 </details>
 
 <details>

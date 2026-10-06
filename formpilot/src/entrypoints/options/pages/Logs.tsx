@@ -46,7 +46,7 @@ export function Logs({ settings, update }: PageProps) {
         version: chrome.runtime.getManifest().version,
         userAgent: navigator.userAgent,
         chromeAi: nano,
-        providers: activeProviders(settings).map((p) => ({ label: p.label, kind: p.kind, model: p.model, baseUrl: p.baseUrl, hasKey: !!p.apiKey })),
+        providers: activeProviders(settings).map((p) => ({ label: p.label, kind: p.kind, model: p.model, baseUrl: p.baseUrl, hasKey: !!p.apiKey || p.hasKey })),
         settings: { ...settings, providers: undefined },
         recentLogs: logs.slice(-200),
       },
