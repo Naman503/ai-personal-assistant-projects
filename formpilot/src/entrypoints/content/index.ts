@@ -76,6 +76,16 @@ export default defineContentScript({
     ctx.addEventListener(document, 'keydown', onKeyDown as EventListener, { capture: true });
     ctx.addEventListener(document, 'input', onInput, { capture: true });
     ctx.addEventListener(document, 'submit', () => controller.onSubmit(), { capture: true });
+    ctx.addEventListener(
+      document,
+      'click',
+      ((e: MouseEvent) => {
+        const t = realTarget(e);
+        if (controller.isOurs(t)) return;
+        if (isField(t)) controller.onFieldClick(t);
+      }) as EventListener,
+      { capture: true },
+    );
     const mq = matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', onScheme);
 

@@ -17,6 +17,7 @@ import {
   HardDrive,
   Info,
   Mail,
+  PanelTop,
 } from 'lucide-react';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { cn } from '@/components/ui/cn';
@@ -34,6 +35,7 @@ import { Logs } from './pages/Logs';
 import { LocalModels } from './pages/LocalModels';
 import { About, Avatar } from './pages/About';
 import { VaultProvider } from './vault-ui';
+import { PopupSettings } from './pages/PopupSettings';
 
 export interface PageProps {
   settings: Settings;
@@ -48,6 +50,7 @@ const NAV: { id: string; label: string; icon: ComponentType<{ className?: string
   { id: 'memory', label: 'Memory', icon: Brain, page: Memory, group: 'General' },
   { id: 'generation', label: 'Generation', icon: SlidersHorizontal, page: Generation, group: 'Tuning' },
   { id: 'behavior', label: 'Behavior', icon: MousePointerClick, page: Behavior, group: 'Tuning' },
+  { id: 'popup', label: 'Popup', icon: PanelTop, page: PopupSettings, group: 'Tuning' },
   { id: 'cache', label: 'Speed & History', icon: Zap, page: CacheHistory, group: 'Tuning' },
   { id: 'privacy', label: 'Privacy & Data', icon: ShieldCheck, page: Privacy, group: 'System' },
   { id: 'appearance', label: 'Appearance', icon: Palette, page: Appearance, group: 'System' },

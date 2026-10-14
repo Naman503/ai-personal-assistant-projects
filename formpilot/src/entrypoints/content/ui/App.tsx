@@ -18,9 +18,15 @@ import {
   Info,
   BookmarkPlus,
   Lock,
+  Pin,
+  PinOff,
+  MoreHorizontal,
+  GripVertical,
+  LocateFixed,
 } from 'lucide-react';
 import type { Suggestion } from '@/lib/types';
 import { useStore, visibleItems, type Store } from '../store';
+import { resolvePos, toScreenPos, type SavedPos } from '@/lib/panel-position';
 
 export interface Actions {
   insert(s: Suggestion): void;
@@ -36,27 +42,34 @@ export interface Actions {
   setActive(i: number): void;
   generate(): void;
   remember(): void;
+  savePosition(pos: SavedPos): void;
+  resetPosition(): void;
+  togglePin(): void;
 }
 
 const SRC_ICON = { fact: UserRound, history: History, ai: Sparkles, cache: Zap } as const;
 const SRC_LABEL = { fact: 'Memory', history: 'History', ai: 'AI', cache: 'Cached' } as const;
 
-function usePosition(anchor: HTMLElement | null, el: HTMLElement | null, maxWidth: number, enabled: boolean) {
+const PLACEMENTS = { auto: 'bottom-start', below: 'bottom-start', above: 'top-start', right: 'right-start', left: 'left-start' } as const;
+
+/** Anchored mode: Floating UI keeps the popup next to the field (flips/shifts to stay on screen). */
+function usePosition(anchor: HTMLElement | null, el: HTMLElement | null, maxWidth: number, maxHeight: number, placement: keyof typeof PLACEMENTS, enabled: boolean) {
   useLayoutEffect(() => {
     if (!anchor || !el || !enabled) return;
     const update = () =>
       computePosition(anchor, el, {
         strategy: 'fixed',
-        placement: 'bottom-start',
+        placement: PLACEMENTS[placement],
         middleware: [
           offset(6),
-          flip({ padding: 8, fallbackPlacements: ['top-start', 'bottom-end', 'top-end'] }),
+          flip({ padding: 8, fallbackPlacements: ['bottom-start', 'top-start', 'bottom-end', 'top-end', 'right-start', 'left-start'] }),
           shift({ padding: 8 }),
           size({
             padding: 8,
             apply({ availableHeight, availableWidth, rects }) {
-              const w = Math.min(Math.max(rects.reference.width, 320), maxWidth, availableWidth);
-              Object.assign(el.style, { width: `${w}px`, maxHeight: `${Math.max(180, Math.min(availableHeight, 520))}px` });
+              const side = placement === 'left' || placement === 'right';
+              const w = Math.min(side ? maxWidth : Math.max(rects.reference.width, 320), maxWidth, availableWidth);
+              Object.assign(el.style, { width: `${Math.max(280, w)}px`, maxHeight: `${Math.max(180, Math.min(availableHeight, maxHeight))}px` });
             },
           }),
         ],
@@ -64,7 +77,30 @@ function usePosition(anchor: HTMLElement | null, el: HTMLElement | null, maxWidt
         el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
       });
     return autoUpdate(anchor, el, update, { animationFrame: false });
-  }, [anchor, el, maxWidth, enabled]);
+  }, [anchor, el, maxWidth, maxHeight, placement, enabled]);
+}
+
+/** Dragged mode: a saved spot on screen (or offset from the field), kept inside the viewport. */
+function useManualPosition(anchor: HTMLElement | null, el: HTMLElement | null, pos: SavedPos | null, maxWidth: number, maxHeight: number, enabled: boolean) {
+  useLayoutEffect(() => {
+    if (!el || !pos || !enabled) return;
+    const update = () => {
+      const w = Math.min(maxWidth, innerWidth - 16);
+      Object.assign(el.style, { width: `${w}px`, maxHeight: `${Math.min(maxHeight, innerHeight - 16)}px` });
+      const r = el.getBoundingClientRect();
+      const { x, y } = resolvePos(pos, r.width, r.height, innerWidth, innerHeight, anchor?.getBoundingClientRect());
+      el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    };
+    update();
+    if (pos.mode === 'field' && anchor) return autoUpdate(anchor, el, update, { animationFrame: false });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      removeEventListener('resize', update);
+    };
+  }, [anchor, el, pos, maxWidth, maxHeight, enabled]);
 }
 
 function FieldIcon({ store, actions }: { store: Store; actions: Actions }) {
@@ -119,7 +155,7 @@ function Skeleton({ lines = 2 }: { lines?: number }) {
   );
 }
 
-function Item({ s, index, active, streaming, actions }: { s: Suggestion; index: number; active: boolean; streaming: boolean; actions: Actions }) {
+function Item({ s, index, active, streaming, actions, badges, shortcut }: { s: Suggestion; index: number; active: boolean; streaming: boolean; actions: Actions; badges: boolean; shortcut: boolean }) {
   const Icon = SRC_ICON[s.source];
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -141,7 +177,8 @@ function Item({ s, index, active, streaming, actions }: { s: Suggestion; index: 
       <span className="fp-body">
         <span className="fp-meta">
           <span>{s.title || SRC_LABEL[s.source]}</span>
-          {s.title && <span className="fp-badge">{SRC_LABEL[s.source]}</span>}
+          {s.title && badges && <span className="fp-badge">{SRC_LABEL[s.source]}</span>}
+          {shortcut && index < 9 && <span className="fp-num">⌥{index + 1}</span>}
           {s.text.length > 140 && <span style={{ marginLeft: 'auto' }}>{s.text.length} chars</span>}
         </span>
         <span className="fp-text">
@@ -158,13 +195,52 @@ function Item({ s, index, active, streaming, actions }: { s: Suggestion; index: 
 
 function Panel({ store, actions }: { store: Store; actions: Actions }) {
   const st = useStore(store, (s) => s);
+  const ui = st.ui;
   const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
   const refineRef = useRef<HTMLInputElement>(null);
-  usePosition(st.anchor, el, st.maxWidth, st.open);
+  usePosition(st.anchor, el, st.maxWidth, ui.maxHeight, ui.placement, st.open && !st.manualPos && !dragging);
+  useManualPosition(st.anchor, el, st.manualPos, st.maxWidth, ui.maxHeight, st.open && !!st.manualPos && !dragging);
 
   useEffect(() => {
     if (st.refineOpen) refineRef.current?.focus();
   }, [st.refineOpen]);
+  useEffect(() => {
+    if (!st.open) setMenuOpen(false);
+  }, [st.open]);
+
+  // ---- drag to move (header / grip) ----
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (!ui.draggable || !el || e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+    const r = el.getBoundingClientRect();
+    drag.current = { px: e.clientX, py: e.clientY, x: r.left, y: r.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+    setMenuOpen(false);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d || !el) return;
+    const r = el.getBoundingClientRect();
+    const x = Math.min(Math.max(8, d.x + e.clientX - d.px), innerWidth - r.width - 8);
+    const y = Math.min(Math.max(8, d.y + e.clientY - d.py), innerHeight - Math.min(r.height, 120) - 8);
+    el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+  };
+  const onPointerUp = () => {
+    const d = drag.current;
+    if (!d || !el) return;
+    drag.current = null;
+    setDragging(false);
+    const r = el.getBoundingClientRect();
+    if (Math.abs(r.left - d.x) < 3 && Math.abs(r.top - d.y) < 3) return; // a click, not a drag
+    if (ui.dragAnchor === 'field' && st.anchor) {
+      const a = st.anchor.getBoundingClientRect();
+      actions.savePosition({ mode: 'field', dx: Math.round(r.left - a.left), dy: Math.round(r.top - a.top) });
+    } else actions.savePosition(toScreenPos(r.left, r.top, r.width, r.height, innerWidth, innerHeight));
+  };
+  const dragProps = ui.draggable ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } : {};
 
   if (!st.open || !st.anchor || !st.field) return null;
   const items = visibleItems(st);
@@ -176,7 +252,8 @@ function Panel({ store, actions }: { store: Store; actions: Actions }) {
   return (
     <div
       ref={setEl}
-      className="fp-panel"
+      className={`fp-panel${dragging ? ' fp-dragging' : ''}${st.pinned ? ' fp-pinned' : ''}`}
+      style={{ ['--fp-opacity' as string]: String(ui.opacity / 100) }}
       role="listbox"
       aria-label="FormPilot suggestions"
       onMouseDown={(e) => {
@@ -184,36 +261,83 @@ function Panel({ store, actions }: { store: Store; actions: Actions }) {
         if (!(e.target as HTMLElement).closest('input')) e.preventDefault();
       }}
     >
-      <div className="fp-head">
-        <span className="fp-brand">
-          <Sparkles size={12} strokeWidth={2.6} />
-        </span>
-        <span className="fp-head-title">
-          <span className="fp-head-name">FormPilot</span>
-          <span className="fp-head-q" title={q}>
-            {q}
+      {ui.showHeader ? (
+        <div className={`fp-head${ui.draggable ? ' fp-draggable' : ''}`} {...dragProps} title={ui.draggable ? 'Drag to move' : undefined}>
+          <span className="fp-brand">
+            <Sparkles size={12} strokeWidth={2.6} />
+            {ui.draggable && <GripVertical className="fp-grip-icon" size={12} />}
           </span>
-        </span>
-        <button className="fp-iconbtn" title="Fill the whole form (Alt+Shift+J)" onClick={() => actions.fillForm()} disabled={st.filling}>
-          <ListChecks size={15} />
-        </button>
-        <button className="fp-iconbtn" title="Pause FormPilot on this site" onClick={() => actions.pauseSite()}>
-          <PauseCircle size={15} />
-        </button>
-        <button className="fp-iconbtn" title="Settings" onClick={() => actions.openSettings()}>
-          <Settings2 size={15} />
-        </button>
-        <button className="fp-iconbtn" title="Close (Esc)" onClick={() => actions.close()}>
-          <X size={15} />
-        </button>
-      </div>
+          <span className="fp-head-title">
+            <span className="fp-head-name">FormPilot{st.manualPos ? ' · moved' : ''}</span>
+            <span className="fp-head-q" title={q}>
+              {q}
+            </span>
+          </span>
+          <button className="fp-iconbtn" data-on={st.pinned} title={st.pinned ? 'Unpin (close normally)' : 'Pin: keep on screen'} onClick={() => actions.togglePin()}>
+            {st.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+          </button>
+          <div className="fp-menu-wrap">
+            <button className="fp-iconbtn" data-on={menuOpen} title="More" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((m) => !m)}>
+              <MoreHorizontal size={15} />
+            </button>
+            {menuOpen && (
+              <div className="fp-menu" role="menu">
+                <button role="menuitem" onClick={() => (setMenuOpen(false), actions.fillForm())} disabled={st.filling}>
+                  <ListChecks size={14} /> Fill the whole form <span className="fp-menu-kbd">⌥⇧J</span>
+                </button>
+                {st.field.currentValue.trim() && (
+                  <button role="menuitem" onClick={() => (setMenuOpen(false), actions.remember())}>
+                    <BookmarkPlus size={14} /> Save my answer
+                  </button>
+                )}
+                <button role="menuitem" onClick={() => (setMenuOpen(false), actions.resetPosition())} disabled={!st.manualPos}>
+                  <LocateFixed size={14} /> Reset position
+                </button>
+                <div className="fp-menu-sep" />
+                <button role="menuitem" onClick={() => (setMenuOpen(false), actions.pauseSite())}>
+                  <PauseCircle size={14} /> Pause on this site
+                </button>
+                <button role="menuitem" onClick={() => (setMenuOpen(false), actions.openSettings('popup'))}>
+                  <Settings2 size={14} /> Popup settings
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="fp-iconbtn" title="Close (Esc)" onClick={() => actions.close()}>
+            <X size={15} />
+          </button>
+        </div>
+      ) : (
+        <div className={`fp-grip${ui.draggable ? ' fp-draggable' : ''}`} {...dragProps} title={ui.draggable ? 'Drag to move' : undefined}>
+          <span className="fp-grip-bar" />
+          {st.manualPos && (
+            <button className="fp-grip-btn" title="Reset position" onClick={() => actions.resetPosition()}>
+              <LocateFixed size={12} />
+            </button>
+          )}
+          <button className="fp-grip-btn" data-on={st.pinned} title={st.pinned ? 'Unpin' : 'Pin: keep on screen'} onClick={() => actions.togglePin()}>
+            {st.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+          </button>
+          <button className="fp-grip-btn" title="Close (Esc)" onClick={() => actions.close()}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       <div className="fp-list">
-        {items.length > 0 && aiStart > 0 && <div className="fp-group">From your memory</div>}
+        {ui.showGroupLabels && items.length > 0 && aiStart > 0 && <div className="fp-group">From your memory</div>}
         {items.map((s, i) => (
           <div key={s.id} style={{ display: 'contents' }}>
-            {i === aiStart && aiStart > 0 && st.ai.length > 0 && <div className="fp-group">AI suggestions</div>}
-            <Item s={s} index={i} active={i === st.active} streaming={st.status === 'streaming' && i === items.length - 1 && s.source === 'ai'} actions={actions} />
+            {ui.showGroupLabels && i === aiStart && aiStart > 0 && st.ai.length > 0 && <div className="fp-group">AI suggestions</div>}
+            <Item
+              s={s}
+              index={i}
+              active={i === st.active}
+              streaming={st.status === 'streaming' && i === items.length - 1 && s.source === 'ai'}
+              actions={actions}
+              badges={ui.showBadges}
+              shortcut={ui.numberShortcuts && items.length > 1}
+            />
           </div>
         ))}
         {showSkeleton && (
@@ -327,7 +451,7 @@ function Panel({ store, actions }: { store: Store; actions: Actions }) {
         </form>
       )}
 
-      {st.hasProvider && (
+      {st.hasProvider && ui.showActions && (
         <div className="fp-actions">
           <button className="fp-chip" onClick={() => actions.regenerate()} disabled={busy}>
             <RefreshCw size={12} /> {st.ai.length ? 'Regenerate' : 'Generate'}
@@ -349,7 +473,7 @@ function Panel({ store, actions }: { store: Store; actions: Actions }) {
         </div>
       )}
 
-      <div className="fp-foot">
+      {ui.showFooter && <div className="fp-foot">
         <span className="fp-foot-keys">
           <span>
             <span className="fp-kbd">↑↓</span>
@@ -371,7 +495,7 @@ function Panel({ store, actions }: { store: Store; actions: Actions }) {
               ? `${st.meta.cached ? 'Cached · ' : ''}${st.meta.provider}${st.meta.ms ? ` · ${st.meta.ms < 1000 ? `${st.meta.ms}ms` : `${(st.meta.ms / 1000).toFixed(1)}s`}` : ''}${st.meta.memoryHits?.length ? ` · ${st.meta.memoryHits.length} doc${st.meta.memoryHits.length > 1 ? 's' : ''}` : ''}`
               : st.meta?.note ?? 'Ready'}
         </span>
-      </div>
+      </div>}
     </div>
   );
 }

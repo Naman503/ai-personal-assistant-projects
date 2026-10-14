@@ -182,7 +182,7 @@ test('options and popup pages render', async ({ context, sw, extId }) => {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  for (const section of ['overview', 'providers', 'local', 'memory', 'generation', 'behavior', 'cache', 'privacy', 'appearance', 'logs', 'about']) {
+  for (const section of ['overview', 'providers', 'local', 'memory', 'generation', 'behavior', 'popup', 'cache', 'privacy', 'appearance', 'logs', 'about']) {
     await page.goto(`chrome-extension://${extId}/options.html#${section}`);
     await expect(page.locator('h1')).toBeVisible();
   }
@@ -479,5 +479,76 @@ test.describe('password-protected API keys', () => {
     await waitReady(page);
     await expect(host(page)).toHaveAttribute('data-status', 'done');
     expect((await requests()).at(-1)?.auth).toBe('Bearer secret-123');
+  });
+});
+
+test.describe('popup: move, pin, reopen, shortcuts', () => {
+  const hitIsPopup = (page: Page, x: number, y: number) => page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName === 'FORMPILOT-UI', [x, y] as const);
+
+  test('drag the popup by its header; position is remembered per site and can be reset', async ({ context, sw, extId }) => {
+    await configure(sw, { panel: { placement: 'below' } });
+    const page = await context.newPage();
+    await page.goto(FORM);
+    await page.click('#first');
+    await waitReady(page);
+    const r = await page.locator('#first').boundingBox();
+    // Header sits right under the field: grab its title area and drag to the top-right.
+    const start = { x: r!.x + 160, y: r!.y + r!.height + 6 + 22 };
+    expect(await hitIsPopup(page, start.x, start.y)).toBe(true);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 300, start.y - 150, { steps: 8 });
+    await page.mouse.move(1100, 60, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => sw.evaluate(async () => Object.keys(((await chrome.storage.local.get('panelPositions')).panelPositions as object) ?? {}))).toEqual(['localhost']);
+    const spot = { x: 1100, y: 70 };
+    expect(await hitIsPopup(page, spot.x, spot.y)).toBe(true);
+
+    // Reload: the popup opens at the saved spot.
+    await page.reload();
+    await page.click('#company');
+    await waitReady(page);
+    expect(await hitIsPopup(page, spot.x, spot.y)).toBe(true);
+
+    // Reset from settings → back next to the field.
+    const opts = await context.newPage();
+    await opts.goto(`chrome-extension://${extId}/options.html#popup`);
+    await opts.getByRole('button', { name: 'Reset all positions' }).click();
+    await page.bringToFront();
+    await expect.poll(() => hitIsPopup(page, spot.x, spot.y)).toBe(false);
+  });
+
+  test('pinned popup stays on screen when clicking elsewhere; unpinned closes', async ({ context, sw }) => {
+    await configure(sw, { panel: { pinnedByDefault: true } });
+    const page = await context.newPage();
+    await page.goto(FORM);
+    await page.click('#why');
+    await waitReady(page);
+    await page.click('h1');
+    await page.waitForTimeout(400);
+    await expect(host(page)).toHaveAttribute('data-open', 'true');
+
+    await configure(sw, { panel: { pinnedByDefault: false } });
+    await page.reload();
+    await page.click('#why');
+    await waitReady(page);
+    await page.click('h1');
+    await expect(host(page)).toHaveAttribute('data-open', 'false');
+  });
+
+  test('clicking the field reopens a closed popup; Alt+2 inserts the 2nd suggestion; typing can keep it open', async ({ context, sw }) => {
+    await configure(sw, { panel: { hideWhileTyping: false } });
+    const page = await context.newPage();
+    await page.goto(FORM);
+    await page.click('#why');
+    await waitReady(page, 2);
+    await page.keyboard.press('Escape');
+    await expect(host(page)).toHaveAttribute('data-open', 'false');
+    await page.click('#why'); // same field, still focused
+    await waitReady(page, 2);
+    await page.keyboard.type('I ');
+    await expect(host(page)).toHaveAttribute('data-open', 'true'); // hideWhileTyping off
+    await page.keyboard.press('Alt+Digit2');
+    await expect(page.locator('#why')).toHaveValue(/Acme builds the tools I use every day/);
   });
 });

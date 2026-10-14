@@ -1,5 +1,5 @@
 import { Palette, Sparkles, UserRound, CornerDownLeft } from 'lucide-react';
-import { Card, CardHeader, PageHeader, Row, Segmented, Slider, Switch } from '@/components/ui';
+import { Card, CardHeader, PageHeader, Row, Segmented, Switch } from '@/components/ui';
 import { cn } from '@/components/ui/cn';
 import type { PageProps } from '../App';
 
@@ -94,9 +94,6 @@ export function Appearance({ settings, update }: PageProps) {
               { value: 'compact', label: 'Compact' },
             ]}
           />
-        </Row>
-        <Row label="Dropdown max width" description="The dropdown matches the field's width, up to this limit.">
-          <Slider className="w-64" value={a.dropdownMaxWidth} min={300} max={720} step={20} onChange={(v) => set('dropdownMaxWidth', v)} format={(v) => `${v}px`} />
         </Row>
         <Row label="Reduce motion">
           <Switch checked={a.reduceMotion} onCheckedChange={(v) => set('reduceMotion', v)} />

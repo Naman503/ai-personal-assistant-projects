@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ErrorInfo, FieldContext, Suggestion, SuggestMeta } from '@/lib/types';
+import type { Settings } from '@/lib/settings';
+import type { SavedPos } from '@/lib/panel-position';
 
 export type Status = 'idle' | 'instant' | 'retrieving' | 'generating' | 'streaming' | 'done' | 'error';
 
@@ -31,6 +33,12 @@ export interface UIState {
   compact: boolean;
   maxWidth: number;
   reduceMotion: boolean;
+  /** Popup display/behaviour settings. */
+  ui: Settings['panel'];
+  /** Where the user dragged the popup (null = anchored to the field). */
+  manualPos: SavedPos | null;
+  /** Pinned: stays on screen when focus leaves or you type. */
+  pinned: boolean;
 }
 
 export function createStore(initial: UIState) {

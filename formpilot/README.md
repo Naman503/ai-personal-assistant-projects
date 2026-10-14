@@ -11,7 +11,7 @@ Suggestions appear right under the field, like a password manager, and repeat qu
 ![Chrome | Brave](https://img.shields.io/badge/Chrome%20%7C%20Brave-supported-4285F4?logo=googlechrome&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![Tests](https://img.shields.io/badge/tests-130%20unit%20%C2%B7%2020%20e2e-16a34a)
+![Tests](https://img.shields.io/badge/tests-136%20unit%20%C2%B7%2023%20e2e-16a34a)
 ![Free providers](https://img.shields.io/badge/AI-free%20%26%20local%20options-f59e0b)
 
 <img src="docs/screenshots/dropdown-light.png" width="720" alt="FormPilot suggestions under a form field" />
@@ -110,6 +110,13 @@ Now click into any form field on any website.
 
 </td></tr>
 <tr><td valign="top">
+
+### 🪟 A popup that fits how you work
+- **Drag it anywhere.** It remembers the spot per site or everywhere, and can stay fixed on screen or follow the field. **Reset** from the ⋯ menu or settings.
+- **📌 Pin it** to keep it open while you click around or type; it follows the next field you focus.
+- **Click the field** to bring a closed popup back.
+- **Choose the placement** (below / above / left / right) plus width, height and opacity, and show or hide the header, actions, footer, badges and labels.
+- **Alt+1…9** inserts a suggestion directly; Tab can be set to insert too.
 
 ### 💬 Popups & chat questionnaires
 - Renders in the browser **top layer**, above any overlay
@@ -217,6 +224,9 @@ Providers are tried top to bottom. Turn on **Local-only mode** to never leave yo
 | Show suggestions for the focused field | <kbd>Alt</kbd> + <kbd>J</kbd> |
 | Fill the whole form | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>J</kbd> |
 | Move / insert / close | <kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Enter</kbd> · <kbd>Esc</kbd> |
+| Insert the 1st…9th suggestion directly | <kbd>Alt</kbd> + <kbd>1</kbd>…<kbd>9</kbd> |
+| Move the popup | Drag its header; reset from the ⋯ menu |
+| Keep the popup on screen | 📌 Pin button in the popup header |
 | Save your typed answer | **Save my answer** in the dropdown, or right-click → *remember my answer* |
 
 Change them at `chrome://extensions/shortcuts`.
@@ -244,8 +254,8 @@ Change them at `chrome://extensions/shortcuts`.
 | `pnpm dev` / `pnpm dev:brave` | Dev mode with auto-reload, plus a demo form at <http://localhost:4173/form.html> |
 | `pnpm build` / `pnpm zip` | Production build / zip for the Chrome Web Store |
 | `pnpm compile` | Type-check |
-| `pnpm test` | 130 unit tests (Vitest + happy-dom) |
-| `pnpm test:e2e` | 20 end-to-end tests: Playwright drives real Chromium with the extension loaded. Run `npx playwright install chromium` once first. |
+| `pnpm test` | 136 unit tests (Vitest + happy-dom) |
+| `pnpm test:e2e` | 23 end-to-end tests: Playwright drives real Chromium with the extension loaded. Run `npx playwright install chromium` once first. |
 | `node scripts/fixture-server.mjs` | Demo/test pages on `:4173` plus a mock OpenAI-compatible AI on `:4174` |
 
 **The end-to-end tests cover:**
@@ -256,7 +266,8 @@ Change them at `chrome://extensions/shortcuts`.
 - modals with focus traps, and drawers with capture-phase click-outside handlers;
 - a copy of Naukri's chat drawer structure, and chats whose messages are visually above the input but later in the HTML;
 - learning from corrections;
-- password-protected API keys, including strict-mode lock and unlock.
+- password-protected API keys, including strict-mode lock and unlock;
+- dragging and remembering the popup position, pinning, click-to-reopen, and Alt+number shortcuts.
 
 **Tech stack:** [WXT](https://wxt.dev) (MV3, Vite) · React 19 · TypeScript · Tailwind CSS v4 · Radix UI · Floating UI · Dexie · MiniSearch · pdf.js · mammoth · zod · Vitest · Playwright
 

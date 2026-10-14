@@ -116,10 +116,12 @@
 .fp[data-motion='reduce'] .fp-icon {
   animation: none;
 }
+/* Uses the individual translate/scale properties: `transform` is reserved for positioning. */
 @keyframes fp-in {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.98);
+    translate: 0 -4px;
+    scale: 0.98;
   }
 }
 @keyframes fp-pop {
@@ -542,4 +544,136 @@
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+}
+
+/* ---------- Popup: opacity, drag, pin, menu ---------- */
+.fp-panel {
+  opacity: var(--fp-opacity, 1);
+  transition: opacity 150ms ease, box-shadow 150ms ease;
+}
+.fp-panel:hover,
+.fp-panel:focus-within,
+.fp-panel.fp-dragging {
+  opacity: 1 !important;
+}
+.fp-panel.fp-pinned {
+  box-shadow: var(--fp-shadow), 0 0 0 1.5px color-mix(in srgb, var(--fp-accent) 55%, transparent);
+}
+.fp-panel.fp-dragging {
+  transition: none;
+  box-shadow: 0 28px 60px -12px rgba(15, 23, 42, 0.38), 0 0 0 1.5px var(--fp-accent);
+}
+.fp-draggable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.fp-dragging .fp-draggable {
+  cursor: grabbing;
+}
+.fp-brand {
+  position: relative;
+}
+.fp-grip-icon {
+  display: none !important;
+}
+.fp-head.fp-draggable:hover .fp-brand > svg:first-child {
+  display: none;
+}
+.fp-head.fp-draggable:hover .fp-grip-icon {
+  display: block !important;
+}
+.fp-iconbtn[data-on='true'],
+.fp-grip-btn[data-on='true'] {
+  color: var(--fp-accent);
+  background: color-mix(in srgb, var(--fp-accent) 12%, transparent);
+}
+.fp-menu-wrap {
+  position: relative;
+}
+.fp-menu {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  z-index: 3;
+  min-width: 210px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 10px;
+  background: var(--fp-bg-elev);
+  box-shadow: 0 14px 34px -10px rgba(15, 23, 42, 0.35), 0 0 0 1px var(--fp-border);
+  animation: fp-pop 120ms ease-out;
+}
+.fp-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--fp-text);
+  text-align: left;
+  cursor: pointer;
+}
+.fp-menu button:hover:not(:disabled) {
+  background: var(--fp-bg-subtle);
+}
+.fp-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.fp-menu button svg {
+  color: var(--fp-muted);
+}
+.fp-menu-kbd {
+  margin-left: auto;
+  font-family: var(--fp-mono);
+  font-size: 10px;
+  color: var(--fp-faint);
+}
+.fp-menu-sep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--fp-border);
+}
+.fp-grip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 20px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--fp-border);
+}
+.fp-grip-bar {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--fp-border-strong);
+}
+.fp-grip-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 18px;
+  border-radius: 5px;
+  color: var(--fp-muted);
+}
+.fp-grip-btn:hover {
+  background: var(--fp-bg-subtle);
+  color: var(--fp-text);
+}
+.fp-num {
+  margin-left: auto;
+  font-family: var(--fp-mono);
+  font-size: 10px;
+  color: var(--fp-faint);
 }

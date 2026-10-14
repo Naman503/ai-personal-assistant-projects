@@ -14,6 +14,7 @@ import { checkEligibility, siteAllowed } from '@/lib/fields/eligibility';
 import { fillElement, fillRadioGroup, flash, restoreElement } from '@/lib/fields/fill';
 import { classifyField, isSensitive } from '@/lib/fields/classify';
 import { normalizeText, truncate, uid } from '@/lib/util';
+import { clearPosition, loadPositions, positionKey, savePosition, watchPositions, type SavedPos } from '@/lib/panel-position';
 
 interface Engagement {
   el: HTMLElement;
@@ -84,8 +85,70 @@ export class Controller {
       compact: s.appearance.density === 'compact',
       maxWidth: s.appearance.dropdownMaxWidth,
       reduceMotion: s.appearance.reduceMotion,
+      ui: s.panel,
+      manualPos: null,
+      pinned: s.panel.pinnedByDefault,
     });
     this.applyAppearance(s);
+    void loadPositions().then((all) => {
+      this.positions = all;
+      this.syncManualPos();
+    });
+    this.unwatchPositions = watchPositions((all) => {
+      this.positions = all;
+      this.syncManualPos();
+    });
+  }
+
+  // ---------------- Popup position & pinning ----------------
+
+  private positions: Record<string, SavedPos> = {};
+  /** Position dragged while "remember" is off: kept until the page reloads. */
+  private sessionPos: SavedPos | null = null;
+  private unwatchPositions: (() => void) | null = null;
+  /** The field the popup was last opened for (click-to-reopen only applies to it). */
+  private openedFor: HTMLElement | null = null;
+
+  private posKey(): string | null {
+    return positionKey(location.hostname, this.settings().panel.rememberPosition);
+  }
+
+  private syncManualPos() {
+    const key = this.posKey();
+    this.store.set({ manualPos: key ? (this.positions[key] ?? null) : this.sessionPos });
+  }
+
+  /** Called by the UI when a drag ends. */
+  savePanelPosition(pos: SavedPos) {
+    const key = this.posKey();
+    this.store.set({ manualPos: pos });
+    if (!key) {
+      this.sessionPos = pos;
+      return;
+    }
+    this.positions[key] = pos;
+    void savePosition(key, pos).catch((e) => log.warn('could not save popup position', e));
+    log.info(`popup moved (${pos.mode === 'screen' ? 'fixed on screen' : 'follows the field'}${key === '*' ? ', everywhere' : `, on ${key}`})`);
+  }
+
+  resetPanelPosition() {
+    const key = this.posKey();
+    this.sessionPos = null;
+    if (key) {
+      delete this.positions[key];
+      void clearPosition(key);
+    }
+    this.store.set({ manualPos: null });
+    this.showToast('Popup position reset', 'info', undefined, 2000);
+  }
+
+  togglePin() {
+    const pinned = !this.store.get().pinned;
+    this.store.set({ pinned });
+    if (!pinned && this.field && document.activeElement !== this.field && !this.field.contains(document.activeElement)) {
+      // Unpinned while focus is elsewhere: behave as if the field just lost focus.
+      this.onBlur(document.activeElement);
+    }
   }
 
   // ---------------- UI mounting ----------------
@@ -202,7 +265,9 @@ export class Controller {
       maxWidth: s.appearance.dropdownMaxWidth,
       reduceMotion: s.appearance.reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches,
       hasProvider: activeProvidersCount(s) > 0,
+      ui: s.panel,
     });
+    if (this.positions) this.syncManualPos();
   }
 
   // ---------------- Port ----------------
@@ -312,6 +377,13 @@ export class Controller {
     this.closeTimer = setTimeout(() => {
       const a = document.activeElement;
       if (this.isOurs(a) || (this.field && (a === this.field || this.field.contains(a)))) return;
+      const st = this.store.get();
+      if (st.open && (st.pinned || !this.settings().panel.closeOnBlur)) {
+        // Keep the popup on screen (still bound to this field); just hide the field icon.
+        this.maybeLearn('blur');
+        this.store.set({ iconVisible: false });
+        return;
+      }
       this.detach();
     }, 160);
   }
@@ -324,7 +396,22 @@ export class Controller {
       e.typed = true;
       e.lastTyped = readValue(e.el);
     }
-    if (this.store.get().open && !this.store.get().refineOpen) this.close();
+    const st = this.store.get();
+    if (st.open && !st.refineOpen && !st.pinned && this.settings().panel.hideWhileTyping) this.close();
+  }
+
+  /** A click on a field: bring the popup back if it was closed (Esc / insert) while the field kept focus. */
+  onFieldClick(target: HTMLElement) {
+    if (this.dead || !this.settings().panel.reopenOnClick) return;
+    const el = fieldKind(target) === 'contenteditable' ? editableRoot(target) : target;
+    if (el !== this.field || this.store.get().open) return;
+    // Only bring back a popup that was open for this field, or one that would open on its own.
+    // (Search boxes, icon-only and shortcut-only fields stay quiet.)
+    const elig = checkEligibility(el, this.settings());
+    if (!elig.ok || (this.openedFor !== el && !elig.autoOpen)) return;
+    log.debug('field clicked: reopening the popup');
+    if (this.chatMode) this.openWhenQuestionReady(el);
+    else this.open({ auto: true });
   }
 
   /** A form is being submitted: learn from the field before the page navigates away. */
@@ -462,6 +549,7 @@ export class Controller {
   private attach(el: HTMLElement, chat = false) {
     this.detach();
     this.field = el;
+    this.openedFor = null;
     this.chatMode = chat;
     this.startEngagement(el);
     this.watchConversation(el);
@@ -515,6 +603,7 @@ export class Controller {
     this.store.set({ open: true, field, instant: [], ai: [], status: 'idle', error: undefined, meta: undefined, active: -1 });
     if (this.eng?.el === el) this.eng.field = field;
     else this.startEngagement(el);
+    this.openedFor = el;
     log.info(`open "${field.label}" [${field.kind}/${field.semantic}${field.maxLength ? `/max ${field.maxLength}` : ''}]`);
     const s = this.settings();
     // Instant results right away; AI after a short debounce (cancelled if focus moves).
@@ -606,9 +695,24 @@ export class Controller {
         }
         return false;
       }
-      case 'Tab':
-        this.close();
+      case 'Tab': {
+        const it = items[st.active];
+        if (this.settings().panel.tabAccepts && it && !e.shiftKey) {
+          this.insert(it);
+          return true;
+        }
+        if (!st.pinned) this.close();
         return false;
+      }
+    }
+    // Alt+1…9 inserts that suggestion (e.code, because Alt+digit types symbols on macOS).
+    const digit = e.altKey && !e.ctrlKey && !e.metaKey ? /^Digit([1-9])$/.exec(e.code) : null;
+    if (digit && this.settings().panel.numberShortcuts) {
+      const it = items[Number(digit[1]) - 1];
+      if (it) {
+        this.insert(it);
+        return true;
+      }
     }
     return false;
   }
@@ -827,6 +931,9 @@ export class Controller {
     },
     setActive: (i) => this.store.set({ active: i }),
     remember: () => this.rememberActive(),
+    savePosition: (pos) => this.savePanelPosition(pos),
+    resetPosition: () => this.resetPanelPosition(),
+    togglePin: () => this.togglePin(),
   };
 
   /** Called for the keyboard command / context menu. */
@@ -846,6 +953,7 @@ export class Controller {
   }
 
   destroy() {
+    this.unwatchPositions?.();
     this.cancel();
     this.port?.disconnect();
     this.root?.unmount();

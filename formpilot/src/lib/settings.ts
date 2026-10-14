@@ -120,6 +120,38 @@ const AppearanceSchema = z.object({
   reduceMotion: z.boolean().catch(false),
 });
 
+/** The in-page suggestion popup: position, visibility and what it shows. */
+const PanelSchema = z.object({
+  /** Where the popup opens relative to the field (until you drag it somewhere). */
+  placement: z.enum(['auto', 'below', 'above', 'right', 'left']).catch('auto'),
+  /** Drag the popup by its header. */
+  draggable: z.boolean().catch(true),
+  /** Remember a dragged position on this site, everywhere, or only until the page reloads. */
+  rememberPosition: z.enum(['per-site', 'everywhere', 'off']).catch('per-site'),
+  /** A dragged popup stays at that spot on screen, or keeps its offset from the field. */
+  dragAnchor: z.enum(['screen', 'field']).catch('screen'),
+  /** Start pinned: stays on screen when you click elsewhere or type, until you close it. */
+  pinnedByDefault: z.boolean().catch(false),
+  /** Close when focus leaves the field (ignored while pinned). */
+  closeOnBlur: z.boolean().catch(true),
+  /** Clicking into the field again brings the popup back after you closed it. */
+  reopenOnClick: z.boolean().catch(true),
+  /** Hide while you type your own answer (ignored while pinned). */
+  hideWhileTyping: z.boolean().catch(true),
+  maxHeight: z.number().int().min(200).max(900).catch(520),
+  /** Popup opacity in percent; it becomes fully opaque while hovered. */
+  opacity: z.number().int().min(50).max(100).catch(100),
+  showHeader: z.boolean().catch(true),
+  showActions: z.boolean().catch(true),
+  showFooter: z.boolean().catch(true),
+  showBadges: z.boolean().catch(true),
+  showGroupLabels: z.boolean().catch(true),
+  /** Alt+1…9 inserts that suggestion directly. */
+  numberShortcuts: z.boolean().catch(true),
+  /** Tab inserts the highlighted suggestion (otherwise Tab just moves to the next field). */
+  tabAccepts: z.boolean().catch(false),
+});
+
 const DebugSchema = z.object({
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).catch('info'),
   console: z.boolean().catch(true),
@@ -135,6 +167,7 @@ export const SettingsSchema = z.object({
   cache: CacheSchema.prefault(EMPTY),
   privacy: PrivacySchema.prefault(EMPTY),
   appearance: AppearanceSchema.prefault(EMPTY),
+  panel: PanelSchema.prefault(EMPTY),
   debug: DebugSchema.prefault(EMPTY),
 });
 

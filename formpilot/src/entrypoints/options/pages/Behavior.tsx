@@ -111,9 +111,6 @@ export function Behavior({ settings, update }: PageProps) {
             ]}
           />
         </Row>
-        <Row label="Close after inserting">
-          <Switch checked={b.closeOnInsert} onCheckedChange={(v) => set('closeOnInsert', v)} />
-        </Row>
         <Row label="Highlight filled fields" description="A brief outline flash so you can see what changed.">
           <Switch checked={b.highlightOnFill} onCheckedChange={(v) => set('highlightOnFill', v)} />
         </Row>
