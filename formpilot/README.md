@@ -7,6 +7,9 @@
 **AI form filling, grounded in your own documents.**
 Suggestions appear right under the field, like a password manager, and repeat questions fill instantly.
 
+[![CI](https://github.com/Naman503/ai-personal-assistant-projects/actions/workflows/formpilot.yml/badge.svg)](https://github.com/Naman503/ai-personal-assistant-projects/actions/workflows/formpilot.yml)
+[![Release](https://img.shields.io/github/v/release/Naman503/ai-personal-assistant-projects?filter=formpilot-v*&label=release&color=7c3aed)](https://github.com/Naman503/ai-personal-assistant-projects/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](../LICENSE)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-7c3aed)
 ![Chrome | Brave](https://img.shields.io/badge/Chrome%20%7C%20Brave-supported-4285F4?logo=googlechrome&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -48,6 +51,14 @@ Job applications, onboarding forms, profiles and screening chatbots ask the same
 ---
 
 ## Quick start
+
+### Option A: download (no build needed)
+
+1. Download `formpilot-<version>-chrome.zip` from the [latest release](https://github.com/Naman503/ai-personal-assistant-projects/releases) and unzip it.
+2. Open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, click **Load unpacked**, and select the unzipped folder.
+3. Continue with step 3 below.
+
+### Option B: build from source
 
 **1. Build.** You need Node 20+ and pnpm.
 ```bash
@@ -111,13 +122,6 @@ Now click into any form field on any website.
 </td></tr>
 <tr><td valign="top">
 
-### 🪟 A popup that fits how you work
-- **Drag it anywhere.** It remembers the spot per site or everywhere, and can stay fixed on screen or follow the field. **Reset** from the ⋯ menu or settings.
-- **📌 Pin it** to keep it open while you click around or type; it follows the next field you focus.
-- **Click the field** to bring a closed popup back.
-- **Choose the placement** (below / above / left / right) plus width, height and opacity, and show or hide the header, actions, footer, badges and labels.
-- **Alt+1…9** inserts a suggestion directly; Tab can be set to insert too.
-
 ### 💬 Popups & chat questionnaires
 - Renders in the browser **top layer**, above any overlay
 - Mounted **inside** the popup, so "click outside to close" doesn't fire
@@ -132,6 +136,24 @@ Now click into any form field on any website.
 - **Local Models** page: one-click install of open models
 
 </td></tr>
+<tr><td valign="top">
+
+### 🪟 A popup that fits how you work
+- **Drag it anywhere.** It remembers the spot per site or everywhere, and can stay fixed on screen or follow the field. **Reset** from the ⋯ menu or settings.
+- **📌 Pin it** to keep it open while you click around or type
+- **Click the field** to bring a closed popup back
+- Placement, width, height, opacity, and which parts to show
+- **Alt+1…9** inserts a suggestion directly
+
+</td><td valign="top">
+
+### 🔐 Password-protected keys
+- API keys are **encrypted** (AES-256-GCM, PBKDF2 600k) with your password or a 4-digit PIN
+- Seeing, changing or removing a key needs the password; wrong attempts are throttled
+- Optional **strict mode** locks keys after every browser restart
+- Keys are never synced or exported
+
+</td></tr>
 </table>
 
 ---
@@ -141,6 +163,10 @@ Now click into any form field on any website.
 | Light | Dark |
 |---|---|
 | <img src="docs/screenshots/dropdown-light.png" alt="Dropdown, light theme" /> | <img src="docs/screenshots/dropdown-dark.png" alt="Dropdown, dark theme" /> |
+
+| Drag it anywhere (remembered per site) | Popup settings |
+|---|---|
+| <img src="docs/screenshots/popup-moved.png" alt="Popup moved to the side of the screen" /> | <img src="docs/screenshots/settings-popup.png" alt="Popup settings" /> |
 
 | Chat questionnaire in a popup drawer | Toolbar popup |
 |---|---|
@@ -160,6 +186,9 @@ Now click into any form field on any website.
 
 **Memory**
 <img src="docs/screenshots/settings-memory.png" alt="Memory" />
+
+**Privacy & Data (password-protected API keys)**
+<img src="docs/screenshots/settings-privacy.png" alt="Privacy and data" />
 
 **About**
 <img src="docs/screenshots/settings-about.png" alt="About" />
@@ -344,3 +373,13 @@ There's no way to recover it, because the keys are encrypted with it. Click **Fo
 - **In the background:** `chrome://extensions` → FormPilot → *service worker*.
 - **In the extension:** **Settings → Logs & Diagnostics**, which has a live viewer and **Copy diagnostics** (API keys excluded).
 </details>
+
+---
+
+## Changelog
+
+See **[CHANGELOG.md](CHANGELOG.md)**. Releases are built and published by CI when a `formpilot-v*` tag is pushed.
+
+## License
+
+[MIT](../LICENSE)

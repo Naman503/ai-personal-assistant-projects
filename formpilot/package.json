@@ -2,7 +2,8 @@
   "name": "formpilot",
   "description": "AI form filling grounded in your own documents. Suggestions appear right under the field.",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "license": "MIT",
   "author": "Naman Pathak <namanpathak503@gmail.com>",
   "repository": {
     "type": "git",
@@ -10,6 +11,7 @@
     "directory": "formpilot"
   },
   "type": "module",
+  "packageManager": "pnpm@10.23.0",
   "scripts": {
     "dev": "(node scripts/fixture-server.mjs &) && wxt",
     "dev:brave": "(node scripts/fixture-server.mjs &) && wxt -b brave",

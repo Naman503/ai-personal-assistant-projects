@@ -29,3 +29,7 @@ A Chrome and Brave extension that fills web forms with AI, grounded in your own 
 ai-personal-assistant-projects/
 └─ formpilot/        # AI form-filling browser extension
 ```
+
+## License
+
+[MIT](LICENSE)
