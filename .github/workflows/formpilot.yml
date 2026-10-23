@@ -49,12 +49,15 @@ jobs:
           name: playwright-traces
           path: formpilot/test-results
           retention-days: 7
+          include-hidden-files: true
       - name: Package
         run: pnpm zip
       - uses: actions/upload-artifact@v7
         with:
           name: formpilot-chrome
           path: formpilot/.output/*-chrome.zip
+          include-hidden-files: true # .output is a dot-folder
+          if-no-files-found: error
 
   release:
     name: Publish GitHub Release
