@@ -1,2 +1,4 @@
 .DS_Store
 node_modules
+# TypePilot has its own repository (github.com/Naman503/typepilot)
+typepilot/
