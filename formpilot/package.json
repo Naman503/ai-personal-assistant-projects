@@ -2,7 +2,7 @@
   "name": "formpilot",
   "description": "AI form filling grounded in your own documents. Suggestions appear right under the field.",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "author": "Naman Pathak <namanpathak503@gmail.com>",
   "repository": {

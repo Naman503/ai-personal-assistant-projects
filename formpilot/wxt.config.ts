@@ -31,6 +31,8 @@ export default defineConfig({
       'contextMenus',
       'offscreen',
       'declarativeNetRequestWithHostAccess',
+      // Sends anonymous usage a few times a day (lib/usage.ts).
+      'alarms',
     ],
     host_permissions: ['<all_urls>'],
     action: { default_title: 'FormPilot' },

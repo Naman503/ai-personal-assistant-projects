@@ -215,7 +215,7 @@ export function Privacy({ settings, update }: PageProps) {
 
   return (
     <>
-      <PageHeader title="Privacy & Data" description="Your memory is stored locally in this browser. Only the excerpts relevant to a field are sent to the AI provider you choose." />
+      <PageHeader title="Privacy & Data" description="Your memory is stored locally in this browser. Only the excerpts relevant to a field are sent to the AI provider you choose, plus anonymous usage counts if you leave that on." />
 
       <SecurityCard update={update} />
 
@@ -229,6 +229,12 @@ export function Privacy({ settings, update }: PageProps) {
         </Row>
         <Row label="Send page address" description="Include the page URL (without query string) for context.">
           <Switch checked={p.sendPageUrl} onCheckedChange={(v) => set('sendPageUrl', v)} />
+        </Row>
+        <Row
+          label="Share anonymous usage"
+          description="Which features are used, daily counts of filled fields, the provider type and error types, with a random id. Never field contents, pages, memory, provider URLs or keys, and never in Local-only mode. Turning it off deletes what was sent."
+        >
+          <Switch checked={p.shareUsage} onCheckedChange={(v) => set('shareUsage', v)} />
         </Row>
         <Row label="Sensitive fields" description="Passwords, payment cards, CVV, OTP / 2FA, CAPTCHA, PINs, government IDs and bank details are never read, sent or filled.">
           <span className="flex items-center gap-1.5 text-[13px] text-emerald-600">

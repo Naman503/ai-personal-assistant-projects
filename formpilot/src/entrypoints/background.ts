@@ -4,13 +4,14 @@ import { SUGGEST_PORT, type CommandName, type PortEvent, type PortRequest, type 
 import { SuggestEngine, counters } from '@/lib/engine/suggest';
 import { recordAccepted, invalidateHistoryCache } from '@/lib/engine/history';
 import { cacheClear, cacheCount, cachePrune } from '@/lib/engine/cache';
-import { adapterFor, resetCooldowns, resolveProvider } from '@/lib/llm/registry';
+import { activeProviders, adapterFor, resetCooldowns, resolveProvider } from '@/lib/llm/registry';
 import { installVaultCacheInvalidation } from '@/lib/vault';
 import { chromeAiAvailability, installChromeAiRelay } from '@/lib/llm/chrome-ai';
 import { ollamaOriginRule } from '@/lib/llm/ollama';
 import { LLMError } from '@/lib/llm/types';
 import { db } from '@/lib/memory/db';
 import { hostMatches, isAbort } from '@/lib/util';
+import { providerFamily, UsageReporter, usageSource } from '@/lib/usage';
 
 export default defineBackground({
   type: 'module',
@@ -22,6 +23,15 @@ export default defineBackground({
 
     let settings: Settings = DEFAULT_SETTINGS;
     const engine = new SuggestEngine(() => settings);
+    const usage = new UsageReporter(() => settings);
+    const usageDaily = () => {
+      const active = activeProviders(settings);
+      return {
+        facts: { model_used: { provider: providerFamily(active[0]) } } as Record<string, Record<string, string>>,
+        setup: active.length ? ['setup_provider'] : [],
+      };
+    };
+    const flushUsage = () => usage.flush(usageDaily).catch((e) => log.debug('usage report not sent', e));
 
     const applySettings = (s: Settings) => {
       settings = s;
@@ -31,11 +41,26 @@ export default defineBackground({
     };
     const ready = loadSettings().then((s) => {
       applySettings(s);
+      void usage.checkVersion(chrome.runtime.getManifest().version);
       log.info(`service worker ready · ${s.providers.filter((p) => p.enabled).map((p) => p.label).join(', ')}`);
     });
     watchSettings((s) => {
       log.debug('settings changed');
+      const wasSharing = settings.privacy.shareUsage;
       applySettings(s);
+      if (wasSharing && !s.privacy.shareUsage) void usage.turnedOff();
+      else if (!wasSharing && s.privacy.shareUsage) void usage.turnedOn();
+    });
+
+    // ---------- Anonymous usage: sent every 6 hours, and soon after the worker starts ----------
+    // First send after 10 minutes, so short test runs (Playwright in CI) never report.
+    chrome.alarms?.create('usage', { delayInMinutes: 10, periodInMinutes: 360 });
+    chrome.alarms?.onAlarm.addListener((a) => {
+      if (a.name === 'usage') void ready.then(flushUsage);
+    });
+    self.addEventListener('error', (e) => void usage.error((e as ErrorEvent).error, true));
+    self.addEventListener('unhandledrejection', (e) => {
+      if (!isAbort((e as PromiseRejectionEvent).reason)) void usage.error((e as PromiseRejectionEvent).reason);
     });
 
     installChromeAiRelay();
@@ -93,6 +118,7 @@ export default defineBackground({
           return;
         }
         if (msg.type !== 'suggest') return;
+        void usage.count('popup_opened');
         // One active request per port (per frame): moving focus cancels the previous one.
         for (const c of inflight.values()) c.abort();
         inflight.clear();
@@ -127,16 +153,28 @@ export default defineBackground({
           return null;
         case 'accept':
           counters.accepted++;
+          void usage.count('fields_filled', { source: usageSource(msg.source) });
+          void usage.once('first_fill');
           if (settings.cache.history && msg.text.trim()) {
             await recordAccepted(msg.field, msg.text, msg.host);
             invalidateHistoryCache();
           }
           return null;
         case 'learn':
+          void usage.event('correction_saved');
           return engine.learn(msg.field, msg.text, msg.host, settings.cache.learnSaveAs);
         case 'fill-form': {
           const signal = AbortSignal.timeout(Math.max(settings.generation.timeoutMs, 60_000));
-          return engine.fillForm(msg.fields, msg.page, signal);
+          const out = await engine.fillForm(msg.fields, msg.page, signal);
+          void usage.event('form_filled');
+          const bySource: Record<string, number> = {};
+          for (const src of Object.values((out as { sources?: Record<string, string> }).sources ?? {})) {
+            const k = usageSource(src);
+            bySource[k] = (bySource[k] ?? 0) + 1;
+          }
+          for (const [source, n] of Object.entries(bySource)) void usage.count('fields_filled', { source }, n);
+          if (Object.keys(bySource).length) void usage.once('first_fill');
+          return out;
         }
         case 'test-provider': {
           // The options page sends the live (possibly unsaved) config so "Test" works right after typing a key.
@@ -165,6 +203,10 @@ export default defineBackground({
         case 'memory-changed':
           engine.index.invalidate();
           invalidateHistoryCache();
+          if (msg.docId && msg.extractFacts) {
+            void usage.event('document_added');
+            void usage.once('setup_document');
+          }
           if (msg.docId && msg.extractFacts && settings.memory.autoExtractFacts) {
             void engine.extractFacts(msg.docId);
           }

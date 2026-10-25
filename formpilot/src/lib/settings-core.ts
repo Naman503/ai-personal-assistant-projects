@@ -182,7 +182,7 @@ export const DEFAULTS: Settings = {
     closeOnInsert: true,
   },
   cache: { instantFacts: true, history: true, historyThreshold: 0.55, responseCache: true, responseCacheTtlHours: 72, learn: 'ask', learnSaveAs: 'smart' },
-  privacy: { redactSecrets: true, localOnly: false, sendPageUrl: true },
+  privacy: { redactSecrets: true, localOnly: false, sendPageUrl: true, shareUsage: true },
   appearance: { theme: 'system', accent: 'violet', density: 'comfortable', dropdownMaxWidth: 440, reduceMotion: false },
   panel: {
     placement: 'auto',
