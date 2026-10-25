@@ -11,7 +11,7 @@ import { ollamaOriginRule } from '@/lib/llm/ollama';
 import { LLMError } from '@/lib/llm/types';
 import { db } from '@/lib/memory/db';
 import { hostMatches, isAbort } from '@/lib/util';
-import { charsBucket, countBucket, docKind, errorCategory, msBucket, providerFamily, sanitizeClientEvent, optionsSection, settingsSnapshot, UsageReporter, usageSource } from '@/lib/usage';
+import { charsBucket, countBucket, rpcType, docKind, errorCategory, msBucket, providerFamily, sanitizeClientEvent, optionsSection, settingsSnapshot, UsageReporter, usageSource } from '@/lib/usage';
 import { vaultStatus } from '@/lib/vault';
 
 export default defineBackground({
@@ -373,7 +373,7 @@ export default defineBackground({
         (e) => {
           const info = e instanceof LLMError ? e.toInfo() : { code: 'unknown' as const, message: (e as Error)?.message ?? String(e) };
           if (msg.type !== 'log') log.warn(`rpc ${msg.type} failed: ${info.message}`);
-          if (msg.type !== 'log' && msg.type !== 'usage' && msg.type !== 'usage-error') void usage.count('rpc_failed', { type: msg.type, code: errorCategory(info.code) });
+          if (msg.type !== 'log' && msg.type !== 'usage' && msg.type !== 'usage-error') void usage.count('rpc_failed', { type: rpcType(msg.type), code: errorCategory(info.code) });
           sendResponse({ ok: false, error: info } satisfies RpcResponse);
         },
       );

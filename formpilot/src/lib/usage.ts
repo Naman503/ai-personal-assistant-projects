@@ -219,6 +219,15 @@ export function optionsSection(raw: string | undefined): string {
   return (OPTIONS_SECTIONS as readonly string[]).includes(id) ? id : 'other';
 }
 
+/** Background request types that can fail (lib/messages.ts RpcRequest); anything else is 'other'. */
+export const RPC_TYPES = [
+  'fill-form', 'accept', 'learn', 'test-provider', 'list-models', 'chrome-ai-status', 'get-logs', 'clear-logs',
+  'memory-changed', 'extract-facts', 'search-memory', 'stats', 'clear-cache', 'open-options', 'site-toggle',
+] as const;
+export function rpcType(type: unknown): string {
+  return typeof type === 'string' && (RPC_TYPES as readonly string[]).includes(type) ? type : 'other';
+}
+
 /** Daily snapshot of settings: fixed enums, booleans and buckets only (never sites, prompts, URLs or models). */
 export function settingsSnapshot(s: Settings): Record<string, Props> {
   const g = s.generation;

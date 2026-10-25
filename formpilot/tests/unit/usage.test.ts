@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '@/lib/settings';
-import { charsBucket, counterKey, countBucket, docKind, errorCategory, errorFingerprint, msBucket, optionsSection, parseCounterKey, providerFamily, sanitizeClientEvent, settingsSnapshot, UsageReporter, usageSource } from '@/lib/usage';
+import { charsBucket, counterKey, countBucket, docKind, errorCategory, errorFingerprint, msBucket, optionsSection, parseCounterKey, rpcType, providerFamily, sanitizeClientEvent, settingsSnapshot, UsageReporter, usageSource } from '@/lib/usage';
 
 const settingsWith = (privacy: Partial<Settings['privacy']>): Settings => ({
   ...DEFAULT_SETTINGS,
@@ -96,6 +96,9 @@ describe('richer usage helpers', () => {
     expect(docKind('secret.xyz')).toBe('other');
     expect(optionsSection('providers?unlock=1')).toBe('providers');
     expect(optionsSection('#nope')).toBe('other');
+    expect(rpcType('fill-form')).toBe('fill-form');
+    expect(rpcType('https://evil.example/x')).toBe('other');
+    expect(rpcType(42)).toBe('other');
   });
   it('accepts only allowlisted client events, keys and values', () => {
     expect(sanitizeClientEvent('nope', {})).toBeNull();
