@@ -4,6 +4,15 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-25
+
+### Added
+- **Share anonymous usage** (*Privacy & Data*), on by default. It shares which features are used, daily counts of filled fields by source (memory, history, AI), setup milestones, the AI provider *type* (Gemini, Groq, Ollama…) and error types, with a random id made on install.
+- It never shares field contents, page addresses, memory, provider URLs, headers or keys, and it sends nothing in Local-only mode. Turning it off deletes what was sent.
+
+### Changed
+- Asks for the `alarms` permission, used to send usage a few times a day.
+
 ## [1.0.0] - 2026-10-23
 
 First public release.
@@ -24,4 +33,5 @@ First public release.
 - **Settings app:** 12 pages, light and dark themes, logs and diagnostics, export and import, and an About page.
 - **Tests:** 136 unit tests (Vitest) and 23 end-to-end tests (Playwright driving real Chromium with the extension loaded).
 
+[1.1.0]: https://github.com/Naman503/ai-personal-assistant-projects/releases/tag/formpilot-v1.1.0
 [1.0.0]: https://github.com/Naman503/ai-personal-assistant-projects/releases/tag/formpilot-v1.0.0

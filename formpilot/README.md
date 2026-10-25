@@ -273,6 +273,7 @@ Change them at `chrome://extensions/shortcuts`.
   - **Forgot the password?** *Reset password & keys* removes the password and the saved keys. Memory and settings are kept.
 - Forms are never submitted automatically, and consent checkboxes are never ticked.
 - Per-site blocklist or allowlist, and one-click **pause on this site**.
+- **Anonymous usage, with an off switch.** FormPilot shares which features are used, daily counts of filled fields (and whether they came from memory, history or AI), setup milestones, the provider *type* and error types, with a random id made on install. Never field contents, page addresses, memory, provider URLs, headers or keys, and nothing at all in Local-only mode. Turn it off in *Privacy & Data → Share anonymous usage*; that also deletes what was sent.
 
 ---
 

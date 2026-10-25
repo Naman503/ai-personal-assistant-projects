@@ -110,6 +110,8 @@ const PrivacySchema = z.object({
   redactSecrets: z.boolean().catch(true),
   localOnly: z.boolean().catch(false),
   sendPageUrl: z.boolean().catch(true),
+  /** Anonymous usage reporting (lib/usage.ts); never sent in Local-only mode. */
+  shareUsage: z.boolean().catch(true),
 });
 
 const AppearanceSchema = z.object({
