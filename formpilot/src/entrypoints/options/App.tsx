@@ -23,6 +23,7 @@ import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { cn } from '@/components/ui/cn';
 import type { Settings } from '@/lib/settings';
 import { AUTHOR } from '@/lib/about';
+import { track } from '@/lib/messages';
 import { Overview } from './pages/Overview';
 import { Providers } from './pages/Providers';
 import { Generation } from './pages/Generation';
@@ -80,7 +81,9 @@ export function App() {
   useEffect(() => {
     document.title = `${current.label} · FormPilot`;
     window.scrollTo({ top: 0 });
-  }, [current.label]);
+    track('options_section_viewed', { section: current.id });
+  }, [current.label, current.id]);
+  useEffect(() => track('options_opened'), []);
 
   return (
     <VaultProvider>

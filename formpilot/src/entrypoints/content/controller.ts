@@ -6,8 +6,8 @@ import css from './ui/styles.css?inline';
 import { createLogger } from '@/lib/logger';
 import type { Settings } from '@/lib/settings';
 import { activeProvidersCount } from './providers';
-import { SUGGEST_PORT, rpc, type PortEvent, type PortRequest } from '@/lib/messages';
-import type { FieldContext, Suggestion, SuggestOptions } from '@/lib/types';
+import { SUGGEST_PORT, rpc, track, type FillTrigger, type InsertMethod, type LearnTrigger, type PortEvent, type PortRequest } from '@/lib/messages';
+import type { FieldContext, OpenTrigger, Suggestion, SuggestOptions } from '@/lib/types';
 import { overlayRoot, conversationQuestion, conversationQuestionInfo, conversationDiagnostics, questionReady, lowestCommonAncestor, describeAncestors } from '@/lib/fields/context';
 import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, resolveLabel, siblingFields } from '@/lib/fields/context';
 import { checkEligibility, siteAllowed } from '@/lib/fields/eligibility';
@@ -65,6 +65,15 @@ export class Controller {
   /** What happened on the current field, used to detect user corrections worth remembering. */
   private eng: Engagement | null = null;
   private dead = false;
+  /** How the popup was last opened, and whether it has shown suggestions since (anonymous usage only). */
+  private openTrigger: OpenTrigger = 'auto';
+  private shownReported = false;
+
+  /** Anonymous usage: enums and booleans only, via the background (which applies the off switch). */
+  private track(name: string, props?: Record<string, string | number | boolean>) {
+    const p = this.settings().privacy;
+    if (p.shareUsage && !p.localOnly && !this.dead) track(name, props);
+  }
 
   constructor(private settings: () => Settings) {
     const s = settings();
@@ -288,7 +297,7 @@ export class Controller {
         if (['retrieving', 'generating', 'streaming'].includes(this.store.get().status) && this.retriedReq !== this.reqId) {
           // Retry once on a fresh port. The service worker may have been recycled mid-request.
           log.info('re-sending request on a new port');
-          this.request(this.lastOpts, true);
+          this.request({ ...this.lastOpts, kind: 'retry' }, true);
         }
       });
       this.port = p;
@@ -331,6 +340,14 @@ export class Controller {
         log.warn(`suggestion error [${e.error.code}] ${e.error.message}`, e.error.hint);
         break;
     }
+    // Once per open: the first time it has something to pick from (denominator of the acceptance rate).
+    if (!this.shownReported && this.store.get().open && visibleItems(this.store.get()).length) {
+      this.shownReported = true;
+      this.track('suggestions_shown', {
+        first: e.type === 'instant' ? 'instant' : e.type === 'done' && e.meta.cached ? 'cache' : 'ai',
+        trigger: this.openTrigger,
+      });
+    }
   }
 
   // ---------------- Field lifecycle ----------------
@@ -352,6 +369,7 @@ export class Controller {
       return;
     }
     log.info(`focus ${desc} → ${elig.autoOpen ? 'auto-open' : elig.showIcon ? 'icon only' : 'shortcut only'}${elig.reason ? ` (${elig.reason})` : ''}`);
+    this.track('field_focused', { mode: elig.autoOpen ? 'auto_open' : elig.showIcon ? 'icon' : 'shortcut', chat: !!elig.chat });
     this.attach(el, !!elig.chat);
     this.store.set({ iconVisible: elig.showIcon });
     if (elig.chat) {
@@ -367,7 +385,7 @@ export class Controller {
         field: describeAncestors(el, 10),
       });
       if (elig.autoOpen) this.openWhenQuestionReady(el);
-    } else if (elig.autoOpen) this.open({ auto: true });
+    } else if (elig.autoOpen) this.open({ auto: true, trigger: 'auto' });
   }
 
   onBlur(next: EventTarget | null) {
@@ -410,8 +428,8 @@ export class Controller {
     const elig = checkEligibility(el, this.settings());
     if (!elig.ok || (this.openedFor !== el && !elig.autoOpen)) return;
     log.debug('field clicked: reopening the popup');
-    if (this.chatMode) this.openWhenQuestionReady(el);
-    else this.open({ auto: true });
+    if (this.chatMode) this.openWhenQuestionReady(el, undefined, 'click_reopen');
+    else this.open({ auto: true, trigger: 'click_reopen' });
   }
 
   /** A form is being submitted: learn from the field before the page navigates away. */
@@ -442,24 +460,25 @@ export class Controller {
     const field: FieldContext = { ...e.field, currentValue: '' };
     const q = field.label || field.placeholder || field.name || 'this field';
     log.info(`correction detected (${reason}) for "${q}"`);
-    const save = () =>
-      rpc<{ savedAs: string[] }>({ type: 'learn', field, text: value, host: location.hostname })
+    const save = (trigger: LearnTrigger) =>
+      rpc<{ savedAs: string[] }>({ type: 'learn', field, text: value, host: location.hostname, trigger })
         .then((r) => this.showToast(`Saved to memory${r.savedAs.includes('fact') ? ' as a key fact' : r.savedAs.includes('note') ? ' (Saved answers)' : ''}. FormPilot will use it next time.`, 'success', undefined, 3500))
         .catch((err) => this.showToast(`Couldn't save: ${(err as Error).message}`, 'error'));
-    if (s.cache.learn === 'auto') return void save();
+    if (s.cache.learn === 'auto') return void save('auto');
+    this.track('learn_prompt', { action: 'shown' });
     this.showToast(
       `Remember “${truncate(value, 40)}” as your answer to “${truncate(q, 60)}”?`,
       'info',
       [
-        { label: 'Remember', primary: true, run: () => void save() },
-        { label: 'Not now', run: () => {} },
+        { label: 'Remember', primary: true, run: () => (this.track('learn_prompt', { action: 'accepted' }), void save('ask')) },
+        { label: 'Not now', run: () => this.track('learn_prompt', { action: 'dismissed' }) },
       ],
       12_000,
     );
   }
 
   /** Save what's in the focused field right now (dropdown button, right-click menu). */
-  rememberActive() {
+  rememberActive(trigger: LearnTrigger = 'button') {
     let el = this.field ?? deepActiveElement();
     if (el && fieldKind(el) === 'contenteditable') el = editableRoot(el);
     if (!el || !fieldKind(el)) return this.showToast('Click into the field with your answer first.', 'info');
@@ -468,7 +487,7 @@ export class Controller {
     const field = (this.eng?.el === el ? this.eng.field : extractField(el)) ?? null;
     if (!field || isSensitive(field.semantic)) return this.showToast("FormPilot doesn't store sensitive fields.", 'info');
     if (this.eng?.el === el) this.eng.learned = normalizeText(value);
-    void rpc<{ savedAs: string[] }>({ type: 'learn', field: { ...field, currentValue: '' }, text: value, host: location.hostname })
+    void rpc<{ savedAs: string[] }>({ type: 'learn', field: { ...field, currentValue: '' }, text: value, host: location.hostname, trigger })
       .then(() => this.showToast(`Saved “${truncate(value, 40)}” for “${truncate(field.label || field.name, 50)}”.`, 'success', undefined, 3500))
       .catch((err) => this.showToast(`Couldn't save: ${(err as Error).message}`, 'error'));
     this.close();
@@ -484,7 +503,7 @@ export class Controller {
    * Chat site: the popup focuses the input, and the bot's question may render a moment later.
    * Re-read the page every 250 ms for up to 4 s and open as soon as a question is there (or after the wait anyway).
    */
-  private openWhenQuestionReady(el: HTMLElement, previous?: string) {
+  private openWhenQuestionReady(el: HTMLElement, previous?: string, trigger: OpenTrigger = 'chat_question') {
     clearTimeout(this.questionTimer);
     const t0 = Date.now();
     const tick = () => {
@@ -496,6 +515,7 @@ export class Controller {
       // Naukri loads questions from its API, so allow a generous wait for the first one.
       if (ready || Date.now() - t0 > 8000) {
         this.lastQuestion = q;
+        this.track('chat_question', { found: ready });
         log.info(
           ready
             ? `chat question found via ${info.via} after ${Date.now() - t0}ms: "${truncate(q, 90)}"`
@@ -503,7 +523,7 @@ export class Controller {
           ready ? undefined : conversationDiagnostics(el),
         );
         this.startEngagement(el);
-        this.open({ auto: true });
+        this.open({ auto: true, trigger });
       } else this.questionTimer = setTimeout(tick, 250);
     };
     tick();
@@ -535,7 +555,7 @@ export class Controller {
         const elig = checkEligibility(el, this.settings());
         log.info(`new question in the popup: "${truncate(q, 80)}" → ${elig.autoOpen ? 'opening suggestions' : 'icon only'}`);
         this.startEngagement(el);
-        if (elig.autoOpen) this.open({ auto: true });
+        if (elig.autoOpen) this.open({ auto: true, trigger: 'chat_question' });
       }, 350);
     });
     this.convoObserver.observe(root, { childList: true, subtree: true, characterData: true });
@@ -587,7 +607,7 @@ export class Controller {
   }
 
   /** Open the panel for the current field. */
-  open({ auto = false, forced = false }: { auto?: boolean; forced?: boolean } = {}) {
+  open({ auto = false, forced = false, trigger }: { auto?: boolean; forced?: boolean; trigger?: OpenTrigger } = {}) {
     const el = this.field;
     if (!el) return;
     if (forced) {
@@ -604,13 +624,15 @@ export class Controller {
     if (this.eng?.el === el) this.eng.field = field;
     else this.startEngagement(el);
     this.openedFor = el;
+    this.openTrigger = trigger ?? (auto ? 'auto' : 'icon');
+    this.shownReported = false;
     log.info(`open "${field.label}" [${field.kind}/${field.semantic}${field.maxLength ? `/max ${field.maxLength}` : ''}]`);
     const s = this.settings();
     // Instant results right away; AI after a short debounce (cancelled if focus moves).
-    this.request({ instantOnly: true });
+    this.request({ instantOnly: true, trigger: this.openTrigger });
     if ((s.behavior.autoGenerate || !auto) && this.store.get().hasProvider) {
       clearTimeout(this.genTimer);
-      this.genTimer = setTimeout(() => this.request({}), auto ? s.behavior.generateDelayMs : 0);
+      this.genTimer = setTimeout(() => this.request({ kind: 'initial' }), auto ? s.behavior.generateDelayMs : 0);
     }
   }
 
@@ -659,12 +681,13 @@ export class Controller {
           if (readValue(el).trim()) return;
           if (this.chatMode) return this.openWhenQuestionReady(el, this.lastQuestion);
           this.startEngagement(el);
-          if (checkEligibility(el, this.settings()).autoOpen) this.open({ auto: true });
+          if (checkEligibility(el, this.settings()).autoOpen) this.open({ auto: true, trigger: 'chat_question' });
         }, 600);
         return false;
       }
       if (e.key === 'ArrowDown' && e.altKey) {
-        this.open({ forced: true });
+        this.track('popup_key', { key: 'alt_down' });
+        this.open({ forced: true, trigger: 'alt_down' });
         return true;
       }
       return false;
@@ -672,25 +695,30 @@ export class Controller {
     const items = visibleItems(st);
     switch (e.key) {
       case 'Escape':
+        this.track('popup_key', { key: 'escape' });
         this.close();
         return true;
       case 'ArrowDown':
         if (!items.length) return false;
+        this.track('popup_key', { key: 'arrows' });
         this.store.set({ active: (st.active + 1) % items.length });
         return true;
       case 'ArrowUp':
         if (!items.length) return false;
+        this.track('popup_key', { key: 'arrows' });
         this.store.set({ active: st.active <= 0 ? items.length - 1 : st.active - 1 });
         return true;
       case 'Enter': {
         if (e.shiftKey || e.isComposing) return false;
         const it = items[st.active];
         if (it) {
-          this.insert(it);
+          this.track('popup_key', { key: 'enter' });
+          this.insert(it, 'enter');
           return true;
         }
         if (!items.length && st.status === 'idle' && st.hasProvider) {
-          this.request({});
+          this.track('popup_key', { key: 'enter' });
+          this.request({ kind: 'manual' });
           return true;
         }
         return false;
@@ -698,7 +726,8 @@ export class Controller {
       case 'Tab': {
         const it = items[st.active];
         if (this.settings().panel.tabAccepts && it && !e.shiftKey) {
-          this.insert(it);
+          this.track('popup_key', { key: 'tab' });
+          this.insert(it, 'tab');
           return true;
         }
         if (!st.pinned) this.close();
@@ -710,7 +739,8 @@ export class Controller {
     if (digit && this.settings().panel.numberShortcuts) {
       const it = items[Number(digit[1]) - 1];
       if (it) {
-        this.insert(it);
+        this.track('popup_key', { key: 'alt_number' });
+        this.insert(it, 'alt_number');
         return true;
       }
     }
@@ -731,7 +761,7 @@ export class Controller {
     return (again as HTMLElement) || null;
   }
 
-  insert(s: Suggestion) {
+  insert(s: Suggestion, method: InsertMethod = 'click') {
     const el = this.resolveField();
     const field = this.store.get().field;
     if (!el || !field) {
@@ -748,6 +778,7 @@ export class Controller {
     }
     if (!res.ok) {
       log.warn(`insert failed via ${res.method}`, { field: field.label });
+      this.track('insert_failed', { source: s.source === 'fact' ? 'memory' : s.source });
       void navigator.clipboard?.writeText(s.text).catch(() => {});
       this.showToast("Couldn't insert here, so the text was copied. Press Ctrl/⌘+V.", 'error');
       return;
@@ -759,16 +790,17 @@ export class Controller {
     }
     if (cfg.behavior.highlightOnFill) flash(el, getAccent(this.store.get().accent));
     log.info(`inserted ${s.source} suggestion via ${res.method} (${s.text.length} chars)`);
-    void rpc({ type: 'accept', field, text: s.text, host: location.hostname, source: s.source }).catch((e) => log.debug('accept rpc failed', e));
+    const rank = visibleItems(this.store.get()).findIndex((x) => x.id === s.id) + 1;
+    void rpc({ type: 'accept', field, text: s.text, host: location.hostname, source: s.source, method, rank }).catch((e) => log.debug('accept rpc failed', e));
     if (cfg.behavior.closeOnInsert) this.close();
     if (res.method !== 'execCommand') {
-      this.showToast('Inserted', 'success', { label: 'Undo', run: () => restoreElement(el, res.previous) });
+      this.showToast('Inserted', 'success', { label: 'Undo', run: () => (this.track('undo_used', { what: 'insert' }), restoreElement(el, res.previous)) });
     }
   }
 
   // ---------------- Whole-form fill ----------------
 
-  async fillForm() {
+  async fillForm(trigger: FillTrigger = 'popup_menu') {
     const anchor = this.field ?? (document.activeElement as HTMLElement | null);
     if (!anchor || this.store.get().filling) return;
     if (!contextAlive()) return this.handleDeadContext();
@@ -832,6 +864,7 @@ export class Controller {
         type: 'fill-form',
         fields: fillable.map(({ id, field }) => ({ id, field })),
         page,
+        trigger,
       });
       const undo: { el: HTMLElement; previous: string; radios?: HTMLInputElement[] }[] = [];
       let n = 0;
@@ -853,6 +886,7 @@ export class Controller {
       }
       anchor.focus?.({ preventScroll: true });
       log.info(`fill-form: filled ${n}/${fillable.length} in ${res.ms}ms`);
+      this.track('form_fill_applied', { fields: fillable.length, filled: n, trigger });
       this.showToast(
         n ? `Filled ${n} of ${fillable.length} fields · check before submitting` : 'Nothing to fill from your memory.',
         n ? 'success' : 'info',
@@ -860,6 +894,7 @@ export class Controller {
           ? {
               label: 'Undo',
               run: () => {
+                this.track('undo_used', { what: 'form' });
                 for (const u of undo.reverse()) {
                   if (u.radios) u.radios.forEach((r) => (r.checked = r.value === u.previous));
                   else restoreElement(u.el, u.previous);
@@ -901,43 +936,50 @@ export class Controller {
   // ---------------- Actions exposed to the UI ----------------
 
   actions: Actions = {
-    insert: (s) => this.insert(s),
-    generate: () => this.request({}),
-    regenerate: () => this.request({ fresh: true }),
-    adjust: (k) => this.request({ refine: ADJUST_PROMPTS[k], fresh: true }),
+    insert: (s) => this.insert(s, 'click'),
+    generate: () => (this.track('popup_action', { action: 'generate' }), this.request({ kind: 'manual' })),
+    regenerate: () => (this.track('popup_action', { action: 'regenerate' }), this.request({ fresh: true, kind: 'regenerate' })),
+    adjust: (k) => {
+      if (k === 'shorter' || k === 'longer') this.track('popup_action', { action: k });
+      this.request({ refine: ADJUST_PROMPTS[k], fresh: true, kind: k });
+    },
     refine: (text) => {
+      this.track('popup_action', { action: 'refine' });
       this.store.set({ refineOpen: false });
       this.field?.focus({ preventScroll: true });
-      this.request({ refine: text, fresh: true });
+      this.request({ refine: text, fresh: true, kind: 'refine' });
     },
     toggleRefine: (open) => {
       const next = open ?? !this.store.get().refineOpen;
+      if (next) this.track('popup_action', { action: 'refine_open' });
       this.store.set({ refineOpen: next });
       if (!next) this.field?.focus({ preventScroll: true });
     },
-    close: () => this.close(),
-    openFromIcon: () => (this.store.get().open ? this.close() : this.open({ forced: true })),
+    close: () => (this.track('popup_action', { action: 'close' }), this.close()),
+    openFromIcon: () => (this.store.get().open ? this.close() : this.open({ forced: true, trigger: 'icon' })),
     openSettings: (section) => {
       if (!contextAlive()) return this.handleDeadContext();
+      this.track('popup_action', { action: 'settings' });
       void rpc({ type: 'open-options', section }).catch(() => {});
       this.close();
     },
-    fillForm: () => void this.fillForm(),
+    fillForm: () => (this.track('popup_action', { action: 'fill_form' }), void this.fillForm('popup_menu')),
     pauseSite: () => {
+      this.track('popup_action', { action: 'pause_site' });
       this.eng = null;
       void rpc({ type: 'site-toggle', host: location.hostname, enabled: false });
       this.detach();
       this.showToast(`FormPilot paused on ${location.hostname}. Re-enable it from the toolbar icon.`, 'info');
     },
     setActive: (i) => this.store.set({ active: i }),
-    remember: () => this.rememberActive(),
-    savePosition: (pos) => this.savePanelPosition(pos),
-    resetPosition: () => this.resetPanelPosition(),
-    togglePin: () => this.togglePin(),
+    remember: () => (this.track('popup_action', { action: 'remember' }), this.rememberActive('button')),
+    savePosition: (pos) => (this.track('popup_action', { action: 'move' }), this.savePanelPosition(pos)),
+    resetPosition: () => (this.track('popup_action', { action: 'reset_position' }), this.resetPanelPosition()),
+    togglePin: () => (this.track('popup_action', { action: this.store.get().pinned ? 'unpin' : 'pin' }), this.togglePin()),
   };
 
   /** Called for the keyboard command / context menu. */
-  openForActiveElement() {
+  openForActiveElement(trigger: OpenTrigger = 'shortcut') {
     let a = deepActiveElement();
     if (!a || a === document.body) {
       this.showToast('Click into a form field first.', 'info');
@@ -945,7 +987,7 @@ export class Controller {
     }
     if (fieldKind(a) === 'contenteditable') a = editableRoot(a);
     if (a !== this.field) this.attach(a, !!checkEligibility(a, this.settings(), true).chat);
-    this.open({ forced: true });
+    this.open({ forced: true, trigger });
   }
 
   setFieldState(patch: Partial<UIState>) {

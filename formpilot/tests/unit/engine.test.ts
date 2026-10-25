@@ -252,3 +252,48 @@ describe('learning from corrections', () => {
     expect(events.at(-1)).toMatchObject({ type: 'done', items: [expect.objectContaining({ text: 'AI answer' })] });
   });
 });
+
+describe('usage telemetry from the engine', () => {
+  const recorder = () => {
+    const calls: { name: string; props?: Record<string, unknown> }[] = [];
+    return {
+      calls,
+      tel: { count: (name: string, props?: Record<string, unknown>) => void calls.push({ name, props }), event: (name: string, props?: Record<string, unknown>) => void calls.push({ name, props }) },
+    };
+  };
+
+  it('reports requests, outcomes, cache hits and latency buckets: never text', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => aiResponse(['My secret answer'])));
+    const s = settings();
+    const { calls, tel } = recorder();
+    const engine = new SuggestEngine(() => s, tel);
+    await run(engine, field(), { kind: 'initial' });
+    await run(engine, field(), { kind: 'initial' });
+    const names = calls.map((c) => c.name);
+    expect(names.filter((n) => n === 'suggestions_requested')).toHaveLength(2);
+    expect(calls).toContainEqual({ name: 'suggest_result', props: { outcome: 'ai', kind: 'initial', provider: 'groq' } });
+    expect(calls).toContainEqual({ name: 'suggest_result', props: { outcome: 'cache', kind: 'initial' } });
+    expect(calls).toContainEqual({ name: 'response_cache', props: { result: 'hit' } });
+    expect(calls.find((c) => c.name === 'ai_latency')?.props).toMatchObject({ op: 'suggest', provider: 'groq', bucket: expect.any(String) });
+    expect(JSON.stringify(calls)).not.toMatch(/secret|Acme|groq\.com/);
+  });
+
+  it('reports errors by category, and blocked fields', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":{"message":"slow down"}}', { status: 429 })));
+    const s = settings();
+    const { calls, tel } = recorder();
+    const engine = new SuggestEngine(() => s, tel);
+    await run(engine, field(), { kind: 'regenerate', fresh: true });
+    expect(calls).toContainEqual({ name: 'ai_error', props: { op: 'suggest', category: 'rate_limit', provider: 'groq' } });
+    expect(calls).toContainEqual({ name: 'suggest_result', props: { outcome: 'error', kind: 'regenerate' } });
+    await run(engine, field({ label: 'Card number', semantic: 'cc-number' }));
+    expect(calls).toContainEqual({ name: 'suggest_result', props: { outcome: 'blocked', kind: 'initial' } });
+  });
+
+  it('counts instant lookups as hit or miss', async () => {
+    const s = settings();
+    const { calls, tel } = recorder();
+    await run(new SuggestEngine(() => s, tel), field(), { instantOnly: true, trigger: 'icon' });
+    expect(calls).toEqual([{ name: 'instant_lookup', props: { result: 'miss' } }]);
+  });
+});

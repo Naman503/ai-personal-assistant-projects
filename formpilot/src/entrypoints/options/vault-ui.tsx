@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { track } from '@/lib/messages';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Eye, EyeOff, KeyRound, Loader2, Lock, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -148,6 +149,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     try {
       const k = dialog.kind === 'create' ? await createVault(pw, (strict ? 'strict' : 'standard') as VaultMode) : await unlockVault(pw);
       keepUnlocked(k);
+      track('options_action', { action: dialog.kind === 'create' ? 'vault_created' : 'vault_unlocked' });
       await refresh();
       if (dialog.kind === 'create') toast.success('Password set. Your API keys are now encrypted.');
       pending.current?.resolve(k);

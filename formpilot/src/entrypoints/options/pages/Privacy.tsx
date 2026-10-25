@@ -6,7 +6,7 @@ import { useVault } from '../vault-ui';
 import { changePassword, lockVault, passwordProblem, resetVault, setVaultMode } from '@/lib/vault';
 import { db, bumpMemoryVersion } from '@/lib/memory/db';
 import { DEFAULT_SETTINGS, parseSettings, saveSettings } from '@/lib/settings';
-import { rpc } from '@/lib/messages';
+import { rpc, track } from '@/lib/messages';
 import type { PageProps } from '../App';
 
 function SecurityCard({ update }: { update: PageProps['update'] }) {
@@ -24,6 +24,7 @@ function SecurityCard({ update }: { update: PageProps['update'] }) {
     try {
       const dek = await vault.requireDek('Enter your password to change how keys are locked.');
       await setVaultMode(dek, on ? 'strict' : 'standard');
+      track('options_action', { action: 'vault_mode_changed' });
       await vault.refresh();
       toast.success(on ? 'Keys will lock when the browser restarts' : 'Keys stay usable after restarts');
     } catch {
@@ -51,6 +52,7 @@ function SecurityCard({ update }: { update: PageProps['update'] }) {
     try {
       const dek = await vault.requireDek('Enter your current password.');
       await changePassword(dek, pw);
+      track('options_action', { action: 'password_changed' });
       setChanging(false);
       toast.success('Password changed');
     } catch (e) {
@@ -172,6 +174,7 @@ export function Privacy({ settings, update }: PageProps) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const a = Object.assign(document.createElement('a'), { href: url, download: `formpilot-backup-${new Date().toISOString().slice(0, 10)}.json` });
     a.click();
+    track('options_action', { action: 'backup_exported' });
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
 
@@ -196,15 +199,18 @@ export function Privacy({ settings, update }: PageProps) {
       const { rechunkAll } = await import('@/lib/memory/ingest');
       await rechunkAll({ chunkSize: s.memory.chunkSize, chunkOverlap: s.memory.chunkOverlap });
       await rpc({ type: 'memory-changed' });
+      track('options_action', { action: 'backup_imported' });
       toast.success('Backup imported');
       setTimeout(() => location.reload(), 600);
     } catch (e) {
+      track('options_action', { action: 'backup_import_failed' });
       toast.error(`Import failed: ${(e as Error).message}`);
     }
   };
 
   const wipe = async () => {
     if (!confirm('Delete ALL FormPilot data: documents, facts, history, cache and settings? This cannot be undone.')) return;
+    track('options_action', { action: 'wipe_all' });
     await Promise.all([db().docs.clear(), db().chunks.clear(), db().facts.clear(), db().history.clear(), db().cache.clear(), resetVault()]);
     await bumpMemoryVersion();
     await saveSettings(DEFAULT_SETTINGS);
@@ -232,7 +238,7 @@ export function Privacy({ settings, update }: PageProps) {
         </Row>
         <Row
           label="Share anonymous usage"
-          description="Which features are used, daily counts of filled fields, the provider type and error types, with a random id. Never field contents, pages, memory, provider URLs or keys, and never in Local-only mode. Turning it off deletes what was sent."
+          description="Which features, shortcuts and settings are used, daily counts (suggestions shown and accepted, fills, corrections), outcomes, error categories, latency and size buckets, the provider type and crash stacks from FormPilot's own code, with a random id. Never field contents, typed text, pages or sites, memory, file names, models, provider URLs or keys, and never in Local-only mode. Turning it off deletes what was sent."
         >
           <Switch checked={p.shareUsage} onCheckedChange={(v) => set('shareUsage', v)} />
         </Row>

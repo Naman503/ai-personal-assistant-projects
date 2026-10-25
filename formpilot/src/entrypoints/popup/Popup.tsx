@@ -5,11 +5,13 @@ import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { siteAllowed } from '@/lib/fields/eligibility';
 import { providerConfigured, isLocalProvider } from '@/lib/settings';
 import { hostMatches } from '@/lib/util';
-import { rpc, type Stats } from '@/lib/messages';
+import { rpc, track, type Stats } from '@/lib/messages';
 import { AUTHOR } from '@/lib/about';
 import { vaultStatus } from '@/lib/vault';
 
 function openOptions(section?: string) {
+  const action = (section ?? 'settings').split('?')[0];
+  track('toolbar_action', { action: ['providers', 'memory', 'logs', 'about'].includes(action) ? action : 'settings' });
   void rpc({ type: 'open-options', section }).then(() => window.close());
 }
 
@@ -39,6 +41,12 @@ export function Popup() {
   const blocked = !!host && settings.behavior.blockedSites.some((p) => hostMatches(host, p));
   const activeHere = !!host && siteAllowed(host, settings);
   const providers = settings.providers.filter((p) => providerConfigured(p) && (!settings.privacy.localOnly || isLocalProvider(p)));
+  const [reported, setReported] = useState(false);
+  useEffect(() => {
+    if (!loaded || !tab || reported) return;
+    setReported(true);
+    track('toolbar_popup_opened', { site_active: activeHere, provider_ready: providers.length > 0, locked });
+  }, [loaded, tab, reported, activeHere, providers.length, locked]);
 
   if (!loaded) return <div className="h-80" />;
 
@@ -54,7 +62,13 @@ export function Popup() {
             <div className="text-[15px] leading-tight font-semibold tracking-tight">FormPilot</div>
             <div className="text-xs text-zinc-500">{settings.behavior.enabled ? (activeHere ? 'Active on this page' : host ? 'Paused on this page' : 'Not available on this page') : 'Paused everywhere'}</div>
           </div>
-          <Switch checked={settings.behavior.enabled} onCheckedChange={(v) => update((d) => void (d.behavior.enabled = v))} />
+          <Switch
+            checked={settings.behavior.enabled}
+            onCheckedChange={(v) => {
+              track('toolbar_action', { action: 'toggle_extension' });
+              update((d) => void (d.behavior.enabled = v));
+            }}
+          />
         </div>
       </div>
 
@@ -69,12 +83,13 @@ export function Popup() {
             <Switch
               checked={!blocked}
               disabled={!settings.behavior.enabled}
-              onCheckedChange={(on) =>
+              onCheckedChange={(on) => {
+                track('toolbar_action', { action: 'toggle_site' });
                 update((d) => {
                   const list = d.behavior.blockedSites.filter((p) => !hostMatches(host, p));
                   d.behavior.blockedSites = on ? list : [...list, host];
-                })
-              }
+                });
+              }}
             />
           </div>
         )}
@@ -84,7 +99,8 @@ export function Popup() {
           disabled={!activeHere || !tab?.id}
           onClick={async () => {
             if (!tab?.id) return;
-            await chrome.tabs.sendMessage(tab.id, { type: 'command', name: 'fill-form' }).catch(() => {});
+            track('toolbar_action', { action: 'fill_form' });
+            await chrome.tabs.sendMessage(tab.id, { type: 'command', name: 'fill-form', via: 'toolbar' }).catch(() => {});
             window.close();
           }}
         >
@@ -146,6 +162,7 @@ export function Popup() {
           href={`mailto:${AUTHOR.email}`}
           target="_blank"
           rel="noreferrer"
+          onClick={() => track('toolbar_action', { action: 'email' })}
           title={AUTHOR.email}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-brand transition hover:bg-brand/10"
         >

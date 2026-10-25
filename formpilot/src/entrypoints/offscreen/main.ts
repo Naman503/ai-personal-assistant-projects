@@ -4,10 +4,13 @@
  */
 import { nanoAvailability, nanoGenerate } from '@/lib/llm/nano';
 import { configureLogger, createLogger } from '@/lib/logger';
+import { trackError } from '@/lib/messages';
 
 configureLogger({ context: 'offscreen' });
 const log = createLogger('offscreen');
 const controllers = new Map<string, AbortController>();
+addEventListener('error', (e) => trackError('offscreen', e.error, true));
+addEventListener('unhandledrejection', (e) => trackError('offscreen', e.reason));
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.target !== 'offscreen') return false;

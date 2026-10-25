@@ -94,4 +94,11 @@ export interface SuggestOptions {
   fresh?: boolean;
   /** Only return instant (facts/history) results. */
   instantOnly?: boolean;
+  /** Usage reporting only: what asked for this request (never sent to a model). */
+  kind?: RequestKind;
+  /** Usage reporting only: how the popup was opened (sent with the instant lookup). */
+  trigger?: OpenTrigger;
 }
+
+export type RequestKind = 'initial' | 'manual' | 'regenerate' | 'shorter' | 'longer' | 'formal' | 'casual' | 'refine' | 'retry';
+export type OpenTrigger = 'auto' | 'icon' | 'shortcut' | 'context_menu' | 'alt_down' | 'click_reopen' | 'chat_question';
