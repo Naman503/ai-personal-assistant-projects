@@ -4,6 +4,17 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-26
+
+### Added
+- **Richer anonymous usage** (same off switch, still nothing in Local-only mode): suggestions requested / shown / accepted (acceptance rate), how a suggestion was inserted (click, Enter, Tab, Alt+number) and its position, how the popup was opened (on focus, icon, Alt+J, Alt+↓, right-click menu, chat question), Regenerate / Shorter / Longer / Refine and the other popup buttons, keyboard shortcuts and context-menu items, the toolbar popup and settings pages, memory and provider actions, and learn-from-corrections prompts.
+- Quality signals: the outcome of every suggestion request (AI, cache, saved answer, fact, empty, error, timeout), AI errors by category (rate limit, auth, timeout, network, locked…), latency buckets, response-cache hits, provider fallbacks, fact extraction and embedding results, provider tests.
+- A daily snapshot of on/off settings and preset choices (never sites, prompts, persona text or models), the number of configured providers by type, and memory size buckets.
+- Crash capture in the content script, toolbar popup, settings page and offscreen page, forwarded to the background with only the error class and FormPilot's own stack frames.
+
+### Changed
+- `popup_opened` now counts each popup open once (it used to count both the instant lookup and the AI request).
+
 ## [1.1.0] - 2026-10-25
 
 ### Added

@@ -7,7 +7,7 @@ import { ModelPicker } from '@/components/ModelPicker';
 import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Switch } from '@/components/ui';
 import { cn } from '@/components/ui/cn';
 import { PROVIDER_PRESETS, isLocalProvider, providerConfigured, providerFromPreset, type ProviderConfig } from '@/lib/settings';
-import { rpc } from '@/lib/messages';
+import { rpc, track } from '@/lib/messages';
 import { nanoAvailability, nanoDownload } from '@/lib/llm/nano';
 import { uid } from '@/lib/util';
 import type { PageProps } from '../App';
@@ -395,12 +395,14 @@ export function Providers({ settings, update }: PageProps) {
     }
   };
 
-  const move = (i: number, dir: -1 | 1) =>
+  const move = (i: number, dir: -1 | 1) => {
+    track('options_action', { action: 'provider_reordered' });
     update((d) => {
       const j = i + dir;
       if (j < 0 || j >= d.providers.length) return;
       [d.providers[i], d.providers[j]] = [d.providers[j], d.providers[i]];
     });
+  };
 
   return (
     <>
@@ -423,6 +425,7 @@ export function Providers({ settings, update }: PageProps) {
                 key={pr.presetId}
                 className="rounded-xl border border-zinc-200 p-3 text-left transition hover:border-brand/50 hover:bg-brand/5 dark:border-zinc-800"
                 onClick={() => {
+                  track('options_action', { action: 'provider_added', provider: pr.presetId.replace('-', '_') });
                   update((d) => void d.providers.push(providerFromPreset(pr.presetId, { id: BUILTIN.has(pr.presetId) && !d.providers.some((x) => x.id === pr.presetId) ? pr.presetId : uid(pr.presetId + '-') })));
                   setAdding(false);
                   toast.success(`${pr.label} added`);
@@ -479,6 +482,7 @@ export function Providers({ settings, update }: PageProps) {
             onRemove={
               providers.length > 1
                 ? () => {
+                    track('options_action', { action: 'provider_removed' });
                     void deleteSecret(p.id);
                     update((d) => void d.providers.splice(i, 1));
                   }

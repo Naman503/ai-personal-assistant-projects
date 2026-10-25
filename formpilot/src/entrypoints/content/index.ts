@@ -3,7 +3,7 @@ import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-co
 import type { Settings } from '@/lib/settings';
 import { fieldKind } from '@/lib/fields/context';
 import { Controller, contextAlive } from './controller';
-import type { TabCommand } from '@/lib/messages';
+import { trackError, type TabCommand } from '@/lib/messages';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -34,6 +34,25 @@ export default defineContentScript({
     });
 
     const controller = new Controller(() => settings);
+    const sharing = () => settings.privacy.shareUsage && !settings.privacy.localOnly;
+    /** Our errors only (their stack points into this extension); the page's own errors are never reported. */
+    const ours = (e: unknown) => e instanceof Error && !!e.stack?.includes(chrome.runtime.getURL(''));
+    const report = (e: unknown, fatal = false) => {
+      if (sharing() && contextAlive() && ours(e)) trackError('content', e, fatal);
+    };
+    /** Wrap a page-event handler: a bug in FormPilot must never break the page, and it gets reported. */
+    const guard =
+      <A extends unknown[]>(fn: (...a: A) => void) =>
+      (...a: A) => {
+        try {
+          fn(...a);
+        } catch (e) {
+          log.error('handler failed', e);
+          report(e);
+        }
+      };
+    ctx.addEventListener(window, 'error', (e: ErrorEvent) => report(e.error, true));
+    ctx.addEventListener(window, 'unhandledrejection', (e: PromiseRejectionEvent) => report(e.reason));
     const unwatch = watchSettingsLite((s) => {
       settings = s;
       configureLogger({ level: s.debug.logLevel, console: s.debug.console });
@@ -45,29 +64,29 @@ export default defineContentScript({
     /** The real focused element, even inside open shadow roots. */
     const realTarget = (e: Event): EventTarget | null => e.composedPath()[0] ?? e.target;
 
-    const onFocusIn = (e: FocusEvent) => {
+    const onFocusIn = guard((e: FocusEvent) => {
       const t = realTarget(e);
       if (controller.isOurs(t)) return;
       if (isField(t)) controller.onFocus(t);
-    };
-    const onFocusOut = (e: FocusEvent) => {
+    });
+    const onFocusOut = guard((e: FocusEvent) => {
       if (controller.isOurs(realTarget(e))) return;
       controller.onBlur(e.relatedTarget);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
+    });
+    const onKeyDown = guard((e: KeyboardEvent) => {
       if (controller.isOurs(realTarget(e))) return;
       if (controller.onKeyDown(e)) {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
-    };
-    const onInput = (e: Event) => {
+    });
+    const onInput = guard((e: Event) => {
       // Only real typing closes the panel; our own inserts are untrusted synthetic or execCommand events.
       if (e.isTrusted && (e as InputEvent).inputType?.startsWith('insert') && !(e as InputEvent).inputType.includes('Replacement')) {
         const t = realTarget(e);
         if (!controller.isOurs(t)) controller.onUserInput(t);
       }
-    };
+    });
     const onScheme = () => controller.applyAppearance(settings);
 
     // Capture phase so we see events before page handlers can stop them.
@@ -75,11 +94,11 @@ export default defineContentScript({
     ctx.addEventListener(document, 'focusout', onFocusOut as EventListener, { capture: true });
     ctx.addEventListener(document, 'keydown', onKeyDown as EventListener, { capture: true });
     ctx.addEventListener(document, 'input', onInput, { capture: true });
-    ctx.addEventListener(document, 'submit', () => controller.onSubmit(), { capture: true });
+    ctx.addEventListener(document, 'submit', guard(() => controller.onSubmit()), { capture: true });
     ctx.addEventListener(
       document,
       'click',
-      ((e: MouseEvent) => {
+      guard((e: MouseEvent) => {
         const t = realTarget(e);
         if (controller.isOurs(t)) return;
         if (isField(t)) controller.onFieldClick(t);
@@ -98,9 +117,10 @@ export default defineContentScript({
       // Commands go to every frame; only the focused frame reacts.
       if (!document.hasFocus()) return;
       log.info(`command ${msg.name}`);
-      if (msg.name === 'open-suggestions') controller.openForActiveElement();
-      else if (msg.name === 'remember') controller.rememberActive();
-      else void controller.fillForm();
+      const via = msg.via === 'context_menu' ? 'context_menu' : msg.via === 'toolbar' ? 'toolbar' : 'shortcut';
+      if (msg.name === 'open-suggestions') controller.openForActiveElement(via === 'context_menu' ? 'context_menu' : 'shortcut');
+      else if (msg.name === 'remember') controller.rememberActive(via === 'context_menu' ? 'context_menu' : 'button');
+      else void controller.fillForm(via);
     };
     chrome.runtime.onMessage.addListener(onMessage);
 

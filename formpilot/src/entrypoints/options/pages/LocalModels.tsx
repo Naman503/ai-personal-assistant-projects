@@ -5,7 +5,7 @@ import { Badge, Button, Card, CardHeader, Empty, Input, PageHeader, Switch } fro
 import { cn } from '@/components/ui/cn';
 import { LOCAL_MODELS, fmtContext, normTag, type LocalModel } from '@/lib/llm/catalog';
 import { ollamaDelete, ollamaPull, ollamaVersion, type PullProgress } from '@/lib/llm/ollama-admin';
-import { rpc } from '@/lib/messages';
+import { rpc, track } from '@/lib/messages';
 import { providerFromPreset } from '@/lib/settings-core';
 import type { ModelInfo } from '@/lib/llm/types';
 import { formatBytes } from '@/lib/util';
@@ -74,6 +74,7 @@ export function LocalModels({ settings, update, go }: PageProps) {
       setProgress((p) => ({ ...p, [tag]: { status: 'starting' } }));
       try {
         await ollamaPull(base, tag, (pr) => setProgress((p) => ({ ...p, [tag]: pr })), ctl.signal);
+        track('options_action', { action: 'local_model_installed' });
         toast.success(`${tag} installed`, { action: { label: 'Use it', onClick: () => ensureProvider(tag) } });
         await refresh();
       } catch (e) {
@@ -211,6 +212,7 @@ export function LocalModels({ settings, update, go }: PageProps) {
                             if (!confirm(`Delete ${m.id} from disk${m.size ? ` (frees ${formatBytes(m.size)})` : ''}?`)) return;
                             try {
                               await ollamaDelete(base, m.id);
+                              track('options_action', { action: 'local_model_removed' });
                               toast.success(`Deleted ${m.id}`);
                               void refresh();
                             } catch (e) {

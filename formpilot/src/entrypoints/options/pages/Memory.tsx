@@ -7,7 +7,7 @@ import { db, bumpMemoryVersion, type Fact, type MemoryDoc } from '@/lib/memory/d
 import { addDocument, rechunkAll, removeDocument, setDocumentEnabled, updateDocumentText } from '@/lib/memory/ingest';
 import { ACCEPTED_EXTENSIONS, parseFile } from '@/lib/memory/parsers';
 import { canonicalKey } from '@/lib/memory/facts';
-import { rpc } from '@/lib/messages';
+import { rpc, track } from '@/lib/messages';
 import type { RetrievalResult } from '@/lib/memory/retrieval';
 import { formatBytes, uid } from '@/lib/util';
 import type { PageProps } from '../App';
@@ -82,7 +82,8 @@ export function Memory({ settings, update }: PageProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const opts = { chunkSize: m.chunkSize, chunkOverlap: m.chunkOverlap };
 
-  const notify = (docId?: string) => rpc({ type: 'memory-changed', docId, extractFacts: !!docId }).catch(() => {});
+  const notify = (docId?: string, added?: { kind: string }) =>
+    rpc({ type: 'memory-changed', docId, extractFacts: !!docId, isNew: !!added, docKind: added?.kind }).catch(() => {});
 
   const ingest = async (files: FileList | File[]) => {
     for (const file of Array.from(files)) {
@@ -90,9 +91,11 @@ export function Memory({ settings, update }: PageProps) {
       try {
         const { text, kind } = await parseFile(file);
         const doc = await addDocument({ name: file.name, type: kind, text, size: file.size }, opts);
-        await notify(doc.id);
+        await notify(doc.id, { kind });
+        track('options_action', { action: 'doc_uploaded' });
         toast.success(`${file.name} added`, { description: `${text.length.toLocaleString()} characters. Extracting key facts…` });
       } catch (e) {
+        track('options_action', { action: 'doc_failed' });
         toast.error(`${file.name}: ${(e as Error).message}`);
       } finally {
         setBusy((b) => b.filter((n) => n !== file.name));
@@ -107,9 +110,11 @@ export function Memory({ settings, update }: PageProps) {
       await updateDocumentText(note.id, note.text, opts);
       await db().docs.update(note.id, { name: note.title || 'Note' });
       await notify(note.id);
+      track('options_action', { action: 'note_edited' });
     } else {
       const doc = await addDocument({ name: note.title.trim() || 'Note', type: 'note', text: note.text }, opts);
-      await notify(doc.id);
+      await notify(doc.id, { kind: 'note' });
+      track('options_action', { action: 'note_added' });
     }
     toast.success('Saved to memory');
     setNote(null);
@@ -232,6 +237,7 @@ export function Memory({ settings, update }: PageProps) {
                 variant="ghost"
                 title="Re-extract facts"
                 onClick={async () => {
+                  track('options_action', { action: 'facts_reextract' });
                   await db().docs.update(d.id, { factsStatus: 'pending' });
                   void reload();
                   const n = await rpc<number>({ type: 'extract-facts', docId: d.id }).catch(() => 0);
@@ -247,6 +253,7 @@ export function Memory({ settings, update }: PageProps) {
               <Switch
                 checked={d.enabled}
                 onCheckedChange={async (v) => {
+                  track('options_action', { action: 'doc_toggled' });
                   await setDocumentEnabled(d.id, v);
                   await notify();
                   void reload();
@@ -259,6 +266,7 @@ export function Memory({ settings, update }: PageProps) {
                 title="Delete"
                 onClick={async () => {
                   if (!confirm(`Delete “${d.name}” and the facts extracted from it?`)) return;
+                  track('options_action', { action: 'doc_deleted' });
                   await removeDocument(d.id);
                   await notify();
                   void reload();
@@ -283,6 +291,7 @@ export function Memory({ settings, update }: PageProps) {
           onSubmit={async (e) => {
             e.preventDefault();
             if (!newFact.label.trim() || !newFact.value.trim()) return;
+            track('options_action', { action: 'fact_added' });
             await db().facts.put({ id: uid('fact'), key: canonicalKey(newFact.label), label: newFact.label.trim(), value: newFact.value.trim(), source: 'manual', updatedAt: Date.now() });
             await bumpMemoryVersion();
             setNewFact({ label: '', value: '' });
@@ -304,11 +313,13 @@ export function Memory({ settings, update }: PageProps) {
                 key={f.id}
                 f={f}
                 onSave={async (label, value) => {
+                  track('options_action', { action: 'fact_edited' });
                   await db().facts.update(f.id, { label, value, key: canonicalKey(label), source: 'manual', updatedAt: Date.now() });
                   await bumpMemoryVersion();
                   void reload();
                 }}
                 onDelete={async () => {
+                  track('options_action', { action: 'fact_deleted' });
                   await db().facts.delete(f.id);
                   await bumpMemoryVersion();
                   void reload();
@@ -372,6 +383,7 @@ export function Memory({ settings, update }: PageProps) {
               size="icon"
               title="Re-chunk all documents"
               onClick={async () => {
+                track('options_action', { action: 'rechunk' });
                 await rechunkAll(opts);
                 await notify();
                 void reload();

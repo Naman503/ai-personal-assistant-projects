@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Copy, Pause, Play, Trash2, Bug, Download } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Switch } from '@/components/ui';
 import { cn } from '@/components/ui/cn';
-import { rpc } from '@/lib/messages';
+import { rpc, track } from '@/lib/messages';
 import type { LogEntry, LogLevel } from '@/lib/logger';
 import { activeProviders } from '@/lib/llm/registry';
 import type { PageProps } from '../App';
@@ -109,6 +109,7 @@ export function Logs({ settings, update }: PageProps) {
               onClick={() => {
                 const url = URL.createObjectURL(new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' }));
                 Object.assign(document.createElement('a'), { href: url, download: 'formpilot-logs.json' }).click();
+                track('options_action', { action: 'logs_exported' });
               }}
             >
               <Download className="size-3.5" />
@@ -118,6 +119,7 @@ export function Logs({ settings, update }: PageProps) {
               variant="ghost"
               title="Clear"
               onClick={async () => {
+                track('options_action', { action: 'logs_cleared' });
                 await rpc({ type: 'clear-logs' });
                 setLogs([]);
               }}

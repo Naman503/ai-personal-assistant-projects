@@ -23,6 +23,8 @@ import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
 import { clampToLength, hash, isAbort, uid } from '../util';
 import { createLogger } from '../logger';
+import { countBucket, errorCategory, msBucket, providerFamily, type Props } from '../usage';
+import type { ProviderConfig } from '../settings';
 
 const log = createLogger('bg:engine');
 
@@ -35,12 +37,24 @@ export const counters: Record<string, number> = {
   accepted: 0,
 };
 
+/** Anonymous usage hooks (lib/usage.ts). Only enums, booleans and buckets go through here. */
+export interface EngineTelemetry {
+  count(name: string, props?: Props, n?: number): unknown;
+  event(name: string, props?: Props): unknown;
+}
+
+const REQUEST_KINDS: string[] = ['initial', 'manual', 'regenerate', 'shorter', 'longer', 'formal', 'casual', 'refine', 'retry'];
+const NO_TELEMETRY: EngineTelemetry = { count: () => undefined, event: () => undefined };
+
 export class SuggestEngine {
   index = new MemoryIndex();
   private factsCache: { v: number; facts: Fact[] } | null = null;
   private queryEmb = new Map<string, number[]>();
 
-  constructor(private settings: () => Settings) {}
+  constructor(
+    private settings: () => Settings,
+    private usage: EngineTelemetry = NO_TELEMETRY,
+  ) {}
 
   async facts(): Promise<Fact[]> {
     const v = await memoryVersion();
@@ -125,10 +139,14 @@ export class SuggestEngine {
     const s = this.settings();
     const t0 = performance.now();
     counters.requests++;
+    const kind = REQUEST_KINDS.includes(opts.kind ?? '') ? opts.kind! : opts.refine ? 'refine' : opts.fresh ? 'regenerate' : 'initial';
+    const result = (outcome: string, extra: Props = {}) => void this.usage.count('suggest_result', { outcome, kind, ...extra });
+    if (!opts.instantOnly) void this.usage.count('suggestions_requested', { kind });
     log.info(`suggest "${field.label || field.name}" [${field.kind}/${field.semantic}]${opts.refine ? ` refine="${opts.refine}"` : ''}`);
 
     if (isSensitive(field.semantic)) {
       emit({ type: 'error', reqId, error: { code: 'blocked', message: 'FormPilot never fills sensitive fields (passwords, cards, OTP…).' } });
+      result('blocked');
       return;
     }
 
@@ -139,6 +157,7 @@ export class SuggestEngine {
       if (instant.length) counters.instantHits++;
       emit({ type: 'instant', reqId, items: instant });
       log.debug(`instant: ${instant.length} in ${Math.round(performance.now() - t0)}ms`);
+      if (opts.instantOnly) void this.usage.count('instant_lookup', { result: instant.length ? 'hit' : 'miss' });
     }
     if (opts.instantOnly) return;
 
@@ -146,12 +165,14 @@ export class SuggestEngine {
     const savedAnswer = instant.find((x) => x.verified && (x.score ?? 0) >= 1);
     if (savedAnswer && !opts.fresh && !opts.refine) {
       emit({ type: 'done', reqId, items: [], meta: { ms: Math.round(performance.now() - t0), note: 'Your saved answer' } });
+      result('saved_answer');
       return;
     }
     // A confident fact for a short factual field is the answer, so skip the model to save time and quota.
     const exactFact = instant.find((x) => x.source === 'fact' && (x.score ?? 0) >= 1);
     if (exactFact && isFactual(field.semantic) && !field.longForm && !opts.fresh && !opts.refine) {
       emit({ type: 'done', reqId, items: [], meta: { ms: Math.round(performance.now() - t0), note: 'Answered from your facts' } });
+      result('fact');
       return;
     }
 
@@ -159,7 +180,7 @@ export class SuggestEngine {
     emit({ type: 'status', reqId, stage: 'retrieving' });
     const { chunks } = await this.retrieve(field, page.formTitle);
     const facts = await this.facts();
-    if (signal.aborted) return;
+    if (signal.aborted) return result('cancelled');
 
     const system = systemPrompt(s);
     const prompt = this.prepare(
@@ -170,12 +191,15 @@ export class SuggestEngine {
     const cacheKey = hash(`${head?.id}|${head?.model}|${system}|${prompt}|${s.generation.numSuggestions}`);
     const ttl = s.cache.responseCacheTtlHours * 3600_000;
     const memoryHits = dedupeDocs(chunks);
+    if (s.memory.enabled) void this.usage.count('memory_retrieval', { docs: countBucket(memoryHits.length) });
 
     // 3) Response cache
     if (s.cache.responseCache && !opts.fresh && ttl > 0) {
       const hit = await cacheGet<{ items: Suggestion[]; provider: string; model: string }>(cacheKey, ttl);
+      void this.usage.count('response_cache', { result: hit ? 'hit' : 'miss' });
       if (hit) {
         counters.cacheHits++;
+        result('cache');
         const ms = Math.round(performance.now() - t0);
         log.info(`cache hit (${ms}ms)`);
         emit({ type: 'done', reqId, items: hit.items.map((i) => ({ ...i, id: uid('s') })), meta: { provider: hit.provider, model: hit.model, ms, cached: true, memoryHits } });
@@ -228,19 +252,32 @@ export class SuggestEngine {
         note: parsed.missing ? `Not in your memory: ${parsed.missing}` : items.length ? undefined : 'The model returned no suggestions.',
       };
       emit({ type: 'done', reqId, items, meta });
+      const provider = providerFamily(r.provider);
+      result(items.length ? 'ai' : 'empty', { provider });
+      void this.usage.count('ai_latency', { op: 'suggest', provider, bucket: msBucket(ms), streamed: streamed });
+      if (parsed.missing) void this.usage.count('answer_missing_info');
+      if (!parsed.json) void this.usage.count('ai_bad_json', { provider });
+      if (r.attempts.some((a) => a.error)) void this.usage.count('provider_fallback', { to: provider, tries: r.attempts.length });
       if (items.length && s.cache.responseCache) void cacheSet(cacheKey, { items, provider: r.provider.label, model: r.model });
     } catch (e) {
       if (isAbort(e) || signal.aborted) {
         if ((signal.reason as Error | undefined)?.name === 'TimeoutError') {
           log.warn(`request ${reqId} timed out after ${s.generation.timeoutMs}ms`);
           emit({ type: 'error', reqId, error: { code: 'timeout', message: `No answer within ${Math.round(s.generation.timeoutMs / 1000)}s.`, hint: 'Pick a faster model or raise the timeout in settings → Generation.' } });
-        } else log.debug(`request ${reqId} cancelled`);
+          result('timeout');
+          void this.usage.count('ai_error', { op: 'suggest', category: 'timeout', provider: providerFamily(head) });
+        } else {
+          log.debug(`request ${reqId} cancelled`);
+          result('cancelled');
+        }
         return;
       }
       counters.errors++;
       const err = e instanceof LLMError ? e : new LLMError('unknown', (e as Error)?.message ?? String(e));
       log.error(`generation failed [${err.code}]: ${err.message}`, { hint: err.hint, provider: err.provider });
       emit({ type: 'error', reqId, error: err.toInfo() });
+      result('error');
+      void this.usage.count('ai_error', { op: 'suggest', category: errorCategory(err.code), provider: familyOfLabel(chain, err.provider) });
     }
   }
 
@@ -337,14 +374,17 @@ export class SuggestEngine {
   }
 
   /** LLM-extract key facts from a document and upsert them. */
-  async extractFacts(docId: string, signal?: AbortSignal): Promise<number> {
+  async extractFacts(docId: string, signal?: AbortSignal, trigger: 'auto' | 'manual' = 'auto'): Promise<number> {
     const doc = await db().docs.get(docId);
     if (!doc) return 0;
     const s = this.settings();
+    const report = (result: string, n = 0) => void this.usage.count('facts_extracted', { result, trigger, facts: countBucket(n) });
     if (!activeProviders(s).length) {
       await db().docs.update(docId, { factsStatus: 'skipped', error: 'No AI provider configured' });
+      report('skipped');
       return 0;
     }
+    const t0 = performance.now();
     await db().docs.update(docId, { factsStatus: 'pending', error: undefined });
     try {
       const r = await generateWithFallback(s, {
@@ -375,9 +415,13 @@ export class SuggestEngine {
       await db().docs.update(docId, { factsStatus: 'done' });
       await bumpMemoryVersion();
       log.info(`extracted ${rows.length} facts from ${doc.name}`);
+      report(rows.length ? 'ok' : 'empty', rows.length);
+      void this.usage.count('ai_latency', { op: 'facts', provider: providerFamily(r.provider), bucket: msBucket(performance.now() - t0) });
       return rows.length;
     } catch (e) {
       log.error(`fact extraction failed for ${doc.name}`, e);
+      report('error');
+      void this.usage.count('ai_error', { op: 'facts', category: errorCategory((e as LLMError)?.code), provider: familyOfLabel(activeProviders(s), (e as LLMError)?.provider) });
       await db().docs.update(docId, { factsStatus: 'error', error: (e as Error).message });
       return 0;
     }
@@ -385,6 +429,11 @@ export class SuggestEngine {
 }
 
 export const SAVED_ANSWERS_DOC = 'doc_saved_answers';
+
+/** The provider family for an error's provider label (labels are the user's own, so never sent). */
+export function familyOfLabel(chain: ProviderConfig[], label: string | undefined): string {
+  return providerFamily(chain.find((p) => p.label === label) ?? chain[0]);
+}
 
 function dedupeDocs(chunks: RetrievedChunk[]): { doc: string; score: number }[] {
   const m = new Map<string, number>();
