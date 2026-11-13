@@ -4,6 +4,14 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-11-13
+
+### Fixed
+- **LinkedIn Easy Apply applications weren't recorded.** LinkedIn shows the Easy Apply dialog inside a shadow root, which FormPilot couldn't read, so it never saw "Application sent". It now reads text inside shadow roots too, and also recognises LinkedIn's "Applied … ago" label.
+
+### Added
+- If no confirmation shows up within 30 seconds of pressing Submit, FormPilot asks whether the application went through, with a **Record it** button, so nothing is missed silently.
+
 ## [1.3.0] - 2026-11-13
 
 ### Added

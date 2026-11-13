@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Staff Engineer | Beta Labs | LinkedIn-style</title>
+<style>body{font:15px system-ui;max-width:640px;margin:40px auto}</style>
+</head>
+<body>
+<!-- Like LinkedIn: the job details are in the page, the Easy Apply dialog lives in a shadow root. -->
+<div class="job-details-jobs-unified-top-card__job-title"><h1>Staff Engineer</h1></div>
+<div class="job-details-jobs-unified-top-card__company-name"><a>Beta Labs</a></div>
+<div class="job-details-jobs-unified-top-card__primary-description-container">Pune, Maharashtra · 2 days ago</div>
+<button id="easy">Easy Apply</button>
+<div id="interop-outlet"></div>
+<script>
+  const host = document.getElementById('interop-outlet');
+  const root = host.attachShadow({ mode: 'open' });
+  document.getElementById('easy').onclick = () => {
+    root.innerHTML = `
+      <div role="dialog" aria-modal="true">
+        <h2>Apply to Beta Labs</h2>
+        <div id="s1"><label for="ctc">Current CTC (INR, annual, in lacs)</label><input id="ctc">
+          <button id="next" type="button"><span>Next</span></button></div>
+        <div id="s2" hidden><label for="np">Notice period</label><input id="np">
+          <button id="send" type="button"><span>Submit application</span></button></div>
+      </div>`;
+    root.getElementById('next').onclick = () => { root.getElementById('s1').remove(); root.getElementById('s2').hidden = false; };
+    root.getElementById('send').onclick = () => setTimeout(() => {
+      root.querySelector('[role=dialog]').innerHTML = '<h2>Application sent</h2><p>Your application was sent to Beta Labs!</p>';
+    }, 500);
+  };
+</script>
+</body>
+</html>

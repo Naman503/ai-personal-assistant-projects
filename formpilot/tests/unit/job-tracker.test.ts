@@ -80,3 +80,15 @@ describe('fixes from real use', () => {
     expect(experienceSubject('total years of experience')).toBe('');
   });
 });
+
+describe('confirmation inside shadow roots', () => {
+  it('reads text from open shadow roots and counts new confirmations', async () => {
+    const { deepText, confirmationCount } = await import('@/lib/job');
+    document.body.innerHTML = '<div id="h"></div><p>Easy Apply</p>';
+    const root = document.getElementById('h')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<p>Your application was sent to Beta!</p>';
+    expect(deepText()).toContain('Your application was sent');
+    expect(confirmationCount(deepText())).toBe(1);
+    expect(confirmationCount('Applied 2 minutes ago')).toBe(1);
+  });
+});

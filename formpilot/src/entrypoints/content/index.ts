@@ -37,7 +37,7 @@ export default defineContentScript({
     const controller = new Controller(() => settings);
     const watcher = new ApplyWatcher(
       () => ({ on: settings.tracker.enabled && !!settings.tracker.url, autoRecord: settings.tracker.autoRecord, includeAnswers: settings.tracker.includeAnswers }),
-      (text, tone, action) => controller.showToast(text, tone, action, tone === 'error' ? 10_000 : 4_000),
+      (text, tone, action) => controller.showToast(text, tone, action, action ? 20_000 : tone === 'error' ? 10_000 : 4_000),
     );
     const sharing = () => settings.privacy.shareUsage && !settings.privacy.localOnly;
     /** Our errors only (their stack points into this extension); the page's own errors are never reported. */
