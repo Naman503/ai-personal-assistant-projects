@@ -13,6 +13,7 @@ import { db } from '@/lib/memory/db';
 import { hostMatches, isAbort } from '@/lib/util';
 import { charsBucket, countBucket, rpcType, docKind, errorCategory, msBucket, providerFamily, sanitizeClientEvent, optionsSection, settingsSnapshot, UsageReporter, usageSource } from '@/lib/usage';
 import { vaultStatus } from '@/lib/vault';
+import { recordInTracker, testTracker } from '@/lib/tracker';
 
 export default defineBackground({
   type: 'module',
@@ -196,6 +197,13 @@ export default defineBackground({
             void usage.crash(msg.name, typeof msg.stack === 'string' ? msg.stack : undefined, !!msg.fatal, msg.where);
           }
           return null;
+        case 'tracker-record': {
+          const out = await recordInTracker(settings, msg.kind, msg.job, msg.answers ?? []);
+          log.info(`job tracker: ${msg.kind} "${msg.job.role}" at ${msg.job.company} (${out.created ? 'new' : 'updated'})`);
+          return out;
+        }
+        case 'tracker-test':
+          return testTracker(msg.url ?? settings.tracker.url);
         case 'get-logs':
           return ring.all();
         case 'clear-logs':
@@ -402,6 +410,8 @@ export default defineBackground({
         chrome.contextMenus.create({ id: 'fp-suggest', title: 'FormPilot: suggest for this field', contexts: ['editable'] });
         chrome.contextMenus.create({ id: 'fp-fill', title: 'FormPilot: fill the whole form', contexts: ['editable'] });
         chrome.contextMenus.create({ id: 'fp-remember', title: 'FormPilot: remember my answer for this field', contexts: ['editable'] });
+        chrome.contextMenus.create({ id: 'fp-save-job', title: 'FormPilot: save this job to my tracker', contexts: ['page'] });
+        chrome.contextMenus.create({ id: 'fp-mark-applied', title: 'FormPilot: I applied to this job', contexts: ['page'] });
       });
       if (details.reason === 'install') await chrome.runtime.openOptionsPage();
       const s = await loadSettings();
@@ -411,6 +421,10 @@ export default defineBackground({
 
     chrome.contextMenus.onClicked.addListener((info, tab) => {
       if (!tab?.id) return;
+      if (info.menuItemId === 'fp-save-job' || info.menuItemId === 'fp-mark-applied') {
+        void sendCommand(tab.id, info.menuItemId === 'fp-save-job' ? 'save-job' : 'mark-applied', 'context_menu', 0);
+        return;
+      }
       const name: CommandName = info.menuItemId === 'fp-fill' ? 'fill-form' : info.menuItemId === 'fp-remember' ? 'remember' : 'open-suggestions';
       void usage.count('context_menu_used', { item: name.replace('-', '_') });
       void sendCommand(tab.id, name, 'context_menu', info.frameId);

@@ -72,8 +72,9 @@ const RULES: Rule[] = [
   { type: 'bday', re: /\b(birth ?(day|date)|date of birth|dob)\b/, factual: true },
   { type: 'sex', re: /\b(gender|sex)\b/, factual: true },
   { type: 'nationality', re: /\b(nationality|citizenship)\b/, factual: true },
-  { type: 'salary-current', re: /\b(current (ctc|salary|compensation)|ctc|present salary)\b/, factual: true },
-  { type: 'salary-expected', re: /\b(expected (ctc|salary|compensation)|salary expectation|desired (salary|pay))\b/, factual: true },
+  // Expected before current: "expected CTC" also contains the bare word "ctc".
+  { type: 'salary-expected', re: /\b(expected (ctc|salary|compensation|pay)|salary expectations?|desired (salary|pay|ctc)|ectc)\b/, factual: true },
+  { type: 'salary-current', re: /\b(current (fixed )?(ctc|salary|compensation)|ctc|present (ctc|salary))\b/, factual: true },
   { type: 'notice-period', re: /\bnotice ?period\b/, factual: true },
   { type: 'experience-years', re: /\b(years? of (experience|exp)|total experience|experience \(?years\)?)\b/, factual: true },
   { type: 'education', re: /\b(degree|qualification|university|college|school|education)\b/, factual: true },

@@ -3,6 +3,7 @@
 import type { ErrorInfo, FieldContext, PageContext, Suggestion, SuggestMeta, SuggestOptions } from './types';
 import type { LogEntry } from './logger';
 import type { ProviderConfig } from './settings';
+import type { GivenAnswer, JobInfo } from './job';
 
 export const SUGGEST_PORT = 'fp-suggest';
 
@@ -36,6 +37,9 @@ export type RpcRequest =
   | { type: 'clear-cache'; what: 'responses' | 'history' | 'all' }
   | { type: 'open-options'; section?: string }
   | { type: 'site-toggle'; host: string; enabled: boolean }
+  /** Job tracker: record a job as applied (or just saved), with the answers given on the form. */
+  | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[] }
+  | { type: 'tracker-test'; url?: string }
   /** Anonymous usage: an allowlisted event (lib/usage.ts CLIENT_EVENTS); the background drops anything else. */
   | { type: 'usage'; name: string; props?: Record<string, string | number | boolean> }
   /** Anonymous usage: an error in another context, by class and stack only (never the message). */
@@ -80,7 +84,7 @@ export async function rpc<T = unknown>(req: RpcRequest): Promise<T> {
 }
 
 // ---- Background → content (tabs.sendMessage) ----
-export type CommandName = 'open-suggestions' | 'fill-form' | 'remember';
+export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied';
 export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' } | { type: 'settings-ping' };
 
 export interface Stats {

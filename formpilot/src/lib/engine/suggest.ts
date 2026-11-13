@@ -340,7 +340,10 @@ export class SuggestEngine {
     await recordAccepted(field, answer, host, { verified: true });
     const savedAs = ['answer'];
 
-    if (mode === 'smart' && question) {
+    // A field without a real question ("input id", "rec-form-80644…", "number") would turn into
+    // a key fact that matches unrelated fields elsewhere, so keep it as a saved answer only.
+    const meaningless = !question || /^(input|field|text|number|value|answer|rec[\s_-]?form)?[\s_-]*(id)?[\s_-]*[\d\s_-]*$/i.test(question) || /\d{6,}/.test(question);
+    if (mode === 'smart' && question && !meaningless) {
       const short = answer.length <= 160 && !answer.includes('\n');
       if (short) {
         const key = field.semantic !== 'text' && !field.chat ? field.semantic : canonicalKey(questionText(field)).slice(0, 80);

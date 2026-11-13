@@ -3,6 +3,7 @@ import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-co
 import type { Settings } from '@/lib/settings';
 import { fieldKind } from '@/lib/fields/context';
 import { Controller, contextAlive } from './controller';
+import { ApplyWatcher } from './apply-watch';
 import { trackError, type TabCommand } from '@/lib/messages';
 
 export default defineContentScript({
@@ -34,6 +35,10 @@ export default defineContentScript({
     });
 
     const controller = new Controller(() => settings);
+    const watcher = new ApplyWatcher(
+      () => ({ on: settings.tracker.enabled && !!settings.tracker.url, autoRecord: settings.tracker.autoRecord, includeAnswers: settings.tracker.includeAnswers }),
+      (text, tone, action) => controller.showToast(text, tone, action, tone === 'error' ? 10_000 : 4_000),
+    );
     const sharing = () => settings.privacy.shareUsage && !settings.privacy.localOnly;
     /** Our errors only (their stack points into this extension); the page's own errors are never reported. */
     const ours = (e: unknown) => e instanceof Error && !!e.stack?.includes(chrome.runtime.getURL(''));
@@ -94,13 +99,22 @@ export default defineContentScript({
     ctx.addEventListener(document, 'focusout', onFocusOut as EventListener, { capture: true });
     ctx.addEventListener(document, 'keydown', onKeyDown as EventListener, { capture: true });
     ctx.addEventListener(document, 'input', onInput, { capture: true });
-    ctx.addEventListener(document, 'submit', guard(() => controller.onSubmit()), { capture: true });
+    ctx.addEventListener(
+      document,
+      'submit',
+      guard((e: Event) => {
+        controller.onSubmit();
+        watcher.onSubmit(e.target);
+      }),
+      { capture: true },
+    );
     ctx.addEventListener(
       document,
       'click',
       guard((e: MouseEvent) => {
         const t = realTarget(e);
         if (controller.isOurs(t)) return;
+        if (e.isTrusted) watcher.onClick(t);
         if (isField(t)) controller.onFieldClick(t);
       }) as EventListener,
       { capture: true },
@@ -114,6 +128,16 @@ export default defineContentScript({
 
     const onMessage = (msg: TabCommand) => {
       if (msg?.type !== 'command') return;
+      // Job tracker actions are about the page, so only the top frame answers (no focus needed).
+      if (msg.name === 'save-job' || msg.name === 'mark-applied') {
+        if (window !== window.top) return;
+        if (!settings.tracker.enabled || !settings.tracker.url) {
+          controller.showToast('Turn on the job tracker in FormPilot settings → Behavior first.', 'info');
+          return;
+        }
+        void (msg.name === 'save-job' ? watcher.saveCurrent() : watcher.markApplied());
+        return;
+      }
       // Commands go to every frame; only the focused frame reacts.
       if (!document.hasFocus()) return;
       log.info(`command ${msg.name}`);

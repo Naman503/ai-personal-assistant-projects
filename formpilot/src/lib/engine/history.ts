@@ -70,13 +70,28 @@ async function allHistory(): Promise<HistoryEntry[]> {
   return rows;
 }
 
+/**
+ * The skill a "years of experience in X" question is about, or ''.
+ * "How many years of experience do you have in Golang?" and "...in React?" share most words,
+ * but the answer to one is not the answer to the other.
+ */
+export function experienceSubject(q: string): string {
+  const m = q.match(/\bexperience\b(?:\s+do you have)?(?:\s+(?:in|with|on|using|working (?:on|with)))\s+(.+)$/);
+  return m ? m[1].replace(/\b(development|framework|frameworks|technologies|technology)\b/g, '').trim() : '';
+}
+
 export async function matchHistory(field: FieldContext, threshold: number, max = 2): Promise<Suggestion[]> {
   const q = questionText(field);
   if (!q) return [];
   const sig = signature(field);
+  const subject = experienceSubject(q);
   const rows = await allHistory();
   const scored: { e: HistoryEntry; s: number }[] = [];
   for (const e of rows) {
+    if (subject && e.sig !== sig) {
+      const other = experienceSubject(e.question);
+      if (other && other !== subject) continue;
+    }
     let s = e.sig === sig ? 1 : similarity(q, e.question);
     if (s < 1 && field.semantic !== 'text' && e.semantic === field.semantic) s = Math.max(s, 0.8);
     // Verified answers (user corrections) outrank everything learned implicitly.

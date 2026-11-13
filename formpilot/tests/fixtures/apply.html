@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Senior Mobile Engineer - Acme Careers</title>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"JobPosting","title":"Senior Mobile Engineer","hiringOrganization":{"@type":"Organization","name":"Acme"},"jobLocation":{"@type":"Place","address":{"addressLocality":"Bengaluru","addressRegion":"KA"}},"description":"<p>Build our React Native app.</p>"}
+</script>
+<style>body{font:15px system-ui;max-width:640px;margin:40px auto}label{display:block;margin-top:12px}input,textarea{width:100%;padding:6px}</style>
+</head>
+<body>
+<h1>Senior Mobile Engineer</h1>
+<!-- A two-step application: the first step disappears before the final submit, like LinkedIn Easy Apply. -->
+<div id="step1">
+  <label for="name">Full name</label><input id="name">
+  <label for="ectc">Expected CTC</label><input id="ectc">
+  <button id="next" type="button">Next</button>
+</div>
+<form id="step2" hidden>
+  <label for="notice">Notice period</label><input id="notice">
+  <label for="pwd">Password</label><input id="pwd" type="password">
+  <button id="submit" type="submit">Submit application</button>
+</form>
+<div id="done"></div>
+<script>
+  document.getElementById('next').onclick = () => { document.getElementById('step1').remove(); document.getElementById('step2').hidden = false; };
+  document.getElementById('step2').onsubmit = (e) => {
+    e.preventDefault();
+    setTimeout(() => { document.getElementById('step2').remove(); document.getElementById('done').textContent = 'Your application was sent to Acme!'; }, 400);
+  };
+</script>
+</body>
+</html>

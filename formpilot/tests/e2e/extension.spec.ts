@@ -552,3 +552,43 @@ test.describe('popup: move, pin, reopen, shortcuts', () => {
     await expect(page.locator('#why')).toHaveValue(/Acme builds the tools I use every day/);
   });
 });
+
+test('records an application in the job tracker when the site confirms it', async ({ context, sw }) => {
+  // A stand-in job tracker that remembers what it was sent.
+  const { createServer } = await import('node:http');
+  const got: Record<string, unknown>[] = [];
+  const tracker = createServer((req, res) => {
+    let b = '';
+    req.on('data', (c) => (b += c));
+    req.on('end', () => {
+      if (req.url === '/api/record-application') got.push(JSON.parse(b));
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, id: 'x1', created: true, status: 'applied', applications: [] }));
+    });
+  });
+  await new Promise<void>((r) => tracker.listen(4175, r));
+  try {
+    await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4175', autoRecord: true, includeAnswers: true }, behavior: { enabled: false } });
+    const page = await context.newPage();
+    await page.goto('http://localhost:4173/apply.html');
+    await page.fill('#name', 'Jane Doe');
+    await page.fill('#ectc', '15 LPA');
+    await page.click('#next');
+    await page.fill('#notice', '30 days');
+    await page.fill('#pwd', 'secret-should-not-be-sent');
+    await page.click('#submit');
+    await expect.poll(() => got.length, { timeout: 10_000 }).toBe(1);
+    const rec = got[0] as { kind: string; role: string; company: string; location: string; url: string; answers: { q: string; a: string }[] };
+    expect(rec.kind).toBe('applied');
+    expect(rec.role).toBe('Senior Mobile Engineer');
+    expect(rec.company).toBe('Acme');
+    expect(rec.location).toBe('Bengaluru, KA');
+    expect(rec.url).toBe('http://localhost:4173/apply.html');
+    const answers = Object.fromEntries(rec.answers.map((x) => [x.q, x.a]));
+    expect(answers['Expected CTC']).toBe('15 LPA'); // from the step that was already gone
+    expect(answers['Notice period']).toBe('30 days');
+    expect(JSON.stringify(rec)).not.toContain('secret-should-not-be-sent');
+    await expect(page.locator('formpilot-ui')).toBeAttached();
+  } finally {
+    tracker.close();
+  }
+});

@@ -4,6 +4,17 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-13
+
+### Added
+- **Job tracker** (*Behavior → Job tracker*, off by default). Point FormPilot at a self-hosted [Job Search Desk](https://github.com/Naman503/ai-personal-assistant-projects/tree/main/formpilot#job-tracker) or any server with the same API, and every application is recorded there as **Applied** when the site confirms it ("Your application was sent", "Thank you for applying", thank-you pages). It keeps the job's role, company, location and description, and optionally the questions and answers you gave (passwords and sensitive fields never), including those on earlier steps of multi-page forms such as LinkedIn Easy Apply.
+- Toolbar buttons and right-click items: **Save this job** and **I applied**, for sites whose confirmation FormPilot can't see.
+
+### Fixed
+- "Expected CTC" questions were classified as *current* salary, so a saved current CTC could be suggested for expected CTC, and the other way round.
+- A saved answer to "years of experience in React" was offered for every other skill ("…in Golang", "…in Azure"). Saved answers for these questions now stay with their skill.
+- Fields without a real question (e.g. "input id", "rec-form-80644…") no longer become key facts that match unrelated fields on other sites.
+
 ## [1.2.0] - 2026-10-26
 
 ### Added

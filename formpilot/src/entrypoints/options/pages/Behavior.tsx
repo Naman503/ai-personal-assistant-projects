@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { MousePointerClick, Globe, TextCursorInput, Plus, X } from 'lucide-react';
+import { MousePointerClick, Globe, TextCursorInput, Plus, X, Briefcase } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Slider, Switch } from '@/components/ui';
+import { rpc } from '@/lib/messages';
 import type { PageProps } from '../App';
 
 function SiteList({ items, onChange, placeholder }: { items: string[]; onChange: (v: string[]) => void; placeholder: string }) {
@@ -148,6 +149,49 @@ export function Behavior({ settings, update }: PageProps) {
           </Row>
         )}
       </Card>
+
+      <JobTracker settings={settings} update={update} />
     </>
+  );
+}
+
+function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>) {
+  const t = settings.tracker;
+  const set = <K extends keyof typeof t>(k: K, v: (typeof t)[K]) => update((d) => void (d.tracker[k] = v));
+  const [url, setUrl] = useState(t.url);
+  const [status, setStatus] = useState<{ tone: 'green' | 'red' | 'neutral'; text: string } | null>(null);
+  const test = async () => {
+    setStatus({ tone: 'neutral', text: 'Checking…' });
+    try {
+      const r = await rpc<{ applications: number; people: number }>({ type: 'tracker-test', url });
+      setStatus({ tone: 'green', text: `Connected: ${r.applications} applications, ${r.people} people` });
+    } catch (e) {
+      setStatus({ tone: 'red', text: (e as Error).message });
+    }
+  };
+  return (
+    <Card className="mt-5">
+      <CardHeader icon={<Briefcase className="size-4" />} title="Job tracker" />
+      <Row label="Record applications in a job tracker" description="When a site confirms your application was sent, FormPilot adds it to your tracker as Applied, with the job details. Off by default.">
+        <Switch checked={t.enabled} onCheckedChange={(v) => set('enabled', v)} />
+      </Row>
+      <Row label="Tracker address" description="Your Job Search Desk (or any server with the same API). Requests go only to this address." stacked>
+        <div className="flex w-full gap-2">
+          <Input placeholder="https://desk.your-tailnet.ts.net:8444" value={url} onChange={(e) => setUrl(e.target.value)} onBlur={() => set('url', url.trim())} />
+          <Button onClick={() => (set('url', url.trim()), void test())}>Test connection</Button>
+        </div>
+        {status && (
+          <div className="mt-2">
+            <Badge tone={status.tone}>{status.text}</Badge>
+          </div>
+        )}
+      </Row>
+      <Row label="Record automatically" description='Watches for "Your application was sent", "Thank you for applying" and thank-you pages after you press Submit. Off: use "I applied" in the toolbar popup instead.'>
+        <Switch checked={t.autoRecord} disabled={!t.enabled} onCheckedChange={(v) => set('autoRecord', v)} />
+      </Row>
+      <Row label="Include my answers" description="Saves the questions and answers from the form (for example the CTC and notice period you gave) with the application. Passwords and sensitive fields are never included.">
+        <Switch checked={t.includeAnswers} disabled={!t.enabled} onCheckedChange={(v) => set('includeAnswers', v)} />
+      </Row>
+    </Card>
   );
 }

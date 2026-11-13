@@ -154,6 +154,17 @@ const PanelSchema = z.object({
   tabAccepts: z.boolean().catch(false),
 });
 
+/** Optional job tracker (e.g. a self-hosted Job Search Desk): FormPilot records applications there. */
+const TrackerSchema = z.object({
+  enabled: z.boolean().catch(false),
+  /** Base URL of the tracker, e.g. https://desk.example.ts.net:8444 */
+  url: z.string().catch(''),
+  /** Record an application automatically when the site confirms it was sent. */
+  autoRecord: z.boolean().catch(true),
+  /** Include the questions and answers you gave on the form in the record. */
+  includeAnswers: z.boolean().catch(true),
+});
+
 const DebugSchema = z.object({
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).catch('info'),
   console: z.boolean().catch(true),
@@ -170,6 +181,7 @@ export const SettingsSchema = z.object({
   privacy: PrivacySchema.prefault(EMPTY),
   appearance: AppearanceSchema.prefault(EMPTY),
   panel: PanelSchema.prefault(EMPTY),
+  tracker: TrackerSchema.prefault(EMPTY),
   debug: DebugSchema.prefault(EMPTY),
 });
 
