@@ -626,3 +626,21 @@ test('records a LinkedIn-style Easy Apply whose dialog lives in a shadow root', 
     tracker.close();
   }
 });
+
+test('fits each answer to the field: units, numbers-only, ranges, date formats, phone', async ({ context, sw }) => {
+  await configure(sw);
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/shapes.html');
+  await page.click('#notice');
+  await page.keyboard.press('Escape');
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/*' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form' });
+  });
+  await expect(page.locator('#notice')).toHaveValue('30', { timeout: 15_000 }); // "30 days" in a days-only box
+  await expect(page.locator('#ctc')).toHaveValue('10.75'); // "10,75,000" asked in lacs
+  await expect(page.locator('#exp')).toHaveValue('c'); // "3+ years" → 3-5 years
+  await expect(page.locator('#np2')).toHaveValue('1 Month'); // "30 days" → 1 Month
+  await expect(page.locator('#lwd')).toHaveValue('151226'); // "15 Dec 2026" as DDMMYY
+  await expect(page.locator('#mob')).toHaveValue('6264579927'); // 10-digit box
+});

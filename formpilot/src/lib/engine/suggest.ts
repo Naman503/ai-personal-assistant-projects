@@ -46,6 +46,14 @@ export interface EngineTelemetry {
 const REQUEST_KINDS: string[] = ['initial', 'manual', 'regenerate', 'shorter', 'longer', 'formal', 'casual', 'refine', 'retry'];
 const NO_TELEMETRY: EngineTelemetry = { count: () => undefined, event: () => undefined };
 
+/**
+ * Trim long answers to a long field's limit. Short limits (phone, CTC, days) are left alone:
+ * the fill step first converts the answer ("+91 62645 79927" → "6264579927"), then applies maxlength.
+ */
+function fitLength(text: string, max: number | undefined): string {
+  return max && max >= 50 ? clampToLength(text, max) : text;
+}
+
 export class SuggestEngine {
   index = new MemoryIndex();
   private factsCache: { v: number; facts: Fact[] } | null = null;
@@ -215,7 +223,7 @@ export class SuggestEngine {
     const toItems = (arr: { title: string; text: string }[]): Suggestion[] =>
       arr
         .filter((x) => x.text.trim())
-        .map((x, i) => ({ id: `${reqId}-${i}`, text: clampToLength(x.text, field.maxLength), source: 'ai' as const, title: x.title || undefined }));
+        .map((x, i) => ({ id: `${reqId}-${i}`, text: fitLength(x.text, field.maxLength), source: 'ai' as const, title: x.title || undefined }));
 
     try {
       const r = await generateWithFallback(s, {
@@ -318,7 +326,8 @@ export class SuggestEngine {
       for (const f of remaining) {
         const v = parsed[f.id];
         if (v?.trim()) {
-          values[f.id] = clampToLength(v, f.field.maxLength);
+          // Not clamped here: the fill step first fits the answer to the field ("+91 62645 79927" → 10 digits), then applies maxlength.
+          values[f.id] = fitLength(v, f.field.maxLength);
           sources[f.id] = 'ai';
         }
       }

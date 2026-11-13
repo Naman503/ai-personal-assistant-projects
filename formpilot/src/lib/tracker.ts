@@ -19,11 +19,30 @@ function baseUrl(raw: string): string {
   return u;
 }
 
+/** "https://x.ts.net:8444/*": the pattern Chrome/Brave site access uses for the tracker. */
+export function trackerOrigin(url: string): string {
+  return new URL(baseUrl(url)).origin + '/*';
+}
+
+/** Whether the browser lets FormPilot talk to the tracker (Brave and Chrome can limit site access). */
+export async function hasTrackerAccess(url: string): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({ origins: [trackerOrigin(url)] });
+  } catch {
+    return true;
+  }
+}
+
 async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, { ...init, headers: { 'content-type': 'application/json', ...(init.headers ?? {}) }, cache: 'no-store', signal: AbortSignal.timeout(12_000) });
+    // No content-type on GET: keeps it a simple request if the browser treats it as cross-site.
+    const headers = init.body ? { 'content-type': 'application/json', ...(init.headers ?? {}) } : init.headers;
+    res = await fetch(url, { ...init, headers, cache: 'no-store', signal: AbortSignal.timeout(12_000) });
   } catch {
+    if (!(await hasTrackerAccess(url))) {
+      throw new TrackerError(`FormPilot isn't allowed to reach ${new URL(url).host}. Open FormPilot settings → Behavior → Job tracker and click Test connection to allow it.`);
+    }
     throw new TrackerError("Can't reach the tracker. Check the address and that you're connected (e.g. Tailscale).");
   }
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };

@@ -163,6 +163,14 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
   const test = async () => {
     setStatus({ tone: 'neutral', text: 'Checking…' });
     try {
+      // Brave/Chrome may limit FormPilot's site access ("On specific sites"): ask for the tracker's address.
+      // Must run straight from the click, before any other await.
+      const origin = new URL(url.trim().replace(/\/+$/, '')).origin + '/*';
+      const granted = await chrome.permissions.request({ origins: [origin] }).catch(() => false);
+      if (!granted) {
+        setStatus({ tone: 'red', text: `Allow FormPilot to access ${new URL(url.trim()).host} to use the tracker.` });
+        return;
+      }
       const r = await rpc<{ applications: number; people: number }>({ type: 'tracker-test', url });
       setStatus({ tone: 'green', text: `Connected: ${r.applications} applications, ${r.people} people` });
     } catch (e) {

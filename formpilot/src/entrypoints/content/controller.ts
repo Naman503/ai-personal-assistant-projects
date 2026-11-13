@@ -655,12 +655,12 @@ export class Controller {
     });
     if (!opts.instantOnly) this.store.set({ status: 'generating', error: undefined, ai: opts.refine || opts.fresh ? [] : st.ai });
     try {
-      port.postMessage({ type: 'suggest', reqId: this.reqId, field, page, opts, constraints: describeConstraints(el) } satisfies PortRequest);
+      port.postMessage({ type: 'suggest', reqId: this.reqId, field, page, opts, constraints: describeConstraints(el, field.label) } satisfies PortRequest);
     } catch (e) {
       log.warn('postMessage failed, reconnecting', e);
       this.port = null;
       const p2 = this.getPort();
-      p2?.postMessage({ type: 'suggest', reqId: this.reqId, field, page, opts, constraints: describeConstraints(el) } satisfies PortRequest);
+      p2?.postMessage({ type: 'suggest', reqId: this.reqId, field, page, opts, constraints: describeConstraints(el, field.label) } satisfies PortRequest);
     }
   }
 
@@ -772,7 +772,7 @@ export class Controller {
     this.inserting = true;
     let res;
     try {
-      res = fillElement(el, s.text, cfg.behavior.insertMode);
+      res = fillElement(el, s.text, cfg.behavior.insertMode, field.label || field.placeholder || undefined);
     } finally {
       this.inserting = false;
     }
@@ -873,7 +873,7 @@ export class Controller {
         if (!v?.trim()) continue;
         this.inserting = true;
         const r = e.radios
-          ? fillRadioGroup(e.radios, v, (x) => resolveLabel(x) || x.value)
+          ? fillRadioGroup(e.radios, v, (x) => resolveLabel(x) || x.value, e.field?.label)
           : fillElement(e.el, v, 'replace');
         this.inserting = false;
         if (r.ok) {
