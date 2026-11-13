@@ -7,7 +7,7 @@
  * including on earlier steps of multi-page forms (Next / Continue / Review clicks), because
  * those steps are gone from the page by the time you submit.
  */
-import { CONFIRMATION_URL_RE, extractJob, isConfirmation, looksLikeSubmit, type GivenAnswer, type JobInfo } from '@/lib/job';
+import { CONFIRMATION_URL_RE, confirmationCount, deepText, extractJob, isConfirmation, looksLikeSubmit, type GivenAnswer, type JobInfo } from '@/lib/job';
 import { extractField, fieldKind, isVisible, readValue, type FillableElement } from '@/lib/fields/context';
 import { isSensitive } from '@/lib/fields/classify';
 import { rpc } from '@/lib/messages';
@@ -36,6 +36,7 @@ export class ApplyWatcher {
   private observer: MutationObserver | null = null;
   private tick: ReturnType<typeof setInterval> | undefined;
   private startUrl = '';
+  private baseline = 0;
 
   constructor(
     private prefs: () => TrackerPrefs,
@@ -89,10 +90,12 @@ export class ApplyWatcher {
     if (!this.job || (job.role && job.company)) this.job = job;
     this.armedUntil = Date.now() + ARM_MS;
     this.startUrl = location.href;
+    // Count confirmation phrases already on the page, so only a new one counts.
+    if (!this.observer) this.baseline = confirmationCount(deepText());
     log.debug('armed: watching for an application confirmation', { role: this.job.role, company: this.job.company });
     if (this.observer) return;
     this.observer = new MutationObserver((muts) => {
-      if (Date.now() > this.armedUntil) return this.disarm();
+      if (Date.now() > this.armedUntil) return this.timedOut();
       let added = '';
       for (const m of muts) {
         for (const n of m.addedNodes) {
@@ -105,9 +108,11 @@ export class ApplyWatcher {
     });
     this.observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     this.tick = setInterval(() => {
-      if (Date.now() > this.armedUntil) return this.disarm();
-      if (location.href !== this.startUrl && CONFIRMATION_URL_RE.test(new URL(location.href).pathname)) this.confirmed('redirect');
-    }, 1000);
+      if (Date.now() > this.armedUntil) return this.timedOut();
+      if (location.href !== this.startUrl && CONFIRMATION_URL_RE.test(new URL(location.href).pathname)) return this.confirmed('redirect');
+      // Dialogs inside shadow roots (LinkedIn Easy Apply) don't reach the observer above.
+      if (confirmationCount(deepText()) > this.baseline) this.confirmed('page text');
+    }, 700);
   }
 
   private disarm() {
@@ -115,6 +120,19 @@ export class ApplyWatcher {
     this.observer = null;
     clearInterval(this.tick);
     this.armedUntil = 0;
+  }
+
+  /** No confirmation seen after a Submit click: ask instead of failing silently. */
+  private timedOut() {
+    if (!this.armedUntil) return;
+    this.disarm();
+    const job = this.job;
+    if (!job || this.recorded.has(`applied:${job.url}`)) return;
+    log.info('no confirmation seen after submit; asking');
+    this.toast(`Did your application to ${truncate(job.company || job.role || 'this job', 40)} go through? FormPilot didn't see a confirmation.`, 'info', {
+      label: 'Record it',
+      run: () => void this.record(job, 'applied', 'asked'),
+    });
   }
 
   private confirmed(how: string) {

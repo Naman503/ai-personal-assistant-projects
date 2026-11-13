@@ -108,7 +108,7 @@ export function extractJob(doc: Document = document, href = location.href): JobI
     }
   }
 
-  if (host.endsWith('linkedin.com')) {
+  if (host.endsWith('linkedin.com') || doc.querySelector('[class*="jobs-unified-top-card"]')) {
     job.role = q('.job-details-jobs-unified-top-card__job-title h1', '.job-details-jobs-unified-top-card__job-title', '.jobs-unified-top-card__job-title', '.top-card-layout__title') || job.role;
     job.company = q('.job-details-jobs-unified-top-card__company-name', '.jobs-unified-top-card__company-name', '.topcard__org-name-link') || job.company;
     const meta = q('.job-details-jobs-unified-top-card__primary-description-container', '.job-details-jobs-unified-top-card__tertiary-description-container', '.jobs-unified-top-card__primary-description');
@@ -151,6 +151,56 @@ export function looksLikeSubmit(text: string): boolean {
   return /\b(submit|send application|send|apply|finish|complete application|done)\b/.test(t);
 }
 
+/** LinkedIn's job page label once you have applied ("Applied 0 minutes ago", "Applied now"). */
+export const APPLIED_LABEL_RE = /\bapplied (now|just now|(a|an|\d+) (seconds?|minutes?) ago)\b/i;
+
 export function isConfirmation(text: string): boolean {
-  return CONFIRMATION_RE.test(clean(text));
+  const t = clean(text);
+  return CONFIRMATION_RE.test(t) || APPLIED_LABEL_RE.test(t);
+}
+
+/** How many confirmation phrases a text holds (used to spot a new one appearing). */
+export function confirmationCount(text: string): number {
+  const t = clean(text);
+  const g = (re: RegExp) => (t.match(new RegExp(re.source, 'gi')) ?? []).length;
+  return g(CONFIRMATION_RE) + g(APPLIED_LABEL_RE);
+}
+
+/**
+ * All text on the page, including inside open shadow roots and same-origin iframes.
+ * LinkedIn's Easy Apply dialog lives in a shadow root, which body.innerText never sees.
+ */
+export function deepText(root: Document | ShadowRoot = document, max = 400_000): string {
+  let out = root instanceof Document ? (root.body?.innerText ?? '') : (root.textContent ?? '');
+  // A content script's `el.shadowRoot` is null for roots the page attached; chrome.dom can see them.
+  const domApi = (globalThis as { chrome?: { dom?: { openOrClosedShadowRoot?: (e: HTMLElement) => ShadowRoot | null } } }).chrome?.dom;
+  const shadowOf = (el: HTMLElement): ShadowRoot | null => {
+    try {
+      return domApi?.openOrClosedShadowRoot?.(el) ?? el.shadowRoot;
+    } catch {
+      return el.shadowRoot;
+    }
+  };
+  // textContent runs block elements together ("Application sentYour application…"), so join text nodes with spaces.
+  const textOf = (r: ShadowRoot) => {
+    const parts: string[] = [];
+    const w = (r.ownerDocument ?? document).createTreeWalker(r, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const tag = n.parentElement?.tagName;
+      if (tag !== 'SCRIPT' && tag !== 'STYLE' && n.nodeValue?.trim()) parts.push(n.nodeValue.trim());
+    }
+    return parts.join(' ');
+  };
+  const walk = (r: Document | ShadowRoot) => {
+    for (const el of r.querySelectorAll('*')) {
+      if (out.length > max) return;
+      const sr = shadowOf(el as HTMLElement);
+      if (sr) {
+        out += '\n' + textOf(sr);
+        walk(sr);
+      }
+    }
+  };
+  walk(root);
+  return out;
 }

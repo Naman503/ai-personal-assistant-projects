@@ -592,3 +592,37 @@ test('records an application in the job tracker when the site confirms it', asyn
     tracker.close();
   }
 });
+
+test('records a LinkedIn-style Easy Apply whose dialog lives in a shadow root', async ({ context, sw }) => {
+  const { createServer } = await import('node:http');
+  const got: Record<string, unknown>[] = [];
+  const tracker = createServer((req, res) => {
+    let b = '';
+    req.on('data', (c) => (b += c));
+    req.on('end', () => {
+      if (req.url === '/api/record-application') got.push(JSON.parse(b));
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, id: 'x2', created: true, status: 'applied' }));
+    });
+  });
+  await new Promise<void>((r) => tracker.listen(4176, r));
+  try {
+    await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true }, behavior: { enabled: false } });
+    const page = await context.newPage();
+    await page.goto('http://localhost:4173/apply-shadow.html');
+    await page.click('#easy');
+    await page.locator('#interop-outlet').locator('#ctc').fill('10.75');
+    await page.locator('#interop-outlet').locator('#next span').click();
+    await page.locator('#interop-outlet').locator('#np').fill('30 days');
+    await page.locator('#interop-outlet').locator('#send span').click();
+    await expect.poll(() => got.length, { timeout: 10_000 }).toBe(1);
+    const rec = got[0] as { role: string; company: string; location: string; answers: { q: string; a: string }[] };
+    expect(rec.role).toBe('Staff Engineer');
+    expect(rec.company).toBe('Beta Labs');
+    expect(rec.location).toBe('Pune, Maharashtra');
+    const answers = Object.fromEntries(rec.answers.map((x) => [x.q, x.a]));
+    expect(answers['Current CTC (INR, annual, in lacs)']).toBe('10.75');
+    expect(answers['Notice period']).toBe('30 days');
+  } finally {
+    tracker.close();
+  }
+});
