@@ -13,7 +13,8 @@
  */
 
 import { clampToLength, collapseWs, normalizeText } from '../util';
-import { editableRoot, readValue } from './context';
+import { editableRoot, readValue, resolveLabel, type FillableElement } from './context';
+import { adaptValue, rangeOption, specOf } from './adapt';
 import { createLogger } from '../logger';
 
 const log = createLogger('fill');
@@ -73,10 +74,13 @@ export function coerceForInput(el: HTMLInputElement, text: string): string {
   return s;
 }
 
-function fillTextControl(el: HTMLInputElement | HTMLTextAreaElement, raw: string, mode: 'replace' | 'cursor'): FillResult {
+function fillTextControl(el: HTMLInputElement | HTMLTextAreaElement, raw: string, mode: 'replace' | 'cursor', label: string): FillResult {
   const previous = el.value;
   const isInput = el instanceof HTMLInputElement;
-  let text = isInput ? coerceForInput(el, raw) : raw;
+  // Fit the answer to this field first ("30 days" → "30" for a days-only box, "10,75,000" → "10.75" in lakhs).
+  const adapted = isInput ? adaptValue(raw, specOf(el, label)) || raw : raw;
+  if (adapted !== raw.trim()) log.debug('adapted answer to the field', { from: raw.slice(0, 40), to: adapted.slice(0, 40) });
+  let text = isInput ? coerceForInput(el, adapted) : raw;
   if (el.maxLength > 0) text = clampToLength(text, el.maxLength);
 
   let expected = text;
@@ -176,12 +180,14 @@ export function bestOption<T extends { label: string; value: string }>(answer: s
   return bestScore >= 0.3 ? best : null;
 }
 
-function fillSelect(el: HTMLSelectElement, text: string): FillResult {
+function fillSelect(el: HTMLSelectElement, text: string, label: string): FillResult {
   const previous = el.value;
   const opts = Array.from(el.options)
-    .filter((o) => !o.disabled)
+    .filter((o) => !o.disabled && o.value !== '')
     .map((o) => ({ value: o.value, label: collapseWs(o.label || o.text), o }));
-  const match = bestOption(text, opts);
+  // Numbers and ranges first ("30 days" → "1 month", "3+ years" → "3-5 years"), then text similarity.
+  const ri = rangeOption(text, opts.map((o) => o.label), label);
+  const match = ri >= 0 ? opts[ri] : bestOption(text, opts);
   if (!match) return { ok: false, method: 'select', previous, value: el.value };
   el.focus({ preventScroll: true });
   const set = nativeSetter(el);
@@ -193,12 +199,11 @@ function fillSelect(el: HTMLSelectElement, text: string): FillResult {
 }
 
 /** Radio group: click the radio whose label best matches. */
-export function fillRadioGroup(radios: HTMLInputElement[], text: string, labelOf: (r: HTMLInputElement) => string): FillResult {
+export function fillRadioGroup(radios: HTMLInputElement[], text: string, labelOf: (r: HTMLInputElement) => string, question = ''): FillResult {
   const previous = radios.find((r) => r.checked)?.value ?? '';
-  const match = bestOption(
-    text,
-    radios.map((r) => ({ value: r.value, label: labelOf(r), r })),
-  );
+  const opts = radios.map((r) => ({ value: r.value, label: labelOf(r), r }));
+  const ri = rangeOption(text, opts.map((o) => o.label), question);
+  const match = ri >= 0 ? opts[ri] : bestOption(text, opts);
   if (!match) return { ok: false, method: 'radio', previous, value: previous };
   if (!match.r.checked) match.r.click();
   return { ok: match.r.checked, method: 'radio', previous, value: match.label };
@@ -211,11 +216,13 @@ export function fillCheckbox(el: HTMLInputElement, text: string): FillResult {
   return { ok: el.checked === want, method: 'checkbox', previous, value: String(el.checked) };
 }
 
-export function fillElement(el: Element, text: string, mode: 'replace' | 'cursor' = 'replace'): FillResult {
+/** `label` is the question (pass it for chat boxes, where the field's own label is generic). */
+export function fillElement(el: Element, text: string, mode: 'replace' | 'cursor' = 'replace', label?: string): FillResult {
   let res: FillResult;
+  const q = () => label ?? (() => { try { return resolveLabel(el as FillableElement); } catch { return ''; } })();
   if (el instanceof HTMLInputElement && el.type === 'checkbox') res = fillCheckbox(el, text);
-  else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) res = fillTextControl(el, text, mode);
-  else if (el instanceof HTMLSelectElement) res = fillSelect(el, text);
+  else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) res = fillTextControl(el, text, mode, q());
+  else if (el instanceof HTMLSelectElement) res = fillSelect(el, text, q());
   else if (el instanceof HTMLElement && el.isContentEditable) res = fillContentEditable(el, text, mode);
   else res = { ok: false, method: 'none', previous: '', value: '' };
   log.debug(`fill ${res.ok ? 'ok' : 'FAILED'} via ${res.method}`, { tag: el.tagName, len: text.length });

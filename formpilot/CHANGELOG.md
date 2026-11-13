@@ -4,6 +4,24 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-11-13
+
+### Added
+- **Answers fit the field.** FormPilot keeps one answer and converts it for each field at insert time, using the field type, `inputmode`, `pattern`, `maxlength`, placeholder and the question's wording:
+  - notice period: "30 days" → `30` in a days-only box, `1` when asked in months, `0` for "Immediate";
+  - salary: "10,75,000" → `10.75` when asked in lakhs, `1075000` in a numbers-only box, monthly ↔ yearly when the question says so;
+  - experience: "3+ years" → `3` in a number box, `42` when asked in months;
+  - dates in the format the field asks for (`DDMMYY`, `DD/MM/YYYY`, date pickers), read day-first;
+  - phone numbers trimmed to the 10-digit national number when the field only takes 10 digits;
+  - percentages and other numbers-only fields lose units and separators.
+  Free-text fields without a unit hint keep the answer exactly as written.
+- **Dropdowns and radio buttons match ranges**: "30 days" picks "1 Month", "3+ years" picks "3-5 years", "10,75,000" picks "10-15 Lakhs".
+- The AI is told the shape a field expects ("whole number only, in days", "amount in lakhs, per year", "date as DD/MM/YYYY").
+
+### Fixed
+- **"Can't reach the tracker" in Brave/Chrome with limited site access.** *Test connection* now asks the browser for access to the tracker's address, and the error says how to allow it.
+- Short answers were cut to a field's `maxlength` before they were converted (a "+91 …" phone number lost its last digits).
+
 ## [1.3.1] - 2026-11-13
 
 ### Fixed

@@ -10,6 +10,8 @@ import type { FieldContext, FieldKind, FieldOption, PageContext } from '../types
 import { classifyField, isFactual, isSensitive, splitIdent } from './classify';
 import { collapseWs, truncate, uid } from '../util';
 
+import { describeExpectation, specOf } from './adapt';
+
 export type FillableElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLElement;
 
 const TEXT_INPUT_TYPES = new Set(['', 'text', 'email', 'tel', 'url', 'number', 'search', 'date', 'datetime-local', 'month', 'week', 'time']);
@@ -453,12 +455,22 @@ export function extractField(el: FillableElement, opts: { chat?: boolean } = {})
 }
 
 /** Short constraint string for the prompt: pattern, min/max, step. */
-export function describeConstraints(el: Element): string {
+export function describeConstraints(el: Element, question?: string): string {
   const parts: string[] = [];
   for (const a of ['pattern', 'min', 'max', 'step', 'minlength', 'inputmode']) {
     const v = el.getAttribute(a);
     if (v) parts.push(`${a}=${v}`);
   }
+  let label = question ?? '';
+  if (!label) {
+    try {
+      label = resolveLabel(el as FillableElement);
+    } catch {
+      /* label not resolvable */
+    }
+  }
+  const expect = describeExpectation(specOf(el, label));
+  if (expect) parts.push(expect);
   return parts.join(', ');
 }
 

@@ -25,7 +25,7 @@ function answerFor(prompt) {
     return JSON.stringify({
       fields: ids.map(([, id, q]) => ({
         id,
-        value: /country/i.test(q) ? 'India' : /relocat/i.test(q) ? 'Yes' : /name/i.test(q) ? 'Jane Doe' : /why|motivat/i.test(q) ? 'Because I love building developer tools.' : '',
+        value: /notice/i.test(q) ? '30 days' : /ctc|salary/i.test(q) ? '10,75,000' : /experience/i.test(q) ? '3+ years' : /lwd|last working/i.test(q) ? '15 Dec 2026' : /mobile|phone/i.test(q) ? '+91 62645 79927' : /country/i.test(q) ? 'India' : /relocat/i.test(q) ? 'Yes' : /name/i.test(q) ? 'Jane Doe' : /why|motivat/i.test(q) ? 'Because I love building developer tools.' : '',
       })),
     });
   }

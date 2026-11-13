@@ -115,12 +115,21 @@ describe('SuggestEngine', () => {
     expect((events.at(-1) as Extract<PortEvent, { type: 'error' }>).error.hint).toBeTruthy();
   });
 
-  it('clamps suggestions to maxlength', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => aiResponse(['one two three four five six seven eight nine ten'])));
+  it('clamps long suggestions to a long field\'s maxlength', async () => {
+    const long = 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen';
+    vi.stubGlobal('fetch', vi.fn(async () => aiResponse([long])));
     const s = settings();
-    const events = await run(new SuggestEngine(() => s), field({ maxLength: 20 }));
+    const events = await run(new SuggestEngine(() => s), field({ maxLength: 60 }));
     const done = events.at(-1) as Extract<PortEvent, { type: 'done' }>;
-    expect(done.items[0].text.length).toBeLessThanOrEqual(20);
+    expect(done.items[0].text.length).toBeLessThanOrEqual(60);
+  });
+
+  it('leaves short fields to the fill step (which converts before applying maxlength)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => aiResponse(['+91 62645 79927'])));
+    const s = settings();
+    const events = await run(new SuggestEngine(() => s), field({ maxLength: 10 }));
+    const done = events.at(-1) as Extract<PortEvent, { type: 'done' }>;
+    expect(done.items[0].text).toBe('+91 62645 79927');
   });
 
   it('fill-form answers facts locally and batches the rest', async () => {
