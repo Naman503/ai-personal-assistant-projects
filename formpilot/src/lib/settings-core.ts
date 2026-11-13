@@ -203,6 +203,7 @@ export const DEFAULTS: Settings = {
     numberShortcuts: true,
     tabAccepts: false,
   },
+  tracker: { enabled: false, url: '', autoRecord: true, includeAnswers: true },
   debug: { logLevel: 'info', console: true },
 };
 

@@ -14,7 +14,7 @@ Suggestions appear right under the field, like a password manager, and repeat qu
 ![Chrome | Brave](https://img.shields.io/badge/Chrome%20%7C%20Brave-supported-4285F4?logo=googlechrome&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![Tests](https://img.shields.io/badge/tests-136%20unit%20%C2%B7%2023%20e2e-16a34a)
+![Tests](https://img.shields.io/badge/tests-168%20unit%20%C2%B7%2024%20e2e-16a34a)
 ![Free providers](https://img.shields.io/badge/AI-free%20%26%20local%20options-f59e0b)
 
 <img src="docs/screenshots/dropdown-light.png" width="720" alt="FormPilot suggestions under a form field" />
@@ -273,12 +273,25 @@ Change them at `chrome://extensions/shortcuts`.
   - **Forgot the password?** *Reset password & keys* removes the password and the saved keys. Memory and settings are kept.
 - Forms are never submitted automatically, and consent checkboxes are never ticked.
 - Per-site blocklist or allowlist, and one-click **pause on this site**.
+- **Job tracker (optional, off by default).** When you turn it on, the job details and, if you allow it, the questions and answers from an application are sent to the tracker address you set, and nowhere else.
 - **Anonymous usage, with an off switch.** FormPilot shares, with a random id made on install:
   - which features, buttons, shortcuts and settings pages are used, as daily counts (suggestions shown and accepted, how they were inserted, Regenerate / Shorter / Longer / Refine, form fills, saved corrections);
   - outcomes and quality: where answers came from (memory, history, cache, AI), error *categories* (rate limit, auth, timeout, network…), latency and size *buckets* (e.g. "1-2s", "6-20 documents"), and crashes by error class and FormPilot's own stack frames;
   - setup milestones, the provider *type* (Gemini, Groq, Ollama…), and once a day a settings snapshot of on/off switches and preset choices, plus memory size buckets.
 
   Never field contents, typed text, page addresses or sites, page titles, memory, file or document names, model names, provider URLs, headers or keys, and nothing at all in Local-only mode. Turn it off in *Privacy & Data → Share anonymous usage*; that also deletes what was sent.
+
+---
+
+## Job tracker
+
+FormPilot can keep a record of every job you apply to in a tracker you host yourself, such as Job Search Desk.
+
+1. *Settings → Behavior → Job tracker*: turn it on, enter the tracker address and click **Test connection**.
+2. Apply as usual. When the site confirms the application, FormPilot records it as **Applied**, and a small note confirms it.
+3. Use **Save this job** in the toolbar popup (or right-click the page) to shortlist a job, and **I applied** for sites whose confirmation isn't detected.
+
+The tracker needs one endpoint, `POST /api/record-application`, that takes `{kind, url, role, company, location, source, salary, description, answers: [{q, a}], recordedBy}` and returns `{ok, id, created, status}`. *Test connection* calls `GET /api/state`.
 
 ---
 
