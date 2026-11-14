@@ -627,6 +627,26 @@ test('records a LinkedIn-style Easy Apply whose dialog lives in a shadow root', 
   }
 });
 
+test('walks a shadow-root Easy Apply to the Submit button and stops there', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true }, behavior: { enabled: false } });
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-shadow.html');
+  await page.click('#easy');
+  const dialog = page.locator('#interop-outlet');
+  await dialog.locator('#ctc').focus();
+  await page.keyboard.press('Escape');
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/*' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form' });
+  });
+  // Step 1 filled, Next pressed for us, step 2 filled, Submit highlighted and not pressed.
+  await expect(dialog.locator('#np')).toHaveValue('30 days', { timeout: 15_000 });
+  await expect(dialog.locator('#s1')).toHaveCount(0);
+  await expect.poll(() => dialog.locator('#send').evaluate((b) => (b as HTMLElement).style.outline), { timeout: 10_000 }).toMatch(/solid 3px|3px solid/);
+  await expect(page.locator('formpilot-ui')).toHaveAttribute('data-toast', 'success');
+  await expect(dialog.locator('h2')).toHaveText('Apply to Beta Labs');
+});
+
 test('fits each answer to the field: units, numbers-only, ranges, date formats, phone', async ({ context, sw }) => {
   await configure(sw);
   const page = await context.newPage();

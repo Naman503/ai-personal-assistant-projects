@@ -800,10 +800,14 @@ export class Controller {
 
   // ---------------- Whole-form fill ----------------
 
-  async fillForm(trigger: FillTrigger = 'popup_menu') {
-    const anchor = this.field ?? (document.activeElement as HTMLElement | null);
-    if (!anchor || this.store.get().filling) return;
-    if (!contextAlive()) return this.handleDeadContext();
+  /** Called after every whole-form fill (the walker hooks in here). */
+  afterFill?: (anchor: HTMLElement, result: { filled: number; total: number }, trigger: FillTrigger) => void;
+
+  async fillForm(trigger: FillTrigger = 'popup_menu', opts: { anchor?: HTMLElement; quiet?: boolean } = {}): Promise<{ filled: number; total: number }> {
+    const none = { filled: 0, total: 0 };
+    const anchor = opts.anchor ?? this.field ?? (deepActiveElement() as HTMLElement | null);
+    if (!anchor || this.store.get().filling) return none;
+    if (!contextAlive()) return (this.handleDeadContext(), none);
     this.ensureUI(anchor);
     const s = this.settings();
     const els = siblingFields(anchor === document.body ? document.body : anchor);
@@ -852,12 +856,15 @@ export class Controller {
     }
     const fillable = entries.filter((e) => (e.field.kind !== 'select' || e.field.options?.length) && e.el.getAttribute('type') !== 'checkbox');
     if (!fillable.length) {
-      this.showToast('No empty fields to fill in this form.', 'info');
-      return;
+      if (!opts.quiet) this.showToast('No empty fields to fill in this form.', 'info');
+      if (opts.quiet) return none;
+      this.afterFill?.(anchor, none, trigger);
+      return none;
     }
     log.info(`fill-form: ${fillable.length} empty fields`);
     this.store.set({ filling: true, open: false });
     this.showToast(`Filling ${fillable.length} fields…`, 'info', undefined, 60_000);
+    let outcome = none;
     try {
       const page = extractPage(anchor, { pageChars: s.generation.includePageContext ? s.generation.pageContextChars : 0, otherFields: true, sendUrl: s.privacy.sendPageUrl });
       const res = await rpc<{ values: Record<string, string>; sources: Record<string, string>; ms: number }>({
@@ -887,6 +894,7 @@ export class Controller {
       anchor.focus?.({ preventScroll: true });
       log.info(`fill-form: filled ${n}/${fillable.length} in ${res.ms}ms`);
       this.track('form_fill_applied', { fields: fillable.length, filled: n, trigger });
+      outcome = { filled: n, total: fillable.length };
       this.showToast(
         n ? `Filled ${n} of ${fillable.length} fields · check before submitting` : 'Nothing to fill from your memory.',
         n ? 'success' : 'info',
@@ -909,9 +917,17 @@ export class Controller {
       const msg = (e as Error).message;
       log.error('fill-form failed', e);
       this.showToast(`Fill failed: ${msg}`, 'error', { label: 'Settings', run: () => this.actions.openSettings('providers') }, 8000);
+      return none;
     } finally {
       this.store.set({ filling: false });
     }
+    if (!opts.quiet) this.afterFill?.(anchor, outcome, trigger);
+    return outcome;
+  }
+
+  /** The accent colour in use (for highlights drawn outside our UI). */
+  accentColor(): string {
+    return getAccent(this.store.get().accent);
   }
 
   // ---------------- Toast ----------------

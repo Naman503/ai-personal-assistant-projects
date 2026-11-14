@@ -291,6 +291,7 @@ FormPilot can keep a record of every job you apply to in a tracker you host your
 1. *Settings → Behavior → Job tracker*: turn it on, enter the tracker address and click **Test connection**.
 2. Apply as usual. When the site confirms the application, FormPilot records it as **Applied**, and a small note confirms it.
 3. Use **Save this job** in the toolbar popup (or right-click the page) to shortlist a job, and **I applied** for sites whose confirmation isn't detected.
+4. Optional, **Walk the form to Submit**: after *Fill this form* on a multi-step application (LinkedIn Easy Apply and similar), FormPilot presses Next or Review for you, fills each step and stops at the Submit button, highlighted. It never presses Submit, and it stops when a step needs you.
 
 The tracker needs one endpoint, `POST /api/record-application`, that takes `{kind, url, role, company, location, source, salary, description, answers: [{q, a}], recordedBy}` and returns `{ok, id, created, status}`. *Test connection* calls `GET /api/state`.
 

@@ -17,7 +17,7 @@ import { truncate } from '@/lib/util';
 const log = createLogger('content:tracker');
 const ARM_MS = 30_000;
 const SESSION_MS = 30 * 60_000;
-const STEP_RE = /^(next|continue|review|save (and|&) continue|proceed)\b/i;
+import { STEP_RE } from '@/lib/walk';
 
 type Toast = (text: string, tone: 'info' | 'success' | 'error', action?: { label: string; run: () => void }) => void;
 
@@ -62,7 +62,8 @@ export class ApplyWatcher {
     this.arm(form instanceof Element ? form : document.body);
   }
 
-  private collect(scope: Element) {
+  /** Remember the answers on a step (the walker calls this before it presses Next for you). */
+  collect(scope: Element) {
     if (!this.prefs().includeAnswers) return;
     if (Date.now() - this.sessionStart > SESSION_MS) this.answers.clear();
     if (!this.answers.size) this.sessionStart = Date.now();
