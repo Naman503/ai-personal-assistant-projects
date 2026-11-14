@@ -92,3 +92,26 @@ describe('confirmation inside shadow roots', () => {
     expect(confirmationCount('Applied 2 minutes ago')).toBe(1);
   });
 });
+
+describe('LinkedIn company when its classes change', () => {
+  it('reads the company from the tab title', () => {
+    document.head.innerHTML = '';
+    document.title = '(3) React Native Developer | Recro | LinkedIn';
+    document.body.innerHTML = '<main><h1>React Native Developer</h1></main>';
+    const job = extractJob(document, 'https://www.linkedin.com/jobs/search/?currentJobId=4486569938');
+    expect(job.company).toBe('Recro');
+    expect(job.url).toBe('https://www.linkedin.com/jobs/view/4486569938/');
+  });
+  it('reads company and location from a public job page title', () => {
+    document.title = 'React Native Developer at Collegedunia — Gurugram, Haryana, India | LinkedIn Jobs';
+    document.body.innerHTML = '<main><h1>React Native Developer</h1></main>';
+    const job = extractJob(document, 'https://www.linkedin.com/jobs/view/4480026440/');
+    expect(job.company).toBe('Collegedunia');
+    expect(job.location).toBe('Gurugram, Haryana, India');
+  });
+  it('falls back to the company link', () => {
+    document.title = 'Jobs';
+    document.body.innerHTML = '<main><h1>Sr Mobile Developer</h1><a href="https://www.linkedin.com/company/blend/life/">Blend</a></main>';
+    expect(extractJob(document, 'https://www.linkedin.com/jobs/view/4490348204/').company).toBe('Blend');
+  });
+});

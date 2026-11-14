@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-11-14
+
+### Fixed
+- LinkedIn applications were recorded with the company as "linkedin.com" after LinkedIn renamed its page classes. FormPilot now also reads the company from the tab title ("Role | Company | LinkedIn") or the company link.
+
 ## [1.4.0] - 2026-11-13
 
 ### Added
