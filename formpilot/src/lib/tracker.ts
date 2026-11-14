@@ -62,6 +62,7 @@ export async function recordInTracker(s: Settings, kind: 'applied' | 'saved', jo
     source: String(job.source || '').slice(0, 40),
     salary: String(job.salary || '').slice(0, 80),
     description: String(job.description || '').slice(0, 15000),
+    logoUrl: String(job.logoUrl || '').slice(0, 2000),
     answers: (s.tracker.includeAnswers ? answers : []).slice(0, 60).map((x) => ({ q: String(x.q).slice(0, 200), a: String(x.a).slice(0, 600) })),
     recordedBy: 'FormPilot',
   };

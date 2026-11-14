@@ -12,6 +12,8 @@ export interface JobInfo {
   source: string;
   salary: string;
   description: string;
+  /** Company logo on the page, if any (the tracker downloads and keeps it). */
+  logoUrl?: string;
 }
 
 export interface GivenAnswer {
@@ -116,6 +118,22 @@ export function extractJob(doc: Document = document, href = location.href): JobI
     job.description = qLong('#job-details', '.jobs-description__content', '.jobs-box__html-content', '.description__text') || job.description;
     // Easy Apply modal: "Apply to <Company>"
     if (!job.company) job.company = clean(q('.jobs-easy-apply-modal h2, [data-test-modal] h2').replace(/^apply to\s+/i, ''));
+    // LinkedIn renames its classes often. The tab title stays "(3) Role | Company | LinkedIn",
+    // and public pages say "Role at Company — Location | LinkedIn Jobs".
+    if (!job.company) {
+      const t = doc.title.replace(/^\(\d+\+?\)\s*/, '');
+      const parts = t.split(' | ').map(clean);
+      if (parts.length >= 3 && /^linkedin/i.test(parts[parts.length - 1])) job.company = parts[parts.length - 2];
+      const pub = t.match(/ at (.+?) — (.+?) \| LinkedIn/);
+      if (!job.company && pub) {
+        job.company = clean(pub[1]);
+        job.location = job.location || clean(pub[2]);
+      }
+    }
+    if (!job.company) {
+      const link = [...doc.querySelectorAll<HTMLAnchorElement>('main a[href*="/company/"], a[href*="/company/"]')].find((a) => txt(a) && txt(a).length < 80);
+      if (link) job.company = txt(link);
+    }
   } else if (host.endsWith('naukri.com')) {
     job.role = q('h1[class*="jd-header-title"]', 'h1') || job.role;
     job.company = q('[class*="jd-header-comp-name"] a', '[class*="jd-header-comp-name"]') || job.company;
@@ -126,6 +144,22 @@ export function extractJob(doc: Document = document, href = location.href): JobI
   if (!job.role) job.role = q('h1') || clean(doc.title.split(/\s[|\-–]\s/)[0]);
   if (!job.company) job.company = clean((doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null)?.content);
   if (!job.description) job.description = qLong('main', 'article', '[class*="description"]');
+  // Company logo: LinkedIn's company-logo image, a Wellfound/Ashby/Cutshort logo, else an <img> whose alt says "<company> logo".
+  const img = (sel: string) => {
+    try {
+      const el = doc.querySelector<HTMLImageElement>(sel);
+      return el?.currentSrc || el?.src || '';
+    } catch {
+      return '';
+    }
+  };
+  const og = (doc.querySelector('meta[property="og:image"]') as HTMLMetaElement | null)?.content ?? '';
+  job.logoUrl =
+    img('img[src*="company-logo"]') ||
+    (/photos\.wellfound\.com\/startups/.test(og) ? og : '') ||
+    img('img[alt$=" logo" i], img[alt*="company logo" i], img[class*="company-logo" i], img[class*="CompanyLogo"]') ||
+    '';
+  if (!/^https:\/\//.test(job.logoUrl)) job.logoUrl = '';
   job.description = job.description.slice(0, 15000);
   job.role = job.role.slice(0, 200);
   job.company = job.company.replace(/\s*\|.*$/, '').slice(0, 120);
