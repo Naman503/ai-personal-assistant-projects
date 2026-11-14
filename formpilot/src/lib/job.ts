@@ -12,6 +12,8 @@ export interface JobInfo {
   source: string;
   salary: string;
   description: string;
+  /** Company logo on the page, if any (the tracker downloads and keeps it). */
+  logoUrl?: string;
 }
 
 export interface GivenAnswer {
@@ -142,6 +144,22 @@ export function extractJob(doc: Document = document, href = location.href): JobI
   if (!job.role) job.role = q('h1') || clean(doc.title.split(/\s[|\-–]\s/)[0]);
   if (!job.company) job.company = clean((doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null)?.content);
   if (!job.description) job.description = qLong('main', 'article', '[class*="description"]');
+  // Company logo: LinkedIn's company-logo image, a Wellfound/Ashby/Cutshort logo, else an <img> whose alt says "<company> logo".
+  const img = (sel: string) => {
+    try {
+      const el = doc.querySelector<HTMLImageElement>(sel);
+      return el?.currentSrc || el?.src || '';
+    } catch {
+      return '';
+    }
+  };
+  const og = (doc.querySelector('meta[property="og:image"]') as HTMLMetaElement | null)?.content ?? '';
+  job.logoUrl =
+    img('img[src*="company-logo"]') ||
+    (/photos\.wellfound\.com\/startups/.test(og) ? og : '') ||
+    img('img[alt$=" logo" i], img[alt*="company logo" i], img[class*="company-logo" i], img[class*="CompanyLogo"]') ||
+    '';
+  if (!/^https:\/\//.test(job.logoUrl)) job.logoUrl = '';
   job.description = job.description.slice(0, 15000);
   job.role = job.role.slice(0, 200);
   job.company = job.company.replace(/\s*\|.*$/, '').slice(0, 120);

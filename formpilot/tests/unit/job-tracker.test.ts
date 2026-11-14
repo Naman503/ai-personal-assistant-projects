@@ -115,3 +115,16 @@ describe('LinkedIn company when its classes change', () => {
     expect(extractJob(document, 'https://www.linkedin.com/jobs/view/4490348204/').company).toBe('Blend');
   });
 });
+
+describe('company logo', () => {
+  it('takes LinkedIn\'s company logo image', () => {
+    document.head.innerHTML = '';
+    document.title = 'Sr Mobile Developer | Blend | LinkedIn';
+    document.body.innerHTML = '<main><img src="https://media.licdn.com/dms/image/v2/X/company-logo_100_100/0/1?e=1" alt="Blend logo"><h1>Sr Mobile Developer</h1></main>';
+    expect(extractJob(document, 'https://www.linkedin.com/jobs/view/4490348204/').logoUrl).toContain('company-logo');
+  });
+  it('ignores non-https or missing logos', () => {
+    document.body.innerHTML = '<main><h1>Engineer</h1><img src="data:image/png;base64,AA" alt="Acme logo"></main>';
+    expect(extractJob(document, 'https://acme.example/jobs/1').logoUrl).toBe('');
+  });
+});
