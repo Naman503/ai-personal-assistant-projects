@@ -200,6 +200,9 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
       <Row label="Include my answers" description="Saves the questions and answers from the form (for example the CTC and notice period you gave) with the application. Passwords and sensitive fields are never included.">
         <Switch checked={t.includeAnswers} disabled={!t.enabled} onCheckedChange={(v) => set('includeAnswers', v)} />
       </Row>
+      <Row label="Walk the form to Submit" description='After "Fill this form" on a multi-step application (LinkedIn Easy Apply and similar), FormPilot presses Next or Review for you, fills each step, and stops at the Submit button with it highlighted. It never presses Submit, and it stops when a step needs you (an empty required field, a checkbox, an error).'>
+        <Switch checked={t.walkToSubmit} onCheckedChange={(v) => set('walkToSubmit', v)} />
+      </Row>
     </Card>
   );
 }

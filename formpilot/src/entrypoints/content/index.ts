@@ -4,6 +4,7 @@ import type { Settings } from '@/lib/settings';
 import { fieldKind } from '@/lib/fields/context';
 import { Controller, contextAlive } from './controller';
 import { ApplyWatcher } from './apply-watch';
+import { ApplyWalker } from './walk';
 import { trackError, type TabCommand } from '@/lib/messages';
 
 export default defineContentScript({
@@ -39,6 +40,16 @@ export default defineContentScript({
       () => ({ on: settings.tracker.enabled && !!settings.tracker.url, autoRecord: settings.tracker.autoRecord, includeAnswers: settings.tracker.includeAnswers }),
       (text, tone, action) => controller.showToast(text, tone, action, action ? 20_000 : tone === 'error' ? 10_000 : 4_000),
     );
+    // Walk to Submit: after a fill on a multi-step form, press Next for the user and stop at Submit.
+    const walker = new ApplyWalker({
+      fill: (anchor) => controller.fillForm('shortcut', { anchor, quiet: true }),
+      collect: (scope) => watcher.collect(scope),
+      toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
+      accent: () => controller.accentColor(),
+    });
+    controller.afterFill = (anchor) => {
+      if (settings.tracker.walkToSubmit) void walker.run(anchor);
+    };
     const sharing = () => settings.privacy.shareUsage && !settings.privacy.localOnly;
     /** Our errors only (their stack points into this extension); the page's own errors are never reported. */
     const ours = (e: unknown) => e instanceof Error && !!e.stack?.includes(chrome.runtime.getURL(''));

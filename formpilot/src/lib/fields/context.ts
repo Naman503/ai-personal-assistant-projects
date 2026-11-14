@@ -474,9 +474,16 @@ export function describeConstraints(el: Element, question?: string): string {
   return parts.join(', ');
 }
 
-/** The form (or document body) that contains an element, crossing shadow boundaries. */
-export function formOf(el: Element): Element {
-  return closestAcrossShadow(el, 'form,[role=form]') ?? el.ownerDocument.body;
+/**
+ * The form that contains an element, crossing shadow boundaries. Without a <form>, the dialog
+ * it sits in; without that, its shadow root (a dialog built in a shadow root, like LinkedIn's
+ * Easy Apply, is invisible from document.body) or the document body.
+ */
+export function formOf(el: Element): Element | ShadowRoot {
+  const form = closestAcrossShadow(el, 'form,[role=form]') ?? closestAcrossShadow(el, '[role=dialog],[aria-modal=true]');
+  if (form) return form;
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root : el.ownerDocument.body;
 }
 
 /** Visible radio buttons in the same form, grouped by name. */

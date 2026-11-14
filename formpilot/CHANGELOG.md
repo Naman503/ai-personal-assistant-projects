@@ -4,6 +4,15 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-15
+
+### Added
+- **Walk the form to Submit** (Settings → Behavior → Job tracker, off by default). After "Fill this form" on a multi-step application such as LinkedIn Easy Apply, FormPilot presses Next or Review for you, fills each new step, and stops at the Submit button with it highlighted. It never presses Submit, and it stops as soon as a step needs you: an empty required field, a required checkbox, or a validation error. Answers from every step are still recorded in the job tracker.
+
+### Fixed
+- "Fill this form" found no fields in dialogs built inside a shadow root without a `<form>` (LinkedIn Easy Apply). The fill now scopes to the dialog, or to the shadow root itself.
+- The fill anchored on the shadow host instead of the focused field inside it when started from the toolbar or shortcut.
+
 ## [1.4.1] - 2026-11-14
 
 ### Fixed

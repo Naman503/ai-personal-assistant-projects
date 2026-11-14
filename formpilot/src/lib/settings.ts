@@ -163,6 +163,8 @@ const TrackerSchema = z.object({
   autoRecord: z.boolean().catch(true),
   /** Include the questions and answers you gave on the form in the record. */
   includeAnswers: z.boolean().catch(true),
+  /** After a fill on a multi-step form, press Next/Review for you and stop at Submit (never pressed). */
+  walkToSubmit: z.boolean().catch(false),
 });
 
 const DebugSchema = z.object({
