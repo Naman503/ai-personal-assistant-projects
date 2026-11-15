@@ -11,8 +11,12 @@ const MAX_STEPS = 12;
 
 type Toast = (text: string, tone: 'info' | 'success' | 'error', action?: { label: string; run: () => void }, ms?: number) => void;
 
+export type WalkOutcome = 'submit' | 'blocked' | 'none' | 'error' | 'busy';
+
 export class ApplyWalker {
   private running = false;
+  /** Why the last walk stopped on a step (for the queue's status line). */
+  lastReason = '';
   private highlighted: { el: HTMLElement; outline: string; offset: string } | null = null;
 
   constructor(
@@ -24,9 +28,14 @@ export class ApplyWalker {
     },
   ) {}
 
-  /** Start from the field the fill was anchored on. Resolves when the walk stops. */
-  async run(anchor: HTMLElement) {
-    if (this.running) return;
+  /**
+   * Start from the field the fill was anchored on. Resolves with where the walk stopped:
+   * at Submit, on a step that needs the user, or nowhere useful. `silent` leaves the
+   * messages to the caller (the apply queue shows its own).
+   */
+  async run(anchor: HTMLElement, opts: { silent?: boolean } = {}): Promise<WalkOutcome> {
+    if (this.running) return 'busy';
+    const toast: Toast = (...a) => { if (!opts.silent) this.deps.toast(...a); };
     this.running = true;
     this.clearHighlight();
     try {
@@ -37,18 +46,19 @@ export class ApplyWalker {
           log.info(`walk stopped: ${d.reason}`);
           d.field?.focus?.({ preventScroll: false });
           d.field?.scrollIntoView?.({ block: 'center' });
-          this.deps.toast(`${d.reason}. Fill it in, then press Next yourself.`, 'info', undefined, 8000);
-          return;
+          toast(`${d.reason}. Fill it in, then press Next yourself.`, 'info', undefined, 8000);
+          this.lastReason = d.reason;
+          return 'blocked';
         }
         if (d.kind === 'submit') {
           this.highlight(d.button);
           d.button.scrollIntoView?.({ block: 'center' });
-          this.deps.toast('Ready to submit. Check the answers, then press the highlighted button.', 'success', undefined, 20_000);
-          return;
+          toast('Ready to submit. Check the answers, then press the highlighted button.', 'success', undefined, 20_000);
+          return 'submit';
         }
         if (d.kind === 'none') {
           log.debug('walk: no Next or Submit button on this step');
-          return;
+          return 'none';
         }
         // Next step: keep the answers of this step for the tracker, move on, fill what appears.
         this.deps.collect(scope);
@@ -63,10 +73,12 @@ export class ApplyWalker {
           await settled(scope.getRootNode(), 300, 1500);
         }
       }
-      this.deps.toast('Stopped after many steps. Continue by hand.', 'info');
+      toast('Stopped after many steps. Continue by hand.', 'info');
+      return 'none';
     } catch (e) {
       log.warn('walk failed', e);
-      this.deps.toast(`Couldn't continue the form: ${(e as Error).message}`, 'error');
+      toast(`Couldn't continue the form: ${(e as Error).message}`, 'error');
+      return 'error';
     } finally {
       this.running = false;
     }

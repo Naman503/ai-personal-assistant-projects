@@ -5,6 +5,8 @@ import { deepActiveElement, deepElementFromPoint, fieldKind, shadowOf } from '@/
 import { Controller, contextAlive } from './controller';
 import { ApplyWatcher } from './apply-watch';
 import { ApplyWalker } from './walk';
+import { ApplyQueue } from './queue';
+import { isLinkedInJobList, jobCards } from '@/lib/queue';
 import { frameShouldAct } from '@/lib/frames';
 import { extractJob } from '@/lib/job';
 import { trackError, type TabCommand } from '@/lib/messages';
@@ -48,6 +50,13 @@ export default defineContentScript({
       collect: (scope) => watcher.collect(scope),
       toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
       accent: () => controller.accentColor(),
+    });
+    const queue = new ApplyQueue({
+      prefs: () => ({ cap: settings.tracker.queueDailyCap, delaySec: settings.tracker.queueDelaySec, skipTitles: settings.tracker.queueSkipTitles }),
+      fill: (anchor) => controller.fillForm('toolbar', { anchor, quiet: true }),
+      walk: (anchor) => walker.run(anchor, { silent: true }),
+      blockedReason: () => walker.lastReason || 'This step needs you',
+      toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
     });
     controller.afterFill = (anchor) => {
       if (settings.tracker.walkToSubmit) void walker.run(anchor);
@@ -149,6 +158,17 @@ export default defineContentScript({
 
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       if (msg?.type !== 'command') return;
+      // Apply queue (LinkedIn job lists): top frame only, no focus needed (the popup has it).
+      if (msg.name === 'apply-queue' || msg.name === 'apply-queue-stop' || msg.name === 'apply-queue-status') {
+        if (window !== window.top) return;
+        const onList = isLinkedInJobList(location.href) || jobCards().length > 0;
+        if (msg.name === 'apply-queue-status') return void reply({ running: queue.active, list: onList });
+        if (msg.name === 'apply-queue-stop') queue.stop();
+        else if (!onList) controller.showToast('Open a LinkedIn job search (Jobs → search) to use the apply queue.', 'info');
+        else void queue.start();
+        reply({ ok: true });
+        return;
+      }
       // Popup asks what job this page shows (top frame only; no description, it's not needed there).
       if (msg.name === 'get-job') {
         if (window !== window.top) return;

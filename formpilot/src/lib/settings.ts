@@ -165,6 +165,10 @@ const TrackerSchema = z.object({
   includeAnswers: z.boolean().catch(true),
   /** After a fill on a multi-step form, press Next/Review for you and stop at Submit (never pressed). */
   walkToSubmit: z.boolean().catch(false),
+  /** Apply queue: most applications to open per day, pause between jobs, job titles to skip. */
+  queueDailyCap: z.number().int().min(1).max(200).catch(30),
+  queueDelaySec: z.number().min(0).max(120).catch(6),
+  queueSkipTitles: z.string().catch(''),
 });
 
 const DebugSchema = z.object({

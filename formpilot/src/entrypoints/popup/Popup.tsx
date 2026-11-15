@@ -21,12 +21,15 @@ import {
   Users,
   Loader2,
   ChevronRight,
+  ListChecks,
+  Square,
 } from 'lucide-react';
 import { Switch } from '@/components/ui';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { siteAllowed } from '@/lib/fields/eligibility';
 import { providerConfigured, isLocalProvider } from '@/lib/settings';
 import { hostMatches } from '@/lib/util';
+import { isLinkedInJobList } from '@/lib/queue';
 import { rpc, track, type Stats } from '@/lib/messages';
 import { AUTHOR } from '@/lib/about';
 import { vaultStatus } from '@/lib/vault';
@@ -97,6 +100,21 @@ export function Popup() {
   }, []);
 
   const trackerOn = loaded && settings.tracker.enabled && !!settings.tracker.url;
+  const onJobList = !!tab?.url && isLinkedInJobList(tab.url);
+  const [queueRunning, setQueueRunning] = useState(false);
+  useEffect(() => {
+    if (!tab?.id || !onJobList) return;
+    chrome.tabs
+      .sendMessage(tab.id, { type: 'command', name: 'apply-queue-status' }, { frameId: 0 })
+      .then((r: { running?: boolean } | undefined) => setQueueRunning(!!r?.running))
+      .catch(() => {});
+  }, [tab?.id, onJobList]);
+  const queueCommand = async (name: 'apply-queue' | 'apply-queue-stop') => {
+    if (!tab?.id) return;
+    track('toolbar_action', { action: name === 'apply-queue' ? 'queue_start' : 'queue_stop' });
+    await chrome.tabs.sendMessage(tab.id, { type: 'command', name, via: 'toolbar' }, { frameId: 0 }).catch(() => {});
+    window.close();
+  };
   const trackerBase = settings.tracker.url.trim().replace(/\/+$/, '');
 
   // What job is this page about, and is it already tracked?
@@ -259,6 +277,22 @@ export function Popup() {
             ) : null}
           </div>
         )}
+
+        {/* Apply queue, on LinkedIn job lists */}
+        {onJobList ? (
+          <button
+            className="flex w-full items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 text-left shadow-sm transition hover:border-brand/40 dark:border-zinc-800 dark:bg-zinc-900"
+            onClick={() => void queueCommand(queueRunning ? 'apply-queue-stop' : 'apply-queue')}
+          >
+            {queueRunning ? <Square className="size-5 text-rose-500" /> : <ListChecks className="size-5 text-brand" />}
+            <div className="flex-1">
+              <div className="text-[13.5px] font-semibold">{queueRunning ? 'Stop the apply queue' : 'Apply to this list'}</div>
+              <div className="text-[11px] text-zinc-500">
+                {queueRunning ? 'Finishes nothing on its own; you can resume later' : `Easy Apply jobs one by one; you press Submit · ${settings.tracker.queueDailyCap}/day`}
+              </div>
+            </div>
+          </button>
+        ) : null}
 
         {/* Fill */}
         <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
