@@ -100,15 +100,22 @@ export function Popup() {
   }, []);
 
   const trackerOn = loaded && settings.tracker.enabled && !!settings.tracker.url;
-  const onJobList = !!tab?.url && isLinkedInJobList(tab.url);
+  // LinkedIn keeps the job list on screen after Easy Apply changes the address to /jobs/view/…,
+  // so ask the page whether it has a list rather than going by the URL alone.
+  const onLinkedInJobs = !!tab?.url && /linkedin\.com\/jobs\//.test(tab.url);
+  const [pageHasList, setPageHasList] = useState(false);
+  const onJobList = onLinkedInJobs && (isLinkedInJobList(tab?.url ?? '') || pageHasList);
   const [queueRunning, setQueueRunning] = useState(false);
   useEffect(() => {
-    if (!tab?.id || !onJobList) return;
+    if (!tab?.id || !onLinkedInJobs) return;
     chrome.tabs
       .sendMessage(tab.id, { type: 'command', name: 'apply-queue-status' }, { frameId: 0 })
-      .then((r: { running?: boolean } | undefined) => setQueueRunning(!!r?.running))
+      .then((r: { running?: boolean; list?: boolean } | undefined) => {
+        setQueueRunning(!!r?.running);
+        setPageHasList(!!r?.list);
+      })
       .catch(() => {});
-  }, [tab?.id, onJobList]);
+  }, [tab?.id, onLinkedInJobs]);
   const queueCommand = async (name: 'apply-queue' | 'apply-queue-stop') => {
     if (!tab?.id) return;
     track('toolbar_action', { action: name === 'apply-queue' ? 'queue_start' : 'queue_stop' });

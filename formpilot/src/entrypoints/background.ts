@@ -1,4 +1,4 @@
-import { addLogSink, configureLogger, createLogger, LogRing } from '@/lib/logger';
+import { addLogSink, configureLogger, createLogger, LogRing , type LogEntry } from '@/lib/logger';
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, patchSettings, type Settings } from '@/lib/settings';
 import { SUGGEST_PORT, type CommandName, type PortEvent, type PortRequest, type RpcRequest, type RpcResponse, type Stats } from '@/lib/messages';
 import { SuggestEngine, counters } from '@/lib/engine/suggest';
@@ -19,8 +19,26 @@ export default defineBackground({
   type: 'module',
   main() {
     const ring = new LogRing(1500);
+    // Brave/Chrome stop an idle service worker after ~30 s, which used to wipe the log. Keep the
+    // last 600 entries in session storage (cleared when the browser quits) and restore them.
+    const LOGS_KEY = 'fpLogs';
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    const persistLogs = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        const slim = ring.all().slice(-600).map((e) => ({ ...e, data: e.data === undefined ? undefined : String(typeof e.data === 'string' ? e.data : JSON.stringify(e.data)).slice(0, 300) }));
+        chrome.storage.session?.set({ [LOGS_KEY]: slim }).catch(() => {});
+      }, 1500);
+    };
+    void chrome.storage.session
+      ?.get(LOGS_KEY)
+      .then((r) => ring.prepend(((r?.[LOGS_KEY] as LogEntry[] | undefined) ?? []).filter((e) => e && typeof e.t === 'number')))
+      .catch(() => {});
     configureLogger({ context: 'bg' });
-    addLogSink((e) => ring.push(e));
+    addLogSink((e) => {
+      ring.push(e);
+      persistLogs();
+    });
     const log = createLogger('bg');
 
     let settings: Settings = DEFAULT_SETTINGS;
@@ -181,6 +199,7 @@ export default defineBackground({
       switch (msg.type) {
         case 'log':
           ring.push({ ...msg.entry, ctx: `content:${new URL(sender.url ?? 'about:blank').hostname}` });
+          persistLogs();
           // Only the level is counted, never the text.
           if (msg.entry.level === 'error' || msg.entry.level === 'warn') void usage.count('content_log', { level: msg.entry.level });
           return null;
@@ -212,6 +231,7 @@ export default defineBackground({
           return ring.all();
         case 'clear-logs':
           ring.clear();
+          void chrome.storage.session?.remove(LOGS_KEY).catch(() => {});
           return null;
         case 'accept':
           counters.accepted++;

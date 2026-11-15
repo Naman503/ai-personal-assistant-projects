@@ -119,6 +119,10 @@ export class LogRing {
   all(): LogEntry[] {
     return this.buf.slice();
   }
+  /** Put older entries (restored after a service-worker restart) in front of the current ones. */
+  prepend(old: LogEntry[]) {
+    this.buf = [...old, ...this.buf].slice(-this.max);
+  }
   clear() {
     this.buf = [];
   }

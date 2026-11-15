@@ -4,6 +4,15 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] - 2026-11-15
+
+### Fixed
+- **Apply queue on LinkedIn's live job search.** The job pane takes 5–10 seconds to load and keeps the previous job's Easy Apply button until then, so the queue could press Easy Apply on the wrong job or give up after 12 seconds. It now waits (up to 25 s) until the job id has changed and the pane shows the new job's title, and before filling it checks the dialog says "Apply to <that company>".
+- LinkedIn's newer Easy Apply dialog is a plain `<dialog>` and pressing Easy Apply changes the address to `/jobs/view/…`; both are handled, and the popup still offers *Apply to this list* / *Stop* there.
+
+### Added
+- Every apply-queue step (job opened, skipped and why, fields filled, where the walk stopped, sent) appears in *Settings → Logs & Diagnostics*. The log now survives the browser stopping the idle background worker, so a run can be read back afterwards.
+
 ## [1.7.0] - 2026-11-15
 
 ### Added
