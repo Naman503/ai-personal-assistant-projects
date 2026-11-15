@@ -44,6 +44,15 @@ describe('walking a multi-step form', () => {
     expect(decideStep(scope).kind).toBe('next');
   });
 
+  it('counts a radio hidden behind a styled label (LinkedIn) as a field', () => {
+    const scope = page(`<div role="dialog"><fieldset><legend>Comfortable commuting?</legend>
+      <input type="radio" name="c" id="y" value="Yes" required style="opacity:0;position:absolute;width:1px;height:1px"><label for="y">Yes</label>
+      <input type="radio" name="c" id="n" value="No" required style="opacity:0;position:absolute;width:1px;height:1px"><label for="n">No</label>
+    </fieldset><button type="button">Review</button></div>`);
+    expect(emptyRequired(scope).length).toBe(1);
+    expect(firstEmptyField(scope)?.id).toBe('y');
+  });
+
   it('is blocked by a visible validation error', () => {
     const scope = page(`<div role="dialog"><input value="abc" aria-invalid="true"><span class="artdeco-inline-feedback--error">Enter a whole number</span><button type="button">Next</button></div>`);
     const d = decideStep(scope);

@@ -8,7 +8,7 @@
  * those steps are gone from the page by the time you submit.
  */
 import { CONFIRMATION_URL_RE, confirmationCount, deepText, extractJob, isConfirmation, looksLikeSubmit, type GivenAnswer, type JobInfo } from '@/lib/job';
-import { extractField, fieldKind, isVisible, readValue, type FillableElement } from '@/lib/fields/context';
+import { extractField, fieldKind, isVisibleControl, readValue, type FillableElement } from '@/lib/fields/context';
 import { isSensitive } from '@/lib/fields/classify';
 import { rpc } from '@/lib/messages';
 import { createLogger } from '@/lib/logger';
@@ -69,8 +69,9 @@ export class ApplyWatcher {
     if (!this.answers.size) this.sessionStart = Date.now();
     for (const el of scope.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')) {
       if (this.answers.size >= 60) break;
-      if (!fieldKind(el) || !isVisible(el)) continue;
       const input = el as HTMLInputElement;
+      // Radios count too (Yes/No questions); sites often hide the input behind a styled label.
+      if ((input.type !== 'radio' && !fieldKind(el)) || !isVisibleControl(el)) continue;
       if (input.type === 'radio' && !input.checked) continue;
       if (input.type === 'checkbox' || input.type === 'file' || input.type === 'hidden' || input.type === 'password') continue;
       const f = extractField(el as FillableElement);

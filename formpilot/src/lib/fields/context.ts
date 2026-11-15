@@ -486,11 +486,24 @@ export function formOf(el: Element): Element | ShadowRoot {
   return root instanceof ShadowRoot ? root : el.ownerDocument.body;
 }
 
+/**
+ * Visible to the user: the control itself, or, for radios and checkboxes that sites hide behind
+ * a styled label (LinkedIn, Workday), the label that stands in for it.
+ */
+export function isVisibleControl(el: Element): boolean {
+  if (isVisible(el)) return true;
+  const input = el as HTMLInputElement;
+  if (!(el instanceof HTMLInputElement) || (input.type !== 'radio' && input.type !== 'checkbox')) return false;
+  if (input.closest('[hidden],[aria-hidden=true],[inert]')) return false;
+  const label = input.labels?.[0] ?? input.closest('label') ?? input.parentElement;
+  return !!label && isVisible(label);
+}
+
 /** Visible radio buttons in the same form, grouped by name. */
 export function radioGroups(el: Element): Map<string, HTMLInputElement[]> {
   const groups = new Map<string, HTMLInputElement[]>();
   for (const r of formOf(el).querySelectorAll<HTMLInputElement>('input[type=radio]')) {
-    if (r.disabled || !isVisible(r)) continue;
+    if (r.disabled || !isVisibleControl(r)) continue;
     const k = r.name || r.id;
     if (!k) continue;
     groups.set(k, [...(groups.get(k) ?? []), r]);
