@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>(3) Software Engineer | Flipkart | LinkedIn</title>
+<style>body{font:15px system-ui;max-width:700px;margin:40px auto}</style>
+</head>
+<body>
+<!-- Mirrors LinkedIn Easy Apply as of Nov 2026: the dialog is in a CLOSED shadow root, radio inputs
+     are hidden behind styled labels, legends repeat the question for screen readers, and the
+     buttons wrap their text in spans. Nothing in the page is focused when the toolbar Fill runs. -->
+<div class="job-details-jobs-unified-top-card__job-title"><h1>Software Engineer</h1></div>
+<div class="job-details-jobs-unified-top-card__company-name"><a>Flipkart</a></div>
+<button id="easy">Easy Apply</button>
+<div id="interop-outlet"></div>
+<script>
+  const host = document.getElementById('interop-outlet');
+  const root = host.attachShadow({ mode: 'closed' });
+  window.__root = root; // for the test only
+  const css = `<style>
+    .fb-form-element__checkbox{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+    .fb-text-selectable__option label{display:inline-block;border:1px solid #666;border-radius:16px;padding:4px 14px;margin:4px 0;cursor:pointer}
+    .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    fieldset{border:0;padding:0;margin:14px 0}</style>`;
+  const radio = (id, q) => `
+    <fieldset data-test-form-builder-radio-button-form-component="true" id="${id}-fs">
+      <legend><span class="fb-dash-form-element__label"><span aria-hidden="true">${q}</span><span class="visually-hidden">${q}</span></span><span class="fb-dash-form-element__label-title--is-required" aria-hidden="true">*</span></legend>
+      <div class="fb-text-selectable__option"><input id="urn:li:fsd_formElement:${id}-0" name="urn:li:fsd_formElement:${id}" type="radio" value="Yes" required class="fb-form-element__checkbox"><label for="urn:li:fsd_formElement:${id}-0">Yes</label></div>
+      <div class="fb-text-selectable__option"><input id="urn:li:fsd_formElement:${id}-1" name="urn:li:fsd_formElement:${id}" type="radio" value="No" required class="fb-form-element__checkbox"><label for="urn:li:fsd_formElement:${id}-1">No</label></div>
+    </fieldset>`;
+  document.getElementById('easy').onclick = () => {
+    root.innerHTML = css + `
+      <div role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="h">
+        <h2 id="h">Apply to Flipkart</h2>
+        <div id="s1">
+          <h3>Additional Questions</h3>
+          ${radio('commute', "Are you comfortable commuting to this job's location?")}
+          ${radio('relocate', 'Are you willing to relocate to Bengaluru?')}
+          <label for="phone">Mobile phone number</label><input id="phone" type="text" required>
+          <button id="review" type="button" aria-label="Review your application"><span>Review</span></button>
+        </div>
+        <div id="s2" hidden>
+          <p>Review your application</p>
+          <button id="send" type="button" aria-label="Submit application"><span>Submit application</span></button>
+        </div>
+      </div>`;
+    root.getElementById('review').onclick = () => {
+      const missing = [...root.querySelectorAll('#s1 [required]')].filter((i) => i.type === 'radio' ? !root.querySelector(`[name="${i.name}"]:checked`) : !i.value);
+      if (missing.length) return;
+      root.getElementById('s1').remove(); root.getElementById('s2').hidden = false;
+    };
+    root.getElementById('send').onclick = () => { window.__submitted = true; };
+    // LinkedIn focuses the dialog itself, not a field.
+    root.querySelector('[role=dialog]').focus();
+  };
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ import { activeProvidersCount } from './providers';
 import { SUGGEST_PORT, rpc, track, type FillTrigger, type InsertMethod, type LearnTrigger, type PortEvent, type PortRequest } from '@/lib/messages';
 import type { FieldContext, OpenTrigger, Suggestion, SuggestOptions } from '@/lib/types';
 import { overlayRoot, conversationQuestion, conversationQuestionInfo, conversationDiagnostics, questionReady, lowestCommonAncestor, describeAncestors } from '@/lib/fields/context';
-import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, resolveLabel, siblingFields } from '@/lib/fields/context';
+import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, resolveLabel, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike } from '@/lib/fields/context';
 import { checkEligibility, siteAllowed } from '@/lib/fields/eligibility';
 import { fillElement, fillRadioGroup, flash, restoreElement } from '@/lib/fields/fill';
 import { classifyField, isSensitive } from '@/lib/fields/classify';
@@ -805,7 +805,10 @@ export class Controller {
 
   async fillForm(trigger: FillTrigger = 'popup_menu', opts: { anchor?: HTMLElement; quiet?: boolean } = {}): Promise<{ filled: number; total: number }> {
     const none = { filled: 0, total: 0 };
-    const anchor = opts.anchor ?? this.field ?? (deepActiveElement() as HTMLElement | null);
+    let anchor = opts.anchor ?? this.field ?? deepActiveElement();
+    // Nothing fillable focused (toolbar button, a step with only radio buttons, LinkedIn's
+    // closed shadow-root dialog): start from the open application dialog instead.
+    if (!isFieldLike(anchor)) anchor = dialogAnchor() ?? anchor ?? document.body;
     if (!anchor || this.store.get().filling) return none;
     if (!contextAlive()) return (this.handleDeadContext(), none);
     this.ensureUI(anchor);
@@ -827,7 +830,7 @@ export class Controller {
     for (const [, radios] of radioGroups(anchor === document.body ? document.body : anchor)) {
       if (radios.some((r) => r.checked)) continue;
       const first = radios[0];
-      const groupLabel = first.closest('fieldset')?.querySelector('legend')?.textContent?.trim() || resolveLabel(first.parentElement as HTMLElement) || first.name;
+      const groupLabel = legendText(first) || resolveLabel(first.parentElement as HTMLElement) || first.name;
       const options = radios.map((r) => ({ value: r.value, label: resolveLabel(r) || r.value }));
       const semantic = classifyField({ label: groupLabel, name: first.name });
       if (isSensitive(semantic)) continue;
@@ -1026,12 +1029,23 @@ function closestModal(el: Element): Element | null {
   return overlayRoot(el);
 }
 
-export function deepActiveElement(): HTMLElement | null {
-  let a: Element | null = document.activeElement;
-  while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement;
-  return a as HTMLElement | null;
-}
+/** The focused element, following focus into open and closed shadow roots. */
+export const deepActiveElement = (): HTMLElement | null => deepActive();
 
 function getAccent(name: string): string {
   return ({ violet: '#7c3aed', blue: '#2563eb', emerald: '#059669', orange: '#ea580c', rose: '#e11d48', slate: '#475569' } as Record<string, string>)[name] ?? '#7c3aed';
+}
+
+/**
+ * The question a radio group asks. LinkedIn writes it twice in the legend (a visible copy and
+ * a screen-reader copy) plus a "*": keep one copy, drop the marker.
+ */
+function legendText(radio: HTMLInputElement): string {
+  const legend = radio.closest('fieldset')?.querySelector('legend');
+  if (!legend) return '';
+  const visible = legend.querySelector('[aria-hidden="true"]')?.textContent;
+  let t = (visible || legend.textContent || '').replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').trim();
+  const half = t.length / 2;
+  if (Number.isInteger(half) && t.slice(0, half) === t.slice(half)) t = t.slice(0, half).trim();
+  return t;
 }

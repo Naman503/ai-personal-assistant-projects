@@ -1,10 +1,11 @@
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
 import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-core';
 import type { Settings } from '@/lib/settings';
-import { fieldKind } from '@/lib/fields/context';
+import { deepActiveElement, deepElementFromPoint, fieldKind, shadowOf } from '@/lib/fields/context';
 import { Controller, contextAlive } from './controller';
 import { ApplyWatcher } from './apply-watch';
 import { ApplyWalker } from './walk';
+import { frameShouldAct } from '@/lib/frames';
 import { extractJob } from '@/lib/job';
 import { trackError, type TabCommand } from '@/lib/messages';
 
@@ -79,7 +80,15 @@ export default defineContentScript({
 
     const isField = (n: EventTarget | null): n is HTMLElement => n instanceof HTMLElement && !!fieldKind(n);
     /** The real focused element, even inside open shadow roots. */
-    const realTarget = (e: Event): EventTarget | null => e.composedPath()[0] ?? e.target;
+    const realTarget = (e: Event): EventTarget | null => {
+      const t = e.composedPath()[0] ?? e.target;
+      // Inside a closed shadow root the event only shows us the host: look inside it.
+      if (t instanceof Element && shadowOf(t)) {
+        if (e instanceof MouseEvent && (e.clientX || e.clientY)) return deepElementFromPoint(e.clientX, e.clientY) ?? t;
+        return deepActiveElement() ?? t;
+      }
+      return t;
+    };
 
     const onFocusIn = guard((e: FocusEvent) => {
       const t = realTarget(e);
@@ -161,8 +170,10 @@ export default defineContentScript({
         void (msg.name === 'save-job' ? watcher.saveCurrent() : watcher.markApplied());
         return;
       }
-      // Commands go to every frame; only the focused frame reacts.
-      if (!document.hasFocus()) return;
+      // Commands go to every frame; only the frame the user is in reacts. The toolbar popup and
+      // the right-click menu take focus away from the page, so for those: the top frame acts
+      // unless the user was inside an iframe, and that iframe acts instead.
+      if (!frameShouldAct({ hasFocus: document.hasFocus(), via: msg.via, isTop: window === window.top, activeTag: document.activeElement?.tagName, activeIsField: !!fieldKind(deepActiveElement() ?? document.body) })) return;
       log.info(`command ${msg.name}`);
       const via = msg.via === 'context_menu' ? 'context_menu' : msg.via === 'toolbar' ? 'toolbar' : 'shortcut';
       if (msg.name === 'open-suggestions') controller.openForActiveElement(via === 'context_menu' ? 'context_menu' : 'shortcut');
