@@ -40,6 +40,10 @@ export type RpcRequest =
   /** Job tracker: record a job as applied (or just saved), with the answers given on the form. */
   | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[] }
   | { type: 'tracker-test'; url?: string }
+  /** Popup: is this job already in the tracker? */
+  | { type: 'tracker-lookup'; url: string; company?: string; role?: string }
+  /** Popup: today's counts from the tracker (to apply, to send, follow-ups, interviews). */
+  | { type: 'tracker-summary' }
   /** Anonymous usage: an allowlisted event (lib/usage.ts CLIENT_EVENTS); the background drops anything else. */
   | { type: 'usage'; name: string; props?: Record<string, string | number | boolean> }
   /** Anonymous usage: an error in another context, by class and stack only (never the message). */
@@ -84,7 +88,7 @@ export async function rpc<T = unknown>(req: RpcRequest): Promise<T> {
 }
 
 // ---- Background → content (tabs.sendMessage) ----
-export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied';
+export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job';
 export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' } | { type: 'settings-ping' };
 
 export interface Stats {

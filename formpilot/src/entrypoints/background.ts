@@ -13,7 +13,7 @@ import { db } from '@/lib/memory/db';
 import { hostMatches, isAbort } from '@/lib/util';
 import { charsBucket, countBucket, rpcType, docKind, errorCategory, msBucket, providerFamily, sanitizeClientEvent, optionsSection, settingsSnapshot, UsageReporter, usageSource } from '@/lib/usage';
 import { vaultStatus } from '@/lib/vault';
-import { recordInTracker, testTracker } from '@/lib/tracker';
+import { lookupInTracker, recordInTracker, testTracker, trackerSummary } from '@/lib/tracker';
 
 export default defineBackground({
   type: 'module',
@@ -204,6 +204,10 @@ export default defineBackground({
         }
         case 'tracker-test':
           return testTracker(msg.url ?? settings.tracker.url);
+        case 'tracker-lookup':
+          return lookupInTracker(settings.tracker.url, { url: msg.url, company: msg.company, role: msg.role });
+        case 'tracker-summary':
+          return trackerSummary(settings.tracker.url);
         case 'get-logs':
           return ring.all();
         case 'clear-logs':

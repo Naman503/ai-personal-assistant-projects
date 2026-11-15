@@ -69,6 +69,48 @@ export async function recordInTracker(s: Settings, kind: 'applied' | 'saved', jo
   return call<{ ok: boolean; id: string; created: boolean; status: string }>(baseUrl(s.tracker.url) + '/api/record-application', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export interface TrackerLookup {
+  found: boolean;
+  id?: string;
+  status?: string;
+  label?: string;
+  appliedOn?: string;
+  followUp?: string;
+  fit?: number;
+  fitAuto?: number;
+  fitWhy?: string[];
+  logo?: string;
+  hasDrafts?: boolean;
+  linkedinNote?: string;
+  people?: number;
+}
+
+/** Is this job already tracked? Needs a tracker with GET /api/lookup (Job Search Desk); older ones answer "not found". */
+export async function lookupInTracker(url: string, job: { url: string; company?: string; role?: string }): Promise<TrackerLookup> {
+  const q = new URLSearchParams({ url: job.url.slice(0, 2000), company: (job.company ?? '').slice(0, 120), role: (job.role ?? '').slice(0, 200) });
+  try {
+    return await call<TrackerLookup>(baseUrl(url) + '/api/lookup?' + q);
+  } catch (e) {
+    if (e instanceof TrackerError && /not found|404/i.test(e.message)) return { found: false };
+    throw e;
+  }
+}
+
+export interface TrackerSummary {
+  toApply: number;
+  toSend: number;
+  due: string[];
+  interviews: string[];
+  waiting: number;
+  week: number;
+}
+
+/** Today's counts (GET /api/digest). */
+export async function trackerSummary(url: string): Promise<TrackerSummary> {
+  const d = await call<Partial<TrackerSummary>>(baseUrl(url) + '/api/digest');
+  return { toApply: d.toApply ?? 0, toSend: d.toSend ?? 0, due: d.due ?? [], interviews: d.interviews ?? [], waiting: d.waiting ?? 0, week: d.week ?? 0 };
+}
+
 export async function testTracker(url: string): Promise<{ applications: number; people: number }> {
   const st = await call<{ applications?: unknown[]; contacts?: unknown[] }>(baseUrl(url) + '/api/state');
   if (!Array.isArray(st.applications)) throw new TrackerError("That address answered, but it doesn't look like a job tracker.");

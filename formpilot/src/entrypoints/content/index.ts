@@ -5,6 +5,7 @@ import { fieldKind } from '@/lib/fields/context';
 import { Controller, contextAlive } from './controller';
 import { ApplyWatcher } from './apply-watch';
 import { ApplyWalker } from './walk';
+import { extractJob } from '@/lib/job';
 import { trackError, type TabCommand } from '@/lib/messages';
 
 export default defineContentScript({
@@ -137,8 +138,19 @@ export default defineContentScript({
     const active = document.activeElement;
     if (isField(active)) controller.onFocus(active);
 
-    const onMessage = (msg: TabCommand) => {
+    const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       if (msg?.type !== 'command') return;
+      // Popup asks what job this page shows (top frame only; no description, it's not needed there).
+      if (msg.name === 'get-job') {
+        if (window !== window.top) return;
+        try {
+          const { description: _d, ...job } = extractJob();
+          reply(job);
+        } catch {
+          reply(null);
+        }
+        return;
+      }
       // Job tracker actions are about the page, so only the top frame answers (no focus needed).
       if (msg.name === 'save-job' || msg.name === 'mark-applied') {
         if (window !== window.top) return;
