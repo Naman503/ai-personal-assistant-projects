@@ -4,6 +4,17 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-11-15
+
+### Added
+- **A more useful toolbar popup.**
+  - On a job page it shows the job (logo, role, company, location) and whether it's already in your job tracker: "Not tracked yet", "Shortlisted", or "Applied 13 Nov", with its fit score and how many people you know there.
+  - **Save** and **I applied** work from the popup and update in place; **Open** jumps to the job in the tracker; **Note** copies the LinkedIn connection note the tracker drafted for this job.
+  - **Today** from the tracker: jobs to apply to, messages to send, follow-ups due and interviews, each one click away.
+  - **Walk to Submit** can be switched on right in the popup.
+  - Cleaner layout: one big *Fill this form* button, AI and memory status as small tiles.
+- Needs a tracker with `GET /api/lookup` and `GET /api/digest` (Job Search Desk). Older trackers just show "Not tracked yet".
+
 ## [1.5.1] - 2026-11-15
 
 ### Fixed

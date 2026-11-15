@@ -627,6 +627,51 @@ test('records a LinkedIn-style Easy Apply whose dialog lives in a shadow root', 
   }
 });
 
+test('popup shows the job on the page, whether it is tracked, and today from the tracker', async ({ context, sw, extId }) => {
+  const { createServer } = await import('node:http');
+  let tracked = false;
+  const tracker = createServer((req, res) => {
+    const u = new URL(req.url ?? '/', 'http://x');
+    const send = (o: unknown) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(o));
+    if (u.pathname === '/api/digest') return send({ toApply: 12, toSend: 3, due: ['Acme: Engineer'], interviews: [], waiting: 0, week: 7 });
+    if (u.pathname === '/api/lookup') return send(tracked ? { found: true, id: 'j1', status: 'applied', label: 'Applied', appliedOn: '2026-11-13', fitAuto: 4, fitWhy: ['Mentions React Native'], people: 2 } : { found: false });
+    send({ ok: true });
+  });
+  await new Promise<void>((r) => tracker.listen(4177, r));
+  try {
+    await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4177', autoRecord: true, includeAnswers: true, walkToSubmit: false } });
+    const job = await context.newPage();
+    await job.goto('http://localhost:4173/apply-shadow.html');
+    const open = async () => {
+      const popup = await context.newPage();
+      // The popup reads "the active tab": point it at the job page.
+      await popup.addInitScript(() => {
+        const q = chrome.tabs.query.bind(chrome.tabs);
+        (chrome.tabs as { query: unknown }).query = (info: chrome.tabs.QueryInfo) => (info.active ? q({ url: 'http://localhost:4173/apply-shadow.html' }) : q(info));
+      });
+      await popup.setViewportSize({ width: 360, height: 640 });
+      await popup.goto(`chrome-extension://${extId}/popup.html`);
+      return popup;
+    };
+    let popup = await open();
+    await expect(popup.getByText('Staff Engineer')).toBeVisible();
+    await expect(popup.getByText('Beta Labs · Pune, Maharashtra')).toBeVisible();
+    await expect(popup.getByText('Not tracked yet')).toBeVisible();
+    await expect(popup.getByRole('button', { name: /Save/ })).toBeVisible();
+    await expect(popup.getByRole('button', { name: /Send/ })).toContainText('3');
+    if (process.env.SHOTS) await popup.screenshot({ path: `${process.env.SHOTS}/popup-new.png`, fullPage: true });
+    await popup.close();
+    tracked = true;
+    popup = await open();
+    await expect(popup.getByText(/^Applied (13 Nov|Nov 13)$/)).toBeVisible();
+    await expect(popup.getByRole('button', { name: 'Open', exact: true })).toBeVisible();
+    await expect(popup.getByRole('button', { name: /I applied/ })).toHaveCount(0);
+    if (process.env.SHOTS) await popup.screenshot({ path: `${process.env.SHOTS}/popup-tracked.png`, fullPage: true });
+  } finally {
+    tracker.close();
+  }
+});
+
 test('walks a shadow-root Easy Apply to the Submit button and stops there', async ({ context, sw }) => {
   await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true }, behavior: { enabled: false } });
   const page = await context.newPage();
