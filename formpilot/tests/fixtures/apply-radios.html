@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Engineering Manager | Flipkart | LinkedIn-style</title>
+<style>
+body{font:15px system-ui;max-width:640px;margin:40px auto}
+/* LinkedIn hides the real radio and styles the label */
+.vh{position:absolute;opacity:0;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+label.opt{display:inline-block;margin:6px 12px 6px 0;padding:6px 14px;border:1px solid #888;border-radius:16px;cursor:pointer}
+fieldset{border:0;padding:0;margin:14px 0}
+</style>
+</head>
+<body>
+<div class="job-details-jobs-unified-top-card__job-title"><h1>Engineering Manager</h1></div>
+<div class="job-details-jobs-unified-top-card__company-name"><a>Flipkart</a></div>
+<div role="dialog" aria-modal="true">
+  <h2>Apply to Flipkart</h2>
+  <div id="s1">
+    <fieldset><legend>Are you comfortable commuting to this job's location?*</legend>
+      <input class="vh" type="radio" name="commute" id="c-yes" value="Yes" required><label class="opt" for="c-yes">Yes</label>
+      <input class="vh" type="radio" name="commute" id="c-no" value="No" required><label class="opt" for="c-no">No</label>
+    </fieldset>
+    <fieldset><legend>PS Note: Kindly apply only if the JD meets your profile*</legend>
+      <input class="vh" type="radio" name="jd" id="j-yes" value="Yes" required><label class="opt" for="j-yes">Yes</label>
+      <input class="vh" type="radio" name="jd" id="j-no" value="No" required><label class="opt" for="j-no">No</label>
+    </fieldset>
+    <button id="review" type="button"><span>Review</span></button>
+  </div>
+  <div id="s2" hidden>
+    <p>Review your application.</p>
+    <button id="send" type="button"><span>Submit application</span></button>
+  </div>
+</div>
+<script>
+  document.getElementById('review').onclick = () => { document.getElementById('s1').remove(); document.getElementById('s2').hidden = false; };
+</script>
+</body>
+</html>

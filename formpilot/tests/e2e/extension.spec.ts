@@ -647,6 +647,20 @@ test('walks a shadow-root Easy Apply to the Submit button and stops there', asyn
   await expect(dialog.locator('h2')).toHaveText('Apply to Beta Labs');
 });
 
+test('fills hidden-input Yes/No radios (LinkedIn style) and walks on to Submit', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true }, behavior: { enabled: false } });
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-radios.html');
+  // Nothing typeable on this step: anchor the fill on the first radio, as the walker does.
+  await page.locator('#c-yes').focus();
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/*' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form' });
+  });
+  await expect(page.locator('#s2')).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => page.locator('#send').evaluate((b) => (b as HTMLElement).style.outline), { timeout: 10_000 }).toMatch(/solid 3px|3px solid/);
+});
+
 test('fits each answer to the field: units, numbers-only, ranges, date formats, phone', async ({ context, sw }) => {
   await configure(sw);
   const page = await context.newPage();

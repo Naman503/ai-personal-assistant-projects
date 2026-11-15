@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-11-15
+
+### Fixed
+- **Yes/No questions on LinkedIn Easy Apply were skipped.** LinkedIn hides the radio input behind a styled label, so FormPilot treated the group as invisible: "Fill this form" left them empty, the walk stopped on that step, and the answers never reached the job tracker. Radios and checkboxes now count as visible when their label is.
+
 ## [1.5.0] - 2026-11-15
 
 ### Added

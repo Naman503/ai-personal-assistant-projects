@@ -3,7 +3,7 @@
  * move on (Next / Review), has reached the Submit button, or needs the user first.
  * Pure DOM reading, content-script safe. The walker never presses Submit.
  */
-import { fieldKind, isVisible, readValue, type FillableElement } from '@/lib/fields/context';
+import { fieldKind, isVisible, isVisibleControl, readValue, type FillableElement } from '@/lib/fields/context';
 import { looksLikeSubmit } from '@/lib/job';
 
 /** Buttons that move to the next step of a form without sending it. */
@@ -31,7 +31,7 @@ export function emptyRequired(scope: Element): HTMLElement[] {
   const seenRadio = new Set<string>();
   for (const el of scope.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')) {
     const input = el as HTMLInputElement;
-    if (!isVisible(el) || (input.type !== 'radio' && !fieldKind(el))) continue;
+    if (!isVisibleControl(el) || (input.type !== 'radio' && !fieldKind(el))) continue;
     const required = input.required || el.getAttribute('aria-required') === 'true';
     if (!required) continue;
     if (input.type === 'checkbox' || input.type === 'file' || input.type === 'hidden') continue;
@@ -90,7 +90,7 @@ export function stepScope(el: Element): Element {
 export function firstEmptyField(scope: Element): HTMLElement | null {
   for (const el of scope.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')) {
     const input = el as HTMLInputElement;
-    if (!isVisible(el) || (input.type !== 'radio' && !fieldKind(el))) continue;
+    if (!isVisibleControl(el) || (input.type !== 'radio' && !fieldKind(el))) continue;
     if (['checkbox', 'file', 'hidden', 'password', 'submit', 'button'].includes(input.type)) continue;
     if (input.type === 'radio') return el;
     if (!readValue(el as FillableElement).trim()) return el;
