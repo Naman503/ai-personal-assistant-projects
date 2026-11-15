@@ -4,6 +4,13 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.6.1] - 2026-11-15
+
+### Fixed
+- **"Fill this form" from the toolbar did nothing.** The popup takes focus away from the page, and FormPilot only answered in the focused frame, so the command was dropped. The top frame now answers toolbar and right-click fills (or the iframe you were typing in).
+- **LinkedIn Easy Apply fields were out of reach.** The dialog lives in a closed shadow root, so FormPilot couldn't see what was focused or clicked inside it and filled nothing. It now follows focus and clicks into closed shadow roots, and when no field is focused (a step with only Yes/No questions) it starts from the open dialog.
+- Radio questions on LinkedIn were read twice ("Q? Q? *") because the legend repeats the question for screen readers.
+
 ## [1.6.0] - 2026-11-15
 
 ### Added

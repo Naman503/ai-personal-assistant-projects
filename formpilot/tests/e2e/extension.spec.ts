@@ -706,6 +706,26 @@ test('fills hidden-input Yes/No radios (LinkedIn style) and walks on to Submit',
   await expect.poll(() => page.locator('#send').evaluate((b) => (b as HTMLElement).style.outline), { timeout: 10_000 }).toMatch(/solid 3px|3px solid/);
 });
 
+test('toolbar Fill on a LinkedIn-style closed shadow-root Easy Apply: radios, phone, walk to Submit', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true }, behavior: { enabled: false } });
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-linkedin.html');
+  await page.click('#easy');
+  // No field is focused: LinkedIn focuses the dialog itself (frameShouldAct covers the popup's focus loss).
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-linkedin.html' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
+  });
+  const state = () => page.evaluate(() => {
+    const r = (window as unknown as { __root: ShadowRoot }).__root;
+    const send = r.getElementById('send') as HTMLElement | null;
+    return { onStep2: !!send && !(r.getElementById('s2') as HTMLElement).hidden, outline: send?.style.outline ?? '', submitted: !!(window as unknown as { __submitted?: boolean }).__submitted };
+  });
+  await expect.poll(async () => (await state()).onStep2, { timeout: 20_000 }).toBe(true);
+  await expect.poll(async () => (await state()).outline, { timeout: 10_000 }).toMatch(/solid 3px|3px solid/);
+  expect((await state()).submitted).toBe(false);
+});
+
 test('fits each answer to the field: units, numbers-only, ranges, date formats, phone', async ({ context, sw }) => {
   await configure(sw);
   const page = await context.newPage();

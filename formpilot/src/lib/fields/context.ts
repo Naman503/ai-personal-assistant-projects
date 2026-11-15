@@ -487,6 +487,79 @@ export function formOf(el: Element): Element | ShadowRoot {
 }
 
 /**
+ * An element's shadow root, open or closed. A content script sees `el.shadowRoot` as null for
+ * closed roots (LinkedIn's Easy Apply dialog is one); chrome.dom can still reach them.
+ */
+export function shadowOf(el: Element | null | undefined): ShadowRoot | null {
+  if (!el) return null;
+  const dom = (globalThis as { chrome?: { dom?: { openOrClosedShadowRoot?: (e: HTMLElement) => ShadowRoot | null } } }).chrome?.dom;
+  try {
+    return dom?.openOrClosedShadowRoot?.(el as HTMLElement) ?? (el as HTMLElement).shadowRoot ?? null;
+  } catch {
+    return (el as HTMLElement).shadowRoot ?? null;
+  }
+}
+
+/** The focused element, following focus into open and closed shadow roots. */
+export function deepActiveElement(doc: Document = document): HTMLElement | null {
+  let a: Element | null = doc.activeElement;
+  for (let i = 0; i < 20; i++) {
+    const inner = shadowOf(a)?.activeElement;
+    if (!inner || inner === a) break;
+    a = inner;
+  }
+  return a as HTMLElement | null;
+}
+
+/** The element under a point, following into open and closed shadow roots. */
+export function deepElementFromPoint(x: number, y: number, doc: Document = document): Element | null {
+  let el = doc.elementFromPoint(x, y);
+  for (let i = 0; i < 20; i++) {
+    const inner = shadowOf(el)?.elementFromPoint(x, y);
+    if (!inner || inner === el) break;
+    el = inner;
+  }
+  return el;
+}
+
+/** Visible dialogs on the page, including ones inside shadow roots; the last one is usually on top. */
+export function openDialogs(doc: Document = document): Element[] {
+  const out: Element[] = [];
+  let seen = 0;
+  const walk = (root: Document | ShadowRoot) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (++seen > 30_000) return;
+      if ((el.getAttribute('role') === 'dialog' || el.getAttribute('aria-modal') === 'true' || el.tagName === 'DIALOG') && isVisible(el)) out.push(el);
+      const sr = shadowOf(el);
+      if (sr) walk(sr);
+    }
+  };
+  walk(doc);
+  return out;
+}
+
+/** True for anything a whole-form fill can start from: a text field, a select, a radio. */
+export function isFieldLike(el: Element | null | undefined): boolean {
+  if (!el) return false;
+  return !!fieldKind(el) || (el instanceof HTMLInputElement && el.type === 'radio');
+}
+
+/**
+ * Where to start a whole-form fill when nothing useful is focused (the toolbar button was
+ * pressed, or the step only has radio buttons): the first field of the topmost open dialog
+ * that has any. Null when no dialog with fields is open.
+ */
+export function dialogAnchor(doc: Document = document): HTMLElement | null {
+  const dialogs = openDialogs(doc).reverse();
+  for (const d of dialogs) {
+    for (const el of d.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')) {
+      if (isFieldLike(el) && !(el as HTMLInputElement).disabled && isVisibleControl(el)) return el;
+    }
+  }
+  return null;
+}
+
+/**
  * Visible to the user: the control itself, or, for radios and checkboxes that sites hide behind
  * a styled label (LinkedIn, Workday), the label that stands in for it.
  */
