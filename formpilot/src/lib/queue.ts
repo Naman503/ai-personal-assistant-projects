@@ -65,6 +65,24 @@ export function easyApplyButton(doc: Document = document): HTMLElement | null {
   return b ?? null;
 }
 
+/** The job pane shows this job: its title appears outside the list of cards. */
+export function paneShowsTitle(title: string, doc: Document = document): boolean {
+  const t = title.replace(/\s+/g, ' ').trim();
+  return [...doc.querySelectorAll('a, h1, h2, h3')].some(
+    (e) => (e.textContent || '').replace(/\s+/g, ' ').trim() === t && !e.closest('[role="button"][componentkey]') && isVisible(e),
+  );
+}
+
+/** The job id LinkedIn shows: ?currentJobId= on the list, /jobs/view/<id>/ on a job page. */
+export const currentJobId = (href: string) => {
+  try {
+    const u = new URL(href);
+    return u.searchParams.get('currentJobId') || (u.pathname.match(/jobs\/view\/(\d+)/) || [])[1] || '';
+  } catch {
+    return '';
+  }
+};
+
 /** The job pane says this job is already applied to (no Easy Apply to press). */
 export function paneShowsApplied(doc: Document = document): boolean {
   return [...doc.querySelectorAll('h1,h2,h3')].some((h) => /^application status$/i.test((h.textContent || '').trim()));

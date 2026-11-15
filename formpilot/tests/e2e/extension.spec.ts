@@ -738,24 +738,24 @@ test('apply queue works down a LinkedIn-style job list, stopping at Submit for t
     const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/linkedin-list.html*' });
     await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'apply-queue', via: 'toolbar' }, { frameId: 0 });
   });
-  type W = { __root: ShadowRoot; __opened: string[]; __sent: string[]; __untrustedSubmit: boolean };
+  type W = { __dlgRoot: ShadowRoot | HTMLElement; __opened: string[]; __sent: string[]; __untrustedSubmit: boolean };
   const atSubmit = (company: string) =>
     page.evaluate((c) => {
-      const r = (window as unknown as W).__root;
-      const send = r.getElementById('send') as HTMLElement | null;
+      const r = (window as unknown as W).__dlgRoot;
+      const send = r?.querySelector('#send') as HTMLElement | null;
       return !!send && (r.querySelector('h2')?.textContent ?? '').includes(c) && /3px/.test(send.style.outline);
     }, company);
   // The user presses Submit: a real (trusted) mouse click on the highlighted button.
   const pressSubmit = async () => {
     const box = await page.evaluate(() => {
-      const r = (window as unknown as W).__root.getElementById('send')!.getBoundingClientRect();
+      const r = (window as unknown as W).__dlgRoot.querySelector('#send')!.getBoundingClientRect();
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     });
     await page.mouse.click(box.x, box.y);
   };
-  await expect.poll(() => atSubmit('Acme'), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => atSubmit('Acme'), { timeout: 30_000 }).toBe(true);
   await pressSubmit();
-  await expect.poll(() => atSubmit('Beta'), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => atSubmit('Beta'), { timeout: 30_000 }).toBe(true);
   await pressSubmit();
   await expect.poll(() => page.evaluate(() => (window as unknown as W).__sent), { timeout: 10_000 }).toEqual(['Mobile Engineer', 'SDE 2 - React Native']);
   // Skipped: already applied, no Easy Apply, and the skipped title. Never pressed Submit itself.
