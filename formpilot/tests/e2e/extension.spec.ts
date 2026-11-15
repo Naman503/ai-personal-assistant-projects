@@ -726,6 +726,45 @@ test('toolbar Fill on a LinkedIn-style closed shadow-root Easy Apply: radios, ph
   expect((await state()).submitted).toBe(false);
 });
 
+test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true, queueDailyCap: 10, queueDelaySec: 0, queueSkipTitles: 'Engineering Manager' },
+    behavior: { enabled: false },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove('fpQueueDay'));
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/linkedin-list.html');
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/linkedin-list.html*' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'apply-queue', via: 'toolbar' }, { frameId: 0 });
+  });
+  type W = { __root: ShadowRoot; __opened: string[]; __sent: string[]; __untrustedSubmit: boolean };
+  const atSubmit = (company: string) =>
+    page.evaluate((c) => {
+      const r = (window as unknown as W).__root;
+      const send = r.getElementById('send') as HTMLElement | null;
+      return !!send && (r.querySelector('h2')?.textContent ?? '').includes(c) && /3px/.test(send.style.outline);
+    }, company);
+  // The user presses Submit: a real (trusted) mouse click on the highlighted button.
+  const pressSubmit = async () => {
+    const box = await page.evaluate(() => {
+      const r = (window as unknown as W).__root.getElementById('send')!.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(box.x, box.y);
+  };
+  await expect.poll(() => atSubmit('Acme'), { timeout: 20_000 }).toBe(true);
+  await pressSubmit();
+  await expect.poll(() => atSubmit('Beta'), { timeout: 20_000 }).toBe(true);
+  await pressSubmit();
+  await expect.poll(() => page.evaluate(() => (window as unknown as W).__sent), { timeout: 10_000 }).toEqual(['Mobile Engineer', 'SDE 2 - React Native']);
+  // Skipped: already applied, no Easy Apply, and the skipped title. Never pressed Submit itself.
+  expect(await page.evaluate(() => (window as unknown as W).__opened)).toEqual(['Mobile Engineer', 'SDE 2 - React Native']);
+  expect(await page.evaluate(() => (window as unknown as W).__untrustedSubmit)).toBe(false);
+  await expect(page.locator('formpilot-ui')).toHaveAttribute('data-toast', 'success', { timeout: 10_000 });
+  await expect.poll(() => sw.evaluate(async () => ((await chrome.storage.local.get("fpQueueDay")).fpQueueDay as { n?: number } | undefined)?.n), { timeout: 10_000 }).toBe(2);
+});
+
 test('fits each answer to the field: units, numbers-only, ranges, date formats, phone', async ({ context, sw }) => {
   await configure(sw);
   const page = await context.newPage();

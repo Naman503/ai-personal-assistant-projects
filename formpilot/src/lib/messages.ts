@@ -88,7 +88,7 @@ export async function rpc<T = unknown>(req: RpcRequest): Promise<T> {
 }
 
 // ---- Background → content (tabs.sendMessage) ----
-export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job';
+export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job' | 'apply-queue' | 'apply-queue-stop' | 'apply-queue-status';
 export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' } | { type: 'settings-ping' };
 
 export interface Stats {

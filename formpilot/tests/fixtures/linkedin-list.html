@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>React Native Jobs | LinkedIn</title>
+<style>
+body{font:14px system-ui;margin:20px;display:grid;grid-template-columns:320px 1fr;gap:20px}
+[role=button]{border:1px solid #ccc;border-radius:8px;padding:8px;margin:6px 0;cursor:pointer}
+#pane{border:1px solid #ccc;border-radius:8px;padding:12px;min-height:200px}
+</style>
+</head>
+<body>
+<!-- Mirrors LinkedIn /jobs/search-results/ (Nov 2026): generated class names, cards are
+     div[role=button] with a "Dismiss … job" button, no job id in the card; the job pane shows an
+     "Easy Apply to this job" button; Easy Apply opens a dialog in a closed shadow root. -->
+<div id="list"></div>
+<div id="pane"><h2>Select a job</h2></div>
+<div id="interop-outlet"></div>
+<script>
+const jobs = [
+  { id: 1, title: 'React Native Developer', company: 'Collegedunia', loc: 'Gurugram (On-site)', applied: true, easy: true },
+  { id: 2, title: 'Mobile Engineer', company: 'Acme', loc: 'Bengaluru (Hybrid)', applied: false, easy: true },
+  { id: 3, title: 'Backend Engineer', company: 'Gamma', loc: 'Pune', applied: false, easy: false },
+  { id: 4, title: 'Engineering Manager (Mobile)', company: 'Delta', loc: 'Bengaluru', applied: false, easy: true },
+  { id: 5, title: 'SDE 2 - React Native', company: 'Beta', loc: 'Remote', applied: false, easy: true },
+];
+window.__opened = []; window.__untrustedSubmit = false; window.__sent = [];
+const list = document.getElementById('list'), pane = document.getElementById('pane');
+const host = document.getElementById('interop-outlet');
+const root = host.attachShadow({ mode: 'closed' });
+window.__root = root;
+function renderList() {
+  list.innerHTML = '';
+  for (const j of jobs) {
+    const wrap = document.createElement('div'); wrap.className = 'k4dayq';
+    wrap.innerHTML = `<div role="button" tabindex="0" componentkey="ck-${j.id}">
+      <div><span>${j.title} (Verified job)</span></div><div>${j.title}</div><div>${j.company}</div><div>${j.loc}</div>
+      ${j.applied ? '<div>Applied</div>' : ''}<div> · </div>${j.easy ? '<div>Easy Apply</div>' : ''}
+      <button aria-label="Dismiss ${j.title} job">×</button></div>`;
+    wrap.firstElementChild.onclick = (e) => { if (e.target.closest('button')) return; select(j); };
+    list.appendChild(wrap);
+  }
+}
+function select(j) {
+  history.replaceState(null, '', '?currentJobId=' + j.id);
+  pane.innerHTML = '<p>Loading…</p>';
+  setTimeout(() => {
+    pane.innerHTML = `<h2>${j.title}</h2><p>${j.company}</p>` +
+      (j.applied ? '<h2>Application status</h2>' : j.easy ? `<button type="button" aria-label="Easy Apply to this job" componentkey="ea">Easy Apply</button>` : '<button type="button">Apply</button>');
+    const b = pane.querySelector('[aria-label="Easy Apply to this job"]');
+    if (b) b.onclick = () => openDialog(j);
+  }, 300);
+}
+const css = `<style>.fb-form-element__checkbox{position:absolute;opacity:0;width:1px;height:1px}
+  label{display:inline-block;border:1px solid #666;border-radius:16px;padding:3px 12px;margin:3px}</style>`;
+function openDialog(j) {
+  window.__opened.push(j.title);
+  root.innerHTML = css + `<div role="dialog" aria-modal="true" tabindex="-1">
+    <h2>Apply to ${j.company}</h2><button aria-label="Dismiss" id="x">×</button>
+    <div id="s1">
+      <fieldset><legend><span aria-hidden="true">Are you comfortable commuting to this job's location?</span><span class="visually-hidden">Are you comfortable commuting to this job's location?</span>*</legend>
+        <input class="fb-form-element__checkbox" type="radio" name="c${j.id}" id="y${j.id}" value="Yes" required><label for="y${j.id}">Yes</label>
+        <input class="fb-form-element__checkbox" type="radio" name="c${j.id}" id="n${j.id}" value="No" required><label for="n${j.id}">No</label></fieldset>
+      <label for="phone">Mobile phone number</label><input id="phone" required>
+      <button id="review" type="button"><span>Review</span></button></div>
+    <div id="s2" hidden><button id="send" type="button"><span>Submit application</span></button></div>
+  </div>`;
+  root.querySelector('[role=dialog]').focus();
+  root.getElementById('review').onclick = () => {
+    const ok = root.querySelector(`[name="c${j.id}"]:checked`) && root.getElementById('phone').value;
+    if (!ok) return;
+    root.getElementById('s1').remove(); root.getElementById('s2').hidden = false;
+  };
+  root.getElementById('send').onclick = (e) => {
+    if (!e.isTrusted) { window.__untrustedSubmit = true; return; }
+    setTimeout(() => {
+      window.__sent.push(j.title); j.applied = true; renderList();
+      root.querySelector('[role=dialog]').innerHTML = `<h2>Application sent</h2><p>Your application was sent to ${j.company}!</p><button type="button">Done</button>`;
+      root.querySelector('[role=dialog] button').onclick = () => { root.innerHTML = ''; };
+    }, 300);
+  };
+  root.getElementById('x').onclick = () => { root.innerHTML = ''; };
+}
+renderList();
+</script>
+</body>
+</html>

@@ -4,6 +4,12 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-11-15
+
+### Added
+- **Apply queue for LinkedIn.** On a LinkedIn job search, *Apply to this list* in the toolbar popup works down the list: it opens each Easy Apply job you haven't applied to, fills every step, presses Next, and stops with Submit highlighted. You press Submit; FormPilot records the application, closes LinkedIn's "Application sent" box, pauses a few seconds and opens the next job, then the next page. It never presses Submit. A step that needs you (a blank required field, an error) waits, and once you move past it the queue takes over again. A status message shows progress with **Skip** and **Stop**.
+- Settings → Behavior → Job tracker: a daily limit (default 30), the pause between jobs (default 6 s, randomised), and job titles to skip (e.g. "Engineering Manager, Director").
+
 ## [1.6.1] - 2026-11-15
 
 ### Fixed

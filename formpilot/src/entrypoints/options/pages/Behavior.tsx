@@ -203,6 +203,15 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
       <Row label="Walk the form to Submit" description='After "Fill this form" on a multi-step application (LinkedIn Easy Apply and similar), FormPilot presses Next or Review for you, fills each step, and stops at the Submit button with it highlighted. It never presses Submit, and it stops when a step needs you (an empty required field, a checkbox, an error).'>
         <Switch checked={t.walkToSubmit} onCheckedChange={(v) => set('walkToSubmit', v)} />
       </Row>
+      <Row label="Apply queue: daily limit" description="On a LinkedIn job search, “Apply to this list” opens each Easy Apply job, fills it to the Submit button and waits for you to press Submit, then moves to the next. It stops after this many sent per day. Above about 50 a day LinkedIn is more likely to check the account.">
+        <Input type="number" min={1} max={200} className="w-24" value={String(t.queueDailyCap)} onChange={(e) => set('queueDailyCap', Math.max(1, Math.min(200, Number(e.target.value) || 30)))} />
+      </Row>
+      <Row label="Apply queue: pause between jobs (seconds)" description="Randomised by ±50% so the clicks don't come at a fixed rhythm.">
+        <Input type="number" min={0} max={120} className="w-24" value={String(t.queueDelaySec)} onChange={(e) => set('queueDelaySec', Math.max(0, Math.min(120, Number(e.target.value) || 0)))} />
+      </Row>
+      <Row label="Apply queue: skip job titles containing" description="Comma separated, e.g. Engineering Manager, Director, iOS, .NET" stacked>
+        <Input placeholder="Engineering Manager, Director, iOS" value={t.queueSkipTitles} onChange={(e) => set('queueSkipTitles', e.target.value)} />
+      </Row>
     </Card>
   );
 }
