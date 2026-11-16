@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ListChecks,
   Square,
+  RefreshCw,
 } from 'lucide-react';
 import { Switch } from '@/components/ui';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
@@ -106,22 +107,37 @@ export function Popup() {
   const [pageHasList, setPageHasList] = useState(false);
   const onJobList = onLinkedInJobs && (isLinkedInJobList(tab?.url ?? '') || pageHasList);
   const [queueRunning, setQueueRunning] = useState(false);
+  // The page's FormPilot script is missing or older than this popup (the extension was reloaded
+  // or updated after the tab opened): commands it doesn't know would be dropped or misread.
+  const [pageStale, setPageStale] = useState(false);
   useEffect(() => {
     if (!tab?.id || !onLinkedInJobs) return;
     chrome.tabs
       .sendMessage(tab.id, { type: 'command', name: 'apply-queue-status' }, { frameId: 0 })
       .then((r: { running?: boolean; list?: boolean } | undefined) => {
-        setQueueRunning(!!r?.running);
-        setPageHasList(!!r?.list);
+        if (!r || typeof r.list !== 'boolean') return setPageStale(true);
+        setQueueRunning(!!r.running);
+        setPageHasList(r.list);
       })
-      .catch(() => {});
+      .catch(() => setPageStale(true));
   }, [tab?.id, onLinkedInJobs]);
   const queueCommand = async (name: 'apply-queue' | 'apply-queue-stop') => {
     if (!tab?.id) return;
     track('toolbar_action', { action: name === 'apply-queue' ? 'queue_start' : 'queue_stop' });
-    await chrome.tabs.sendMessage(tab.id, { type: 'command', name, via: 'toolbar' }, { frameId: 0 }).catch(() => {});
+    const r = (await chrome.tabs.sendMessage(tab.id, { type: 'command', name, via: 'toolbar' }, { frameId: 0 }).catch(() => undefined)) as { ok?: boolean } | undefined;
+    if (!r?.ok) return setPageStale(true);
     window.close();
   };
+  // A newer build sits in the extension folder than the one running (unpacked installs need a reload).
+  const [diskVersion, setDiskVersion] = useState<string | null>(null);
+  useEffect(() => {
+    fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((m: { version?: string }) => {
+        if (m.version && m.version !== chrome.runtime.getManifest().version) setDiskVersion(m.version);
+      })
+      .catch(() => {});
+  }, []);
   const trackerBase = settings.tracker.url.trim().replace(/\/+$/, '');
 
   // What job is this page about, and is it already tracked?
@@ -284,6 +300,35 @@ export function Popup() {
             ) : null}
           </div>
         )}
+
+        {diskVersion ? (
+          <button
+            className="flex w-full items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-left text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+            onClick={() => chrome.runtime.reload()}
+          >
+            <RefreshCw className="size-5" />
+            <div className="flex-1">
+              <div className="text-[13.5px] font-semibold">Reload FormPilot to finish updating</div>
+              <div className="text-[11px] opacity-80">
+                {chrome.runtime.getManifest().version} is running; {diskVersion} is installed. Then reload your tabs.
+              </div>
+            </div>
+          </button>
+        ) : pageStale && tab?.id ? (
+          <button
+            className="flex w-full items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-left text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+            onClick={() => {
+              void chrome.tabs.reload(tab.id!);
+              window.close();
+            }}
+          >
+            <RefreshCw className="size-5" />
+            <div className="flex-1">
+              <div className="text-[13.5px] font-semibold">Reload this tab</div>
+              <div className="text-[11px] opacity-80">It still has an older FormPilot, so the apply queue can't run here yet.</div>
+            </div>
+          </button>
+        ) : null}
 
         {/* Apply queue, on LinkedIn job lists */}
         {onJobList ? (
