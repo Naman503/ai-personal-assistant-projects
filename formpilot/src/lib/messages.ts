@@ -92,7 +92,7 @@ export async function rpc<T = unknown>(req: RpcRequest): Promise<T> {
 
 // ---- Background → content (tabs.sendMessage) ----
 export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job' | 'apply-queue' | 'apply-queue-stop' | 'apply-queue-status';
-export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' | 'autopilot'; opts?: { batch?: number; dryRun?: boolean; unattended?: boolean; autoSubmit?: boolean; cap?: number } } | { type: 'settings-ping' };
+export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' | 'autopilot'; opts?: { batch?: number; dryRun?: boolean; unattended?: boolean; autoSubmit?: boolean; cap?: number; relevant?: string[] } } | { type: 'settings-ping' };
 
 export interface Stats {
   docs: number;
