@@ -5,6 +5,7 @@
 <title>React Native Jobs | LinkedIn</title>
 <style>
 body{font:14px system-ui;margin:20px;display:grid;grid-template-columns:320px 1fr;gap:20px}
+#list{height:300px;overflow-y:auto}
 [role=button]{border:1px solid #ccc;border-radius:8px;padding:8px;margin:6px 0;cursor:pointer}
 #pane{border:1px solid #ccc;border-radius:8px;padding:12px;min-height:200px}
 /* LinkedIn's dialog is a centred modal */
@@ -14,7 +15,10 @@ dialog[data-testid=dialog]{position:fixed;top:20%;left:50%;transform:translateX(
 <body>
 <!-- Mirrors LinkedIn /jobs/search-results/ (Nov 2026): generated class names, cards are
      div[role=button] with a "Dismiss … job" button, no job id in the card; the job pane shows an
-     "Easy Apply to this job" button; Easy Apply opens a dialog in a closed shadow root. -->
+     "Easy Apply to this job" button; Easy Apply opens a dialog in a closed shadow root.
+     Like the live page: the list shows a few cards and loads the rest on scroll; a card's lines
+     are title, title, company (some add "(Verified job)"); Easy Apply puts ?companyName= in the
+     address; the dialog frame opens before its fields load. -->
 <div id="list"></div>
 <div id="pane"><h2>Select a job</h2></div>
 <div id="interop-outlet"></div>
@@ -27,16 +31,17 @@ const jobs = [
   { id: 5, title: 'SDE 2 - React Native', company: 'Beta', loc: 'Remote', applied: false, easy: true },
 ];
 window.__opened = []; window.__untrustedSubmit = false; window.__sent = [];
+let shown = 3;
 const list = document.getElementById('list'), pane = document.getElementById('pane');
 const host = document.getElementById('interop-outlet');
 const root = host.attachShadow({ mode: 'closed' });
 window.__root = root;
 function renderList() {
   list.innerHTML = '';
-  for (const j of jobs) {
+  for (const j of jobs.slice(0, shown)) {
     const wrap = document.createElement('div'); wrap.className = 'k4dayq';
-    wrap.innerHTML = `<div role="button" tabindex="0" componentkey="ck-${j.id}">
-      <div><span>${j.title} (Verified job)</span></div><div>${j.title}</div><div>${j.company}</div><div>${j.loc}</div>
+    wrap.innerHTML = `<div role="button" tabindex="0" componentkey="ck-${j.id}" style="min-height:110px">
+      <div><span>${j.title}${j.id % 2 ? ' (Verified job)' : ''}</span></div><div><span>${j.title}</span></div><p>${j.company}</p><p>${j.loc}</p>
       ${j.applied ? '<div>Applied</div>' : ''}<div> · </div>${j.easy ? '<div>Easy Apply</div>' : ''}
       <button aria-label="Dismiss ${j.title} job">×</button></div>`;
     wrap.firstElementChild.onclick = (e) => { if (e.target.closest('button')) return; select(j); };
@@ -47,10 +52,10 @@ function select(j) {
   history.replaceState(null, '', location.pathname.replace(/\/jobs\/view\/\d+\/?$/, '') + '?currentJobId=' + j.id);
   // Like LinkedIn: the old job (and its Easy Apply button) stays on screen while the new one loads.
   setTimeout(() => {
-    pane.innerHTML = `<a href="/jobs/view/${j.id}/">${j.title}</a><p>${j.company}</p>` +
+    pane.innerHTML = `<a href="/jobs/view/${j.id}/">${j.title}</a><p><a href="https://www.linkedin.com/company/${j.company.toLowerCase()}/life">${j.company} Pvt Ltd</a></p>` +
       (j.applied ? '<h2>Application status</h2>' : j.easy ? `<button type="button" aria-label="Easy Apply to this job" componentkey="ea">Easy Apply</button>` : '<button type="button">Apply</button>');
     const b = pane.querySelector('[aria-label="Easy Apply to this job"]');
-    if (b) b.onclick = () => { history.pushState(null, '', '/jobs/view/' + j.id + '/?applicantTrackingSystemName=Zoho'); openDialog(j); };
+    if (b) b.onclick = () => { history.pushState(null, '', '/jobs/view/' + j.id + '/?companyName=' + encodeURIComponent(j.company + ' Private Limited') + '&applicantTrackingSystemName=LinkedIn'); openDialog(j); };
   }, 1500);
 }
 const css = `<style>.fb-form-element__checkbox{position:absolute;opacity:0;width:1px;height:1px}
@@ -65,7 +70,7 @@ function openDialog(j) {
     r = d;
   }
   window.__dlgRoot = r;
-  r.innerHTML = (native ? '' : css) + `<${native ? 'dialog open data-testid="dialog"' : 'div role="dialog" aria-modal="true" tabindex="-1"'}>
+  const body = (native ? '' : css) + `<${native ? 'dialog open data-testid="dialog"' : 'div role="dialog" aria-modal="true" tabindex="-1"'}>
     <h2>Apply to ${j.company}</h2><button aria-label="Dismiss" id="x">×</button>
     <div id="s1">
       <fieldset><legend><span aria-hidden="true">Are you comfortable commuting to this job's location?</span><span class="visually-hidden">Are you comfortable commuting to this job's location?</span>*</legend>
@@ -75,6 +80,12 @@ function openDialog(j) {
       <button id="review" type="button"><span>Review</span></button></div>
     <div id="s2" hidden><button id="send" type="button"><span>Submit application</span></button></div>
   </${native ? 'dialog' : 'div'}>`;
+  // The dialog frame and heading appear first; the step's fields load a moment later.
+  r.innerHTML = body.replace(/<div id="s1">[\s\S]*<\/div>\s*<div id="s2" hidden>[\s\S]*?<\/div>/, '<p>Loading…</p>');
+  setTimeout(() => wire(j, r, body, native), 1200);
+}
+function wire(j, r, body, native) {
+  r.innerHTML = body;
   const q = (sel) => r.querySelector(sel);
   const dlg = q('[role=dialog], dialog');
   dlg.focus?.();
@@ -93,6 +104,9 @@ function openDialog(j) {
   };
   q('#x').onclick = () => { r.innerHTML = ''; };
 }
+list.addEventListener('scroll', () => {
+  if (shown < jobs.length && list.scrollTop + list.clientHeight >= list.scrollHeight - 30) setTimeout(() => { shown = jobs.length; const t = list.scrollTop; renderList(); list.scrollTop = t; }, 400);
+});
 renderList();
 </script>
 </body>

@@ -5,7 +5,30 @@
  * It never presses Submit. A step that needs you (a blank required field, an error) waits;
  * once you move past it, the queue takes over again.
  */
-import { applyDialog, candidates, cardKey, closeButton, currentJobId, easyApplyButton, isSentDialog, jitter, jobCards, nextPageButton, paneShowsApplied, paneShowsTitle, today, type JobCard } from '@/lib/queue';
+import {
+  applyDialog,
+  between,
+  candidates,
+  cardKey,
+  closeButton,
+  currentJobId,
+  dialogCompany,
+  dialogReady,
+  easyApplyButton,
+  humanClick,
+  isSentDialog,
+  jitter,
+  jobCards,
+  listScroller,
+  nextPageButton,
+  paneCompany,
+  paneShowsApplied,
+  paneShowsTitle,
+  pushbackNotice,
+  sameCompany,
+  today,
+  type JobCard,
+} from '@/lib/queue';
 import { decideStep, settled } from '@/lib/walk';
 import { dialogAnchor } from '@/lib/fields/context';
 import { createLogger } from '@/lib/logger';
@@ -44,6 +67,9 @@ export class ApplyQueue {
   private skipRequested = false;
   private tried = new Set<string>();
   private sent = 0;
+  /** Sent since the last break; a longer pause comes after a handful, like a person would take. */
+  private sinceBreak = 0;
+  private breakAfter = 0;
 
   constructor(
     private deps: {
@@ -68,6 +94,8 @@ export class ApplyQueue {
     this.running = true;
     this.stopRequested = false;
     this.sent = 0;
+    this.sinceBreak = 0;
+    this.breakAfter = 6 + Math.floor(Math.random() * 5);
     try {
       await this.loop();
     } catch (e) {
@@ -101,38 +129,87 @@ export class ApplyQueue {
     const prefs = this.deps.prefs();
     trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles });
     for (let page = 0; page < 10 && !this.stopRequested; page++) {
+      await this.loadWholeList();
       let list = candidates(jobCards(), prefs.skipTitles, this.tried);
       const all = jobCards();
       trace(`page ${page + 1}: ${all.length} cards, ${list.length} to open`, all.map((c) => `${c.applied ? 'A' : '-'}${c.easyApply ? 'E' : '-'} ${c.title} · ${c.company}`));
-      if (!list.length && page === 0) {
-        const all = jobCards();
-        if (!all.length) return this.finish("No job list found on this page. Open a LinkedIn job search first.");
-      }
+      if (!all.length && page === 0) return this.finish('No job list found on this page. Open a LinkedIn job search first.');
       while (list.length && !this.stopRequested) {
+        const push = pushbackNotice();
+        if (push) return this.finish(`${push}. Stopped for today so your account stays safe.`, 'error');
         if ((await this.countToday()) >= prefs.cap) return this.finish(`Daily limit reached (${prefs.cap}). Change it in FormPilot settings → Behavior.`);
         const card = list[0];
         this.tried.add(cardKey(card));
-        await this.one(card, prefs);
+        const sent = await this.one(card, prefs);
         if (this.stopRequested) break;
-        await sleep(jitter(prefs.delaySec));
+        if (sent && ++this.sinceBreak >= this.breakAfter) {
+          await this.rest(between(60, 150));
+          this.sinceBreak = 0;
+          this.breakAfter = 6 + Math.floor(Math.random() * 5);
+        } else await this.pause(sent ? jitter(Math.max(prefs.delaySec, 4)) : between(2, 4));
         list = candidates(jobCards(), prefs.skipTitles, this.tried);
+        if (!list.length) {
+          await this.loadWholeList();
+          list = candidates(jobCards(), prefs.skipTitles, this.tried);
+        }
       }
       if (this.stopRequested) break;
       const next = nextPageButton();
       if (!next) break;
       const firstBefore = jobCards()[0]?.title;
       this.status('Opening the next page of jobs…');
-      next.click();
-      await this.until(() => (jobCards()[0]?.title ?? '') !== firstBefore, 15_000);
-      await sleep(1500);
+      await this.pause(between(2, 5));
+      next.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      await this.pause(between(0.6, 1.2));
+      humanClick(next);
+      await this.until(() => (jobCards()[0]?.title ?? '') !== firstBefore, 20_000);
+      await this.pause(between(1.5, 3));
     }
     this.finish(this.stopRequested ? `Apply queue stopped. ${this.sent} sent this run.` : `Done with this list. ${this.sent} sent this run.`);
   }
 
-  private finish(msg: string) {
+  /** LinkedIn shows the first few cards and loads the rest as the list scrolls: scroll it like a reader. */
+  private async loadWholeList() {
+    const scroller = listScroller(jobCards()[0]?.el);
+    if (!scroller) return;
+    let count = jobCards().length;
+    let still = 0;
+    for (let i = 0; i < 20 && still < 2 && !this.stopRequested; i++) {
+      scroller.scrollBy({ top: 350 + Math.random() * 300, behavior: 'smooth' });
+      await sleep(between(0.6, 1.3));
+      const n = jobCards().length;
+      still = n === count && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8 ? still + 1 : 0;
+      count = n;
+    }
+    scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    await sleep(between(0.5, 1));
+    trace(`list loaded: ${count} cards`);
+  }
+
+  /** A pause that the Stop button cuts short. */
+  private async pause(ms: number) {
+    await this.until(() => false, ms, 250);
+  }
+
+  /** A longer break after a handful of applications, with a countdown and a way to skip it. */
+  private async rest(ms: number) {
+    trace(`taking a ${Math.round(ms / 1000)} s break`);
+    const end = Date.now() + ms;
+    let skip = false;
+    while (Date.now() < end && !this.stopRequested && !skip) {
+      const left = Math.ceil((end - Date.now()) / 1000);
+      this.deps.toast(`Short break so this looks like a person applying · next job in ${left} s`, 'info', [
+        { label: 'Go now', run: () => (skip = true) },
+        { label: 'Stop', run: () => this.stop() },
+      ], 2000);
+      await sleep(1000);
+    }
+  }
+
+  private finish(msg: string, tone: 'success' | 'error' = 'success') {
     trace(`queue finished: ${msg}`);
     this.running = false;
-    this.deps.toast(msg, 'success', undefined, 12_000);
+    this.deps.toast(msg, tone, undefined, tone === 'error' ? 60_000 : 12_000);
   }
 
   /** Wait until `cond` holds, or `ms` passes. */
@@ -146,49 +223,68 @@ export class ApplyQueue {
     return cond();
   }
 
-  /** One job: open it, Easy Apply, fill to Submit, wait for the user. */
-  private async one(card: JobCard, prefs: QueuePrefs) {
+  /** One job: open it, read it, Easy Apply, fill to Submit, wait for the user. True if it was sent. */
+  private async one(card: JobCard, prefs: QueuePrefs): Promise<boolean> {
     this.skipRequested = false;
     const label = `${card.title}${card.company ? ` · ${card.company}` : ''}`;
     const n = (await this.countToday()) + 1;
     this.status(`${n} of ${prefs.cap} today · Opening ${label}`);
-    card.el.scrollIntoView({ block: 'center' });
-    await sleep(400);
+    card.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    await this.pause(between(0.5, 1.1));
+    if (this.stopRequested) return false;
     const before = { id: currentJobId(location.href), btn: easyApplyButton() };
     trace(`opening: ${label}`, { from: before.id });
-    card.el.click();
+    humanClick(card.el);
     // The job pane takes a few seconds and keeps the old job's Easy Apply button until the new
     // job loads: wait for the job id to change and the pane to show this job's title.
     const loaded = () => (currentJobId(location.href) !== before.id || !before.btn?.isConnected) && paneShowsTitle(card.title) && (!!easyApplyButton() || paneShowsApplied());
-    if (!(await this.until(loaded, 25_000))) {
-      trace(`skip: the job pane didn't load ${label} within 25 s`, { id: currentJobId(location.href), title: paneShowsTitle(card.title), easy: !!easyApplyButton() });
-      return;
+    if (!(await this.until(loaded, 30_000))) {
+      if (!this.stopRequested) trace(`skip: the job pane didn't load ${label} within 30 s`, { id: currentJobId(location.href), title: paneShowsTitle(card.title), easy: !!easyApplyButton() });
+      return false;
     }
     if (!easyApplyButton()) {
       trace(`skip: no Easy Apply button for ${label} (already applied or external)`);
-      return;
+      return false;
     }
+    // Look at the job for a moment before applying, as a person would.
+    this.status(`${n} of ${prefs.cap} today · Reading ${label}`);
+    await this.pause(between(2, 5));
+    if (this.stopRequested) return false;
+    const company = paneCompany() || card.company;
     const jobId = currentJobId(location.href);
-    await sleep(600 + Math.random() * 600);
-    easyApplyButton()!.click();
-    if (!(await this.until(() => !!applyDialog(), 15_000))) {
+    // Press Easy Apply; if nothing opens, press it once more (the first press can land mid-render).
+    let dialog = false;
+    for (let attempt = 0; attempt < 2 && !dialog && !this.stopRequested; attempt++) {
+      const b = easyApplyButton();
+      if (!b) break;
+      humanClick(b);
+      dialog = await this.until(() => !!applyDialog(), attempt ? 15_000 : 8000);
+    }
+    if (this.stopRequested) return false;
+    if (!dialog) {
       trace(`skip: the Easy Apply dialog didn't open for ${label}`);
-      return;
+      return false;
     }
-    // Safety: the dialog must be for this company ("Apply to <Company>").
-    const head = (applyDialog()?.textContent || '').replace(/\s+/g, ' ');
-    if (card.company && /apply to /i.test(head) && !head.toLowerCase().includes(card.company.toLowerCase().slice(0, 12))) {
-      trace(`skip: the dialog is for a different company than ${label}`, head.slice(0, 120));
+    // The dialog frame opens first and its step loads after: wait for fields or a Next button.
+    if (!(await this.until(() => dialogReady(applyDialog()), 20_000))) {
+      if (this.stopRequested) return false;
+      trace(`the dialog for ${label} has no fields or buttons after 20 s; leaving it to you`);
+    }
+    // Safety: the dialog must be for this job's company ("Apply to <Company>").
+    const forCompany = dialogCompany(applyDialog());
+    if (company && forCompany && !sameCompany(company, forCompany)) {
+      trace(`skip: the dialog is for "${forCompany}", not "${company}" (${label})`);
       await this.discard(applyDialog());
-      return;
+      return false;
     }
-    trace(`dialog open for ${label}`, { jobId, url: location.pathname });
-    await settled(document, 400, 2500);
-    await this.drive(label, n, prefs);
+    trace(`dialog open for ${label}`, { jobId, company, dialog: forCompany, url: location.pathname });
+    await settled(document, 500, 3000);
+    await this.pause(between(0.4, 1));
+    return this.drive(label, n, prefs);
   }
 
   /** Fill and walk the open dialog; then wait for the user to submit, skip or close it. */
-  private async drive(label: string, n: number, prefs: QueuePrefs) {
+  private async drive(label: string, n: number, prefs: QueuePrefs): Promise<boolean> {
     let fingerprint = '';
     let outcome = 'none' as WalkOutcome;
     const step = async () => {
@@ -215,18 +311,18 @@ export class ApplyQueue {
         this.status(`Sent: ${label}. ${total} of ${prefs.cap} today. Next one in a moment…`, 'success', 8000);
         await sleep(1200);
         const close = d && closeButton(d);
-        close?.click();
+        if (close) humanClick(close);
         await this.until(() => !isSentDialog(applyDialog()), 5000);
-        return;
+        return true;
       }
       if (!d) {
         trace(`dialog closed without sending: ${label}`);
-        return; // the user closed or discarded it
+        return false; // the user closed or discarded it
       }
       if (this.skipRequested) {
         trace(`skipped by you: ${label}`);
         await this.discard(d);
-        return;
+        return false;
       }
       // The user moved past a step that needed them: take over again.
       if ((outcome as WalkOutcome) !== 'submit') {
@@ -241,17 +337,18 @@ export class ApplyQueue {
       trace(`gave up after 15 minutes: ${label}`);
       await this.discard(applyDialog());
     }
+    return false;
   }
 
   /** Close the dialog without sending; LinkedIn asks to save or discard, we discard. */
   private async discard(d: Element | null) {
     if (!d) return;
     const x = [...d.querySelectorAll<HTMLElement>('button')].find((b) => /^dismiss|^close/i.test(b.getAttribute('aria-label') || ''));
-    x?.click();
+    if (x) humanClick(x);
     await sleep(800);
     const confirm = applyDialog();
     const discardBtn = confirm && [...confirm.querySelectorAll<HTMLElement>('button')].find((b) => /^discard$/i.test((b.textContent || '').trim()));
-    discardBtn?.click();
+    if (discardBtn) humanClick(discardBtn);
     await this.until(() => !applyDialog(), 4000);
   }
 

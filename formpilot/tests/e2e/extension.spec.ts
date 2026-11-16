@@ -727,6 +727,7 @@ test('toolbar Fill on a LinkedIn-style closed shadow-root Easy Apply: radios, ph
 });
 
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
+  test.setTimeout(150_000);
   await configure(sw, {
     tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true, queueDailyCap: 10, queueDelaySec: 0, queueSkipTitles: 'Engineering Manager' },
     behavior: { enabled: false },
@@ -753,9 +754,9 @@ test('apply queue works down a LinkedIn-style job list, stopping at Submit for t
     });
     await page.mouse.click(box.x, box.y);
   };
-  await expect.poll(() => atSubmit('Acme'), { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => atSubmit('Acme'), { timeout: 60_000 }).toBe(true);
   await pressSubmit();
-  await expect.poll(() => atSubmit('Beta'), { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => atSubmit('Beta'), { timeout: 60_000 }).toBe(true);
   await pressSubmit();
   await expect.poll(() => page.evaluate(() => (window as unknown as W).__sent), { timeout: 10_000 }).toEqual(['Mobile Engineer', 'SDE 2 - React Native']);
   // Skipped: already applied, no Easy Apply, and the skipped title. Never pressed Submit itself.
