@@ -32,6 +32,7 @@ import {
 import { decideStep, settled } from '@/lib/walk';
 import { dialogAnchor } from '@/lib/fields/context';
 import { createLogger } from '@/lib/logger';
+import { quietFocus } from '@/lib/automation';
 import type { WalkOutcome } from './walk';
 
 const log = createLogger('content:queue');
@@ -257,6 +258,7 @@ export class ApplyQueue {
     for (let attempt = 0; attempt < 2 && !dialog && !this.stopRequested; attempt++) {
       const b = easyApplyButton();
       if (!b) break;
+      quietFocus(8000); // the dialog focuses its first field on open: not a reason to suggest
       humanClick(b);
       dialog = await this.until(() => !!applyDialog(), attempt ? 15_000 : 8000);
     }

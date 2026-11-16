@@ -34,6 +34,7 @@ export type RpcRequest =
   | { type: 'extract-facts'; docId: string }
   | { type: 'search-memory'; query: string }
   | { type: 'stats' }
+  | { type: 'work-history' }
   | { type: 'clear-cache'; what: 'responses' | 'history' | 'all' }
   | { type: 'open-options'; section?: string }
   | { type: 'site-toggle'; host: string; enabled: boolean }

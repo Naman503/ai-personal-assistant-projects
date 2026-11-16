@@ -1,3 +1,4 @@
+import { parseWorkHistory } from '@/lib/fields/workdates';
 import { addLogSink, configureLogger, createLogger, LogRing , type LogEntry } from '@/lib/logger';
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, patchSettings, type Settings } from '@/lib/settings';
 import { SUGGEST_PORT, type CommandName, type PortEvent, type PortRequest, type RpcRequest, type RpcResponse, type Stats } from '@/lib/messages';
@@ -354,6 +355,13 @@ export default defineBackground({
           if (!q) return { chunks: [], whole: false, ms: 0 };
           void usage.count('options_action', { action: 'memory_search' });
           return engine.index.search(q, { topK: settings.memory.topK, budget: settings.memory.contextBudgetChars });
+        }
+        case 'work-history': {
+          // Date ranges from the enabled documents (resume): parsed locally, no AI request.
+          const docs = (await db().docs.toArray()).filter((d) => d.enabled);
+          const spans = parseWorkHistory([...new Set(docs.map((d) => d.text))].join('\n'));
+          log.info(`work history: ${spans.length} date range(s) in ${docs.length} document(s)`);
+          return spans;
         }
         case 'stats': {
           await engine.index.ensure();
