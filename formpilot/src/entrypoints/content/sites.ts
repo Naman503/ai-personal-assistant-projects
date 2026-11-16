@@ -173,7 +173,15 @@ async function applyNaukri(dryRun: boolean): Promise<JobResult> {
 
 function openDialog(): HTMLElement | null {
   const ds = [...document.querySelectorAll<HTMLElement>('[role=dialog], [aria-modal=true], [class*="modal" i], [class*="Modal"]')].filter(visible);
-  return ds.find((d) => d.querySelector('input, textarea, select, button')) ?? null;
+  const d = ds.find((x) => x.querySelector('input, textarea, select, [contenteditable=true]'));
+  if (d) return d;
+  // Styled-component pop-ups without dialog markup: a fixed layer on top holding form fields.
+  return (
+    [...document.querySelectorAll<HTMLElement>('body *')].find((e) => {
+      const s = getComputedStyle(e);
+      return s.position === 'fixed' && Number(s.zIndex) >= 10 && visible(e) && !!e.querySelector('input:not([type=hidden]), textarea, [contenteditable=true]');
+    }) ?? null
+  );
 }
 
 function describeDialog(d: HTMLElement) {
