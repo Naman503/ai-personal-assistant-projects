@@ -98,6 +98,8 @@ function wire(j, r, body, native) {
     if (!e.isTrusted && !window.__allowScripted) { window.__untrustedSubmit = true; return; }
     setTimeout(() => {
       window.__sent.push(j.title); j.applied = true; renderList();
+      // LinkedIn (Nov 2026) often just closes the dialog after Submit; the pane then shows the status.
+      if (window.__closeOnSubmit) { r.innerHTML = ''; const h = document.createElement('h2'); h.textContent = 'Application status'; document.body.appendChild(h); return; }
       dlg.innerHTML = `<h2>Application sent</h2><p>Your application was sent to ${j.company}!</p><button type="button">Done</button>`;
       dlg.querySelector('button').onclick = () => { r.innerHTML = ''; };
     }, 300);

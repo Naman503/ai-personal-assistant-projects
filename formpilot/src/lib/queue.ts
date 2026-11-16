@@ -154,19 +154,31 @@ export function candidates(cards: JobCard[], skipTitles: string, tried: Set<stri
 }
 
 /** Words too common in job titles to say what the job is. */
-const GENERIC = new Set(['developer', 'engineer', 'engineering', 'senior', 'sr', 'junior', 'jr', 'lead', 'principal', 'staff', 'associate', 'ii', 'iii', 'i', 'and', 'or', 'the', 'of', 'for', 'with', 'remote', 'hybrid', 'onsite', 'manager', 'specialist', 'consultant', 'intern', 'trainee', 'executive']);
-const words = (s: string) => s.toLowerCase().replace(/react\.?js/g, 'react').split(/[^a-z0-9+#]+/).filter(Boolean);
+const GENERIC = new Set(['developer', 'engineer', 'engineering', 'senior', 'sr', 'junior', 'jr', 'lead', 'principal', 'staff', 'associate', 'ii', 'iii', 'iv', 'i', 'and', 'or', 'the', 'of', 'for', 'with', 'remote', 'hybrid', 'onsite', 'manager', 'specialist', 'consultant', 'intern', 'trainee', 'executive', 'sde', 'application', 'applications', 'app', 'apps']);
+/** Lower-case words, with "Full-Stack"/"Fullstack" → "full stack" and "React.js"/"ReactJS" → "react". */
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/full[\s-]?stack/g, 'full stack')
+    .replace(/react\.?js/g, 'react')
+    .replace(/[^a-z0-9+#]+/g, ' ')
+    .trim();
 
-/** The distinctive words of your job titles ("React Native Developer, Full Stack Engineer" → react, native, full, stack). */
+/**
+ * What your job titles are about, as phrases: "React Native Developer, Full Stack Engineer,
+ * Mobile Engineer" → "react native", "full stack", "mobile". A job title matches a phrase only
+ * as a whole ("AI-Native Developer" is not "react native").
+ */
 export function relevantWords(titles: string[]): string[] {
-  return [...new Set(titles.flatMap(words).filter((w) => !GENERIC.has(w) && w.length > 1))];
+  const out = titles.map((t) => norm(t).split(' ').filter((w) => w && !GENERIC.has(w)).join(' ')).filter(Boolean);
+  return [...new Set(out)];
 }
 
-/** A job title matches when it shares a distinctive word with your titles (no words: everything matches). */
+/** A job title matches when it contains one of your phrases (no phrases: everything matches). */
 export function titleRelevant(title: string, relevant: string[]): boolean {
   if (!relevant.length) return true;
-  const t = new Set(words(title));
-  return relevant.some((w) => t.has(w));
+  const t = ` ${norm(title)} `;
+  return relevant.some((p) => t.includes(` ${norm(p)} `));
 }
 
 export const cardKey = (c: Pick<JobCard, 'title' | 'company'>) => `${c.company}|${c.title}`.toLowerCase();

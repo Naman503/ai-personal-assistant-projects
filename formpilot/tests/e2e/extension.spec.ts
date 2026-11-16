@@ -835,7 +835,9 @@ test('apply queue with "submit for me" on: counts down and presses Submit itself
   await sw.evaluate(() => chrome.storage.local.remove('fpQueueDay'));
   const page = await context.newPage();
   await page.goto('http://localhost:4173/linkedin-list.html');
-  await page.evaluate(() => ((window as unknown as { __allowScripted: boolean }).__allowScripted = true)); // the fixture's Submit accepts a scripted click
+  // The fixture's Submit accepts a scripted click, and closes the dialog straight after it (no
+  // "Application sent" dialog), as LinkedIn did on the first live run.
+  await page.evaluate(() => Object.assign(window, { __allowScripted: true, __closeOnSubmit: true }));
   await sw.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/linkedin-list.html*' });
     await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'apply-queue', via: 'toolbar' }, { frameId: 0 });
@@ -843,6 +845,9 @@ test('apply queue with "submit for me" on: counts down and presses Submit itself
   await expect.poll(() => page.evaluate(() => (window as unknown as { __sent: string[] }).__sent), { timeout: 120_000 }).toEqual(['Mobile Engineer', 'SDE 2 - React Native']);
   const msgs = () => sw.evaluate(async () => (((await chrome.storage.session.get('fpLogs')).fpLogs ?? []) as { msg: string }[]).map((e) => e.msg));
   await expect.poll(async () => (await msgs()).filter((m) => m.startsWith('auto-submit: pressing "Submit application"')).length, { timeout: 10_000 }).toBe(2);
+  // Both counted as sent although LinkedIn closed the dialog, so the limits hold.
+  await expect.poll(async () => (await msgs()).filter((m) => m.includes('LinkedIn closed the dialog after Submit')).length, { timeout: 10_000 }).toBe(2);
+  expect(await sw.evaluate(async () => ((await chrome.storage.local.get('fpQueueDay')).fpQueueDay as { n: number }).n)).toBe(2);
 });
 
 test('LinkedIn checkbox list, City typeahead, start date; and your own answer is remembered for next time', async ({ context, sw }) => {
