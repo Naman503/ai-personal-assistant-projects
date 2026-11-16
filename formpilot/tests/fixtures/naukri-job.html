@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>React Native Developer - Wissen | Naukri.com</title>
+<style>.chatbot_Drawer{position:fixed;top:0;right:0;height:100vh;width:470px;background:#fff;z-index:1001}.botMsg{background:#f5f5f7;padding:10px;margin:6px 0}.textArea{border:1px solid #275df5;min-height:22px;padding:8px}.sendMsg{margin-top:8px;padding:8px;background:#275df5;color:#fff;cursor:pointer}.chatbot_Chip{display:inline-block;border:1px solid #275df5;border-radius:14px;padding:4px 10px;margin:4px;cursor:pointer}</style></head>
+<body>
+<!-- A Naukri job page: button#apply-button; applying opens the recruiter chatbot (structure as in
+     naukri-real.html), with one typed answer and one Yes/No chip question. -->
+<div class="styles_jd-header__x"><h1>React Native Developer - Wissen</h1><a href="#" class="comp">Wissen Technology</a></div>
+<button id="apply-button" class="styles_apply-button__uJI3A apply-button">Apply</button>
+<script>
+window.__answers = [];
+const QS = [
+  { q: 'How many years of experience do you have in React Native?', kind: 'text' },
+  { q: 'Are you comfortable relocating to Bengaluru?', kind: 'chips', chips: ['Yes', 'No'] },
+];
+let step = 0;
+document.getElementById('apply-button').addEventListener('click', () => {
+  if (!window.__trusted) window.__untrusted = true;
+  const c = document.createElement('div');
+  c.className = '_chatBotContainer';
+  c.innerHTML = `<div class="chatbot_Drawer chatbot_right"><div class="chatbot_DrawerContentWrapper"><div class="chatbot_MessageContainer"><ul class="list">
+    <li class="botItem chatbot_ListItem"><div class="botMsg msg"><div><span>Hi Alex, thank you for showing interest. Kindly answer all the recruiter's questions to successfully apply for the job.</span></div></div></li></ul>
+    <div class="chips"></div>
+    <div class="chatbot_InputContainer"><div class="textArea" contenteditable="true"></div></div></div>
+    <div class="sendMsgbtn_container"><div class="sendMsg" tabindex="0">Save</div></div></div></div>`;
+  document.body.appendChild(c);
+  const list = c.querySelector('.list'), input = c.querySelector('.textArea'), chips = c.querySelector('.chips');
+  let chosen = '';
+  const ask = () => {
+    const s = QS[step];
+    const li = document.createElement('li');
+    li.className = 'botItem chatbot_ListItem';
+    li.innerHTML = `<div class="botMsg msg"><div><span>${s.q}</span></div></div>`;
+    list.appendChild(li);
+    chips.replaceChildren(...(s.chips || []).map((t) => { const d = document.createElement('div'); d.className = 'chatbot_Chip chipInRow'; d.textContent = t; d.onclick = () => (chosen = t); return d; }));
+    input.style.display = s.kind === 'text' ? '' : 'none';
+  };
+  setTimeout(ask, 800);
+  c.querySelector('.sendMsg').addEventListener('click', () => {
+    const s = QS[step];
+    const v = s.kind === 'text' ? input.textContent.trim() : chosen;
+    if (!v) return;
+    window.__answers.push(v);
+    input.textContent = '';
+    chosen = '';
+    step++;
+    if (step < QS.length) setTimeout(ask, 500);
+    else setTimeout(() => {
+      c.remove();
+      document.getElementById('apply-button').textContent = 'Applied';
+      const p = document.createElement('p'); p.textContent = 'You have successfully applied to this job.'; document.body.appendChild(p);
+    }, 500);
+  });
+});
+</script>
+</body></html>

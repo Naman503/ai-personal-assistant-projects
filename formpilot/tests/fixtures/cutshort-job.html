@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Junior React Native Developer at Quixta | Cutshort</title></head>
+<body>
+<!-- A Cutshort job page (modelled, not yet captured live): "Apply now" opens a form in a dialog. -->
+<h1>Junior React Native Developer</h1><p>at <a href="/company/jobs-at-quixta">Quixta</a></p>
+<button type="button" id="open">Apply now</button>
+<script>
+window.__applied = false;
+document.getElementById('open').onclick = () => {
+  const d = document.createElement('div');
+  d.setAttribute('role', 'dialog');
+  d.innerHTML = `<h2>Apply to Quixta</h2>
+    <label for="why">Why are you a good fit for this role?*</label><textarea id="why" required></textarea>
+    <label for="np">What is your notice period?*</label><input id="np" type="text" required>
+    <button type="button" aria-label="Close">×</button><button type="button" id="send">Apply</button>`;
+  document.body.appendChild(d);
+  d.querySelector('[aria-label=Close]').onclick = () => d.remove();
+  d.querySelector('#send').onclick = () => {
+    if (!d.querySelector('#why').value || !d.querySelector('#np').value) return;
+    window.__applied = true;
+    d.remove();
+    document.getElementById('open').textContent = 'Applied';
+    const p = document.createElement('p'); p.textContent = 'Your application has been sent.'; document.body.appendChild(p);
+  };
+};
+</script>
+</body></html>

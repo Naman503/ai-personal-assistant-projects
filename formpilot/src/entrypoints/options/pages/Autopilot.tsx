@@ -54,7 +54,19 @@ export function Autopilot({ settings, update }: PageProps) {
         <div className="space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={d.tone}>{st?.running ? 'On' : 'Off'}</Badge>
-            {a.dryRun ? <Badge tone="amber">Dry run · nothing is sent</Badge> : <Badge tone="red">Live · applications are sent</Badge>}
+            {(
+              [
+                ['LinkedIn', a.linkedinEnabled, a.dryRun],
+                ['Naukri', a.naukri.enabled, a.naukri.dryRun],
+                ['Cutshort', a.cutshort.enabled, a.cutshort.dryRun],
+              ] as const
+            )
+              .filter(([, on]) => on)
+              .map(([n, , dry]) => (
+                <Badge key={n} tone={dry ? 'amber' : 'red'}>
+                  {n}: {dry ? 'dry run' : 'live'}
+                </Badge>
+              ))}
             <span className="text-sm font-semibold">{d.title}</span>
           </div>
           <div className="text-sm text-zinc-600 dark:text-zinc-400">{d.detail}</div>
@@ -96,10 +108,54 @@ export function Autopilot({ settings, update }: PageProps) {
       </Card>
 
       <Card className="mb-5">
-        <CardHeader icon={<Bot className="size-4" />} title="Mode" />
-        <Row label="Dry run" description="On: fills each form to Submit, saves the job to your tracker as “would apply” and logs every answer, but sends nothing. Off: presses Submit when nothing on the form needs you.">
-          <Switch checked={a.dryRun} onCheckedChange={(v) => set('dryRun', v)} />
-        </Row>
+        <CardHeader icon={<Bot className="size-4" />} title="Platforms" />
+        <div className="px-4 pb-1 pt-3 text-xs text-zinc-500">
+          Batches take turns: LinkedIn → Naukri → Cutshort, each with its own daily limit. Dry run: fills to the last step and records “would apply”, sends nothing (on Naukri it stops before Apply, since Apply there sends at once when the recruiter asks nothing). A platform's first live day is best kept small.
+        </div>
+        {(
+          [
+            ['linkedin', 'LinkedIn Easy Apply', a.linkedinEnabled, a.dryRun, a.dailyCap, null],
+            ['naukri', 'Naukri (Apply + recruiter chatbot)', a.naukri.enabled, a.naukri.dryRun, a.naukri.dailyCap, a.naukri.maxExpMin],
+            ['cutshort', 'Cutshort (Apply now + its form)', a.cutshort.enabled, a.cutshort.dryRun, a.cutshort.dailyCap, a.cutshort.maxExpMin],
+          ] as const
+        ).map(([p, name, enabled, dry, cap, exp]) => {
+          const today = day?.byPlatform?.[p];
+          const upd = (fn: (x: { enabled: boolean; dryRun: boolean; dailyCap: number; maxExpMin: number }) => void) =>
+            update((d) => {
+              if (p === 'linkedin') {
+                const x = { enabled: d.autopilot.linkedinEnabled, dryRun: d.autopilot.dryRun, dailyCap: d.autopilot.dailyCap, maxExpMin: 99 };
+                fn(x);
+                d.autopilot.linkedinEnabled = x.enabled;
+                d.autopilot.dryRun = x.dryRun;
+                d.autopilot.dailyCap = x.dailyCap;
+              } else fn(d.autopilot[p]);
+            });
+          return (
+            <Row
+              key={p}
+              label={name}
+              description={`${today ? `Today: ${today.sent} sent · ${today.dry} would apply · ${today.skipped} skipped. ` : ''}${exp !== null ? `Skips jobs asking more than ${exp} years.` : ''}`}
+            >
+              <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
+                <label className="flex items-center gap-1.5">
+                  On <Switch checked={enabled} onCheckedChange={(v) => upd((x) => void (x.enabled = v))} />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  Dry run <Switch checked={dry} onCheckedChange={(v) => upd((x) => void (x.dryRun = v))} />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <Input type="number" min={1} max={100} className="w-16" value={String(cap)} onChange={(e) => upd((x) => void (x.dailyCap = Math.max(1, Math.min(100, Number(e.target.value) || 1))))} />
+                  /day
+                </label>
+                {exp !== null ? (
+                  <label className="flex items-center gap-1.5">
+                    ≤ <Input type="number" min={0} max={30} className="w-14" value={String(exp)} onChange={(e) => upd((x) => void (x.maxExpMin = Math.max(0, Math.min(30, Number(e.target.value) || 0))))} /> yrs
+                  </label>
+                ) : null}
+              </div>
+            </Row>
+          );
+        })}
       </Card>
 
       <Card className="mb-5">
@@ -123,10 +179,8 @@ export function Autopilot({ settings, update }: PageProps) {
 
       <Card className="mb-5">
         <CardHeader icon={<Gauge className="size-4" />} title="How much and how fast" />
-        <Row label="Daily limit" description="Applications (or dry-run “would apply”) per day, in total and per job title.">
-          <div className="flex items-center gap-2 text-sm">
-            {num('dailyCap', 1, 100)} total · {num('perTitleCap', 1, 100)} per title
-          </div>
+        <Row label="Per job title" description="Most applications per job title per day, on each platform (the per-platform daily limits are above).">
+          <div className="flex items-center gap-2 text-sm">{num('perTitleCap', 1, 100)} per title</div>
         </Row>
         <Row label="Batch size" description="Jobs per batch (random in the range).">
           <div className="flex items-center gap-2 text-sm">

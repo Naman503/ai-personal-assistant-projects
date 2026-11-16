@@ -14,10 +14,11 @@ export function describe(st: ApState | null): { tone: 'green' | 'amber' | 'neutr
   const fresh = st.progress && Date.now() - st.progress.at < 10 * 60_000 ? st.progress.text : '';
   switch (st.phase) {
     case 'loading':
-      return { tone: 'green', title: `Opening LinkedIn: "${st.current?.title ?? ''}"`, detail: 'Loading the job list in its window', canSkip: false };
+      return { tone: 'green', title: `Opening ${st.current?.platform ?? 'LinkedIn'}: "${st.current?.title ?? ''}"`, detail: fresh || 'Loading the job list in its window', canSkip: false };
     case 'batch': {
       const pause = /^Pause before the next job/.test(fresh);
-      return { tone: 'green', title: pause ? 'Short pause between jobs' : `Applying: "${st.current?.title ?? ''}"`, detail: fresh || `Batch of ${st.current?.batch ?? '?'}`, canSkip: pause };
+      const where = st.current?.platform ? `${st.current.platform[0].toUpperCase()}${st.current.platform.slice(1)} · ` : '';
+      return { tone: 'green', title: pause ? 'Short pause between jobs' : `${where}Applying: "${st.current?.title ?? ''}"`, detail: fresh || `Batch of ${st.current?.batch ?? '?'}`, canSkip: pause };
     }
     case 'waiting':
       return { tone: 'amber', title: 'Break between batches', detail: st.nextAt ? `Next batch at ${time(st.nextAt)} (in ${left(st.nextAt)})` : st.message, canSkip: true };
