@@ -962,6 +962,7 @@ test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form f
   const ans = await nk.evaluate(() => (window as unknown as { __answers: string[] }).__answers);
   expect(ans[0]).toMatch(/^3\b/); // years of React Native
   expect(ans[1]).toBe('Yes'); // relocating
+  expect(await nk.evaluate(() => (window as unknown as { __skipped?: boolean }).__skipped)).toBeFalsy(); // never pressed "Skip this question"
   expect((await state()).day.seen.filter((u) => u.includes('naukri-job'))).toHaveLength(1);
   // Skip the break: Cutshort is next.
   await expect.poll(async () => (await state()).phase, { timeout: 10_000 }).toBe('waiting');

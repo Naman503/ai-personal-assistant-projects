@@ -104,6 +104,9 @@ function lastQuestion(d: HTMLElement): string {
 
 const visible = (el: Element) => (el as HTMLElement).getBoundingClientRect().width > 0;
 
+/** Chips that aren't answers. */
+const SKIP_CHIP = /^(skip( this question)?|skip question|not now|later)$/i;
+
 /** Naukri hides its real radios/checkboxes and shows a <label for> next to them. */
 const shown = (r: HTMLInputElement) => visible(r) || [...(r.labels ?? [])].some(visible) || (!!r.closest('label') && visible(r.closest('label')!));
 /** A box you can type in, not inside a hidden ("d-none") input bar. */
@@ -115,7 +118,10 @@ const EVERY_OPTION = /\b(willing to (relocate|work|move)|open to (relocat|work)|
 async function answerChatbot(d: HTMLElement, q: string, answers: { q: string; a: string }[]): Promise<boolean> {
   const radios = [...d.querySelectorAll<HTMLInputElement>('input[type=radio]')].filter((r) => !r.disabled && shown(r));
   const boxes = [...d.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].filter((r) => !r.disabled && shown(r) && !r.closest('.chatbot_Uploader'));
-  const chips = [...d.querySelectorAll<HTMLElement>('[class*="chip" i]:not([class*="chipMsg"])')].filter((c) => visible(c) && clean(c.textContent).length > 0 && clean(c.textContent).length < 80 && !c.closest('.botMsg, .userMsg, [class*="botLogo"]'));
+  // Answer chips, without "Skip this question" (Naukri adds it under typed questions) and
+  // without the wrappers around the chips.
+  const chips = [...d.querySelectorAll<HTMLElement>('.chatbot_Chip, [class*="chipItem"], [class*="chip" i]:not([class*="chipMsg"]):not([class*="Chips"]):not(.chips):not([class*="chipsContainer"])')]
+    .filter((c, _i, all) => visible(c) && clean(c.textContent).length > 0 && clean(c.textContent).length < 80 && !c.closest('.botMsg, .userMsg, [class*="botLogo"]') && !SKIP_CHIP.test(clean(c.textContent)) && !all.some((o) => o !== c && c.contains(o)));
   const text = typeable(d);
   let ok = false;
   let a = '';
@@ -137,6 +143,8 @@ async function answerChatbot(d: HTMLElement, q: string, answers: { q: string; a:
   } else if (text) {
     a = await answerFor(q, 'text');
     if (a) ok = fillElement(text, a, 'replace', q).ok;
+    // Naukri enables Save on key events, not only input.
+    if (ok) for (const type of ['keydown', 'keyup'] as const) text.dispatchEvent(new KeyboardEvent(type, { key: 'Unidentified', bubbles: true }));
   }
   if (!ok) {
     log.info(`chatbot: no usable answer for "${q.slice(0, 90)}"`);

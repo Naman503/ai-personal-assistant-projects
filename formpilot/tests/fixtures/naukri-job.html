@@ -31,7 +31,9 @@ document.getElementById('apply-button').addEventListener('click', () => {
     li.className = 'botItem chatbot_ListItem';
     li.innerHTML = `<div class="botMsg msg"><div><span>${s.q}</span></div></div>`;
     list.appendChild(li);
-    chips.replaceChildren(...(s.chips || []).map((t) => { const d = document.createElement('div'); d.className = 'chatbot_Chip chipInRow'; d.textContent = t; d.onclick = () => (chosen = t); return d; }));
+    // Live Naukri (2026-11-17): typed questions come with a "Skip this question" chip.
+    const list2 = s.chips || ['Skip this question'];
+    chips.replaceChildren(...list2.map((t) => { const d = document.createElement('div'); d.className = 'chatbot_Chip chipInRow chipItem'; d.innerHTML = `<span>${t}</span>`; d.onclick = () => { if (t === 'Skip this question') { window.__skipped = true; return; } chosen = t; }; return d; }));
     input.style.display = s.kind === 'text' ? '' : 'none';
   };
   setTimeout(ask, 800);
