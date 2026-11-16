@@ -685,7 +685,7 @@ test('walks a shadow-root Easy Apply to the Submit button and stops there', asyn
     await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form' });
   });
   // Step 1 filled, Next pressed for us, step 2 filled, Submit highlighted and not pressed.
-  await expect(dialog.locator('#np')).toHaveValue('30 days', { timeout: 15_000 });
+  await expect(dialog.locator('#np')).toHaveValue('30', { timeout: 15_000 });
   await expect(dialog.locator('#s1')).toHaveCount(0);
   await expect.poll(() => dialog.locator('#send').evaluate((b) => (b as HTMLElement).style.outline), { timeout: 10_000 }).toMatch(/solid 3px|3px solid/);
   await expect(page.locator('formpilot-ui')).toHaveAttribute('data-toast', 'success');
@@ -724,6 +724,32 @@ test('toolbar Fill on a LinkedIn-style closed shadow-root Easy Apply: radios, ph
   await expect.poll(async () => (await state()).onStep2, { timeout: 20_000 }).toBe(true);
   await expect.poll(async () => (await state()).outline, { timeout: 10_000 }).toMatch(/solid 3px|3px solid/);
   expect((await state()).submitted).toBe(false);
+});
+
+test('LinkedIn salary step: plain numbers, lakhs when asked, fixes "Invalid input" and range errors, stops at Submit', async ({ context, sw }) => {
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: false, walkToSubmit: true },
+    behavior: { enabled: false },
+  });
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-ctc.html');
+  await page.click('#easy');
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-ctc.html' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
+  });
+  // The mock AI answers "10,75,000" for every salary box and "30 days" for the notice period.
+  await expect.poll(() => page.evaluate(() => !(document.getElementById('s2') as HTMLElement).hidden), { timeout: 30_000 }).toBe(true);
+  const v = await page.evaluate(() => Object.fromEntries(['cur', 'lpa', 'exp', 'np'].map((id) => [id, (document.getElementById(id) as HTMLInputElement).value])));
+  expect(v).toEqual({ cur: '1075000', lpa: '10.75', exp: '11', np: '30' });
+  await expect(page.locator('#send')).toHaveCSS('outline-width', '3px');
+  expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted)).toBeFalsy();
+  // Every field and the repair are in the log, for reading back from Options → Logs.
+  const msgs = () => sw.evaluate(async () => (((await chrome.storage.session.get('fpLogs')).fpLogs ?? []) as { msg: string }[]).map((e) => e.msg));
+  await expect.poll(async () => (await msgs()).some((m) => m.startsWith('repair: "Expected CTC ?" "1075000" → "11"')), { timeout: 10_000 }).toBe(true);
+  const all = await msgs();
+  expect(all).toContain('✓ "What\'s your Current CTC ?" ← "1075000"');
+  expect(all.some((m) => m.startsWith('walk: 1 field error(s) on this step'))).toBe(true);
 });
 
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {

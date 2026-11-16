@@ -30,6 +30,7 @@ interface Engagement {
 }
 
 const log = createLogger('content');
+const fieldLog = createLogger('fill-form');
 
 const ADJUST_PROMPTS: Record<string, string> = {
   shorter: 'Make every option noticeably shorter and tighter.',
@@ -880,12 +881,22 @@ export class Controller {
       let n = 0;
       for (const e of fillable) {
         const v = res.values[e.id];
-        if (!v?.trim()) continue;
+        if (!v?.trim()) {
+          fieldLog.info(`– "${(e.field.label || e.field.name || '?').slice(0, 80)}" left empty (no answer)`, { source: res.sources?.[e.id] ?? '' });
+          continue;
+        }
         this.inserting = true;
         const r = e.radios
           ? fillRadioGroup(e.radios, v, (x) => resolveLabel(x) || x.value, e.field?.label)
-          : fillElement(e.el, v, 'replace');
+          : fillElement(e.el, v, 'replace', e.field.label || e.field.placeholder || undefined);
         this.inserting = false;
+        // One line per field in Options → Logs: question, answer, where it came from, what went in.
+        fieldLog.info(`${r.ok ? '✓' : '✗'} "${(e.field.label || e.field.name || '?').slice(0, 80)}" ← ${JSON.stringify(r.value.slice(0, 60))}`, {
+          answer: v.slice(0, 80),
+          source: res.sources?.[e.id] ?? '',
+          kind: e.radios ? 'radio' : e.field.inputType || e.field.kind,
+          via: r.method,
+        });
         if (r.ok) {
           n++;
           undo.push({ el: e.el, previous: r.previous, radios: e.radios });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideStep, emptyRequired, firstEmptyField, stepScope } from '@/lib/walk';
+import { fieldErrors, decideStep, emptyRequired, firstEmptyField, stepScope } from '@/lib/walk';
 
 const page = (html: string) => {
   document.body.innerHTML = html;
@@ -57,7 +57,19 @@ describe('walking a multi-step form', () => {
     const scope = page(`<div role="dialog"><input value="abc" aria-invalid="true"><span class="artdeco-inline-feedback--error">Enter a whole number</span><button type="button">Next</button></div>`);
     const d = decideStep(scope);
     expect(d.kind).toBe('blocked');
-    expect(d.kind === 'blocked' && d.reason).toMatch(/error/);
+    expect(d.kind === 'blocked' && d.reason).toMatch(/Enter a whole number/);
+  });
+
+  it("reads LinkedIn's red helper text under a box as that field's error, ignoring the character counter", () => {
+    const scope = page(`<div role="dialog"><label for="c">What's your Expected CTC ?</label><input id="c" aria-describedby="c-info" value="15,00,000">
+      <div id="c-info"><p style="color: rgb(203, 17, 45)">Invalid input</p><div><p>9/20</p><span>9 of 20 characters</span></div></div>
+      <label for="n">Notice Period ?</label><input id="n" aria-describedby="n-info" value="30"><div id="n-info"><div><p>2/20</p></div></div>
+      <button type="button">Review</button></div>`);
+    const errs = fieldErrors(scope);
+    expect(errs.map((e) => [e.label, e.msg, e.shown])).toEqual([["What's your Expected CTC ?", 'Invalid input', true]]);
+    const d = decideStep(scope);
+    expect(d.kind === 'blocked' && d.reason).toBe(`"What's your Expected CTC ?": Invalid input`);
+    expect(decideStep(scope, { ignoreErrors: true }).kind).toBe('next');
   });
 
   it('ignores disabled buttons and empty error containers', () => {

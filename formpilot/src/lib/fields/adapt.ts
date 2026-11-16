@@ -90,18 +90,20 @@ const NUM = String.raw`(\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|\d+(?:\.\d+)?)`;
 const toNum = (s: string) => Number(s.replace(/,/g, ''));
 
 /** A money amount in rupees, and whether the text says it's monthly or yearly. */
-export function parseMoney(text: string): { inr: number; period: 'month' | 'year' | null } | null {
+export function parseMoney(text: string): { inr: number; period: 'month' | 'year' | null; unitWritten: boolean } | null {
   const t = text.toLowerCase();
   const m = t.match(new RegExp(`${NUM}\\s*(lpa|lakhs?|lacs?|lac|l\\b|crores?|cr\\b|k\\b|thousand)?`));
   if (!m) return null;
   let n = toNum(m[1]);
   const unit = m[2] ?? '';
+  let unitWritten = true;
   if (/^(lpa|lakh|lac|l)/.test(unit)) n *= 1e5;
   else if (/^(crore|cr)/.test(unit)) n *= 1e7;
   else if (/^(k|thousand)/.test(unit)) n *= 1e3;
   else if (n < 200 && /\b(lpa|lakhs?|lacs?)\b/.test(t)) n *= 1e5; // "10.75 (in lakhs)"
+  else unitWritten = false;
   const period = /\b(per month|monthly|\/ ?month|pm|p\.m\.|a month)\b/.test(t) ? 'month' : /\b(per annum|annual|p\.a\.|pa|lpa|per year|yearly|ctc)\b/.test(t) ? 'year' : null;
-  return { inr: n, period };
+  return { inr: n, period, unitWritten };
 }
 
 /** A duration in days ("30 days", "1 month", "2 weeks", "Immediate"). */
@@ -210,40 +212,49 @@ export function adaptValue(text: string, f: FieldSpec): string {
     return s;
   }
 
-  // Money.
+  // Money: single-line salary boxes want a plain number (no commas, no "LPA"), in the unit
+  // the question names; full rupees when it names none. Forms reject "15,00,000" and "15 LPA".
   if (isMoneyQ(q)) {
     const money = parseMoney(s);
-    const unit = moneyUnitAsked(q);
-    if (money && (numOnly || unit !== null || periodAsked(q) === 'month')) {
+    if (money) {
+      const unit = moneyUnitAsked(q) ?? 1;
       let inr = money.inr;
+      // A bare small number has no unit written: "15" in a lakhs box is already lakhs, and
+      // "15" for a full-amount CTC means 15 lakh, not ₹15.
+      if (!money.unitWritten) {
+        if (unit !== 1 && inr < 1000) inr *= unit;
+        else if (unit === 1 && inr > 0 && inr < 200 && periodAsked(q) !== 'month') inr *= 1e5;
+      }
       const want = periodAsked(q);
-      const have = money.period ?? (/\b(ctc|lpa|package)\b/.test(s.toLowerCase()) ? 'year' : null);
+      const have = money.period ?? (/\b(ctc|lpa|package)\b/.test(s.toLowerCase()) || money.inr >= 1e5 ? 'year' : null);
       if (want === 'month' && have === 'year') inr /= 12;
       else if (want === 'year' && have === 'month') inr *= 12;
-      const u = unit ?? 1;
-      return round(inr / u, dec && u !== 1);
+      return round(inr / unit, dec && unit !== 1);
     }
   }
 
-  // Notice period / joining time.
+  // Notice period / joining time: a number, in the unit asked (days when none is named).
   if (isDurationQ(q)) {
-    const days = parseDurationDays(s);
-    const unit = durationUnitAsked(q) ?? (numOnly ? 'days' : null);
-    if (days !== null && unit) {
+    const days = parseDurationDays(s) ?? (/^\s*\d+(\.\d+)?\s*$/.test(s) ? Number(s) : null);
+    const unit = durationUnitAsked(q) ?? 'days';
+    if (days !== null) {
       const n = unit === 'days' ? days : unit === 'weeks' ? days / 7 : unit === 'months' ? days / 30 : days / 365;
       return round(n, dec && unit !== 'days');
     }
   }
 
-  // Years of experience.
-  if (isExperienceQ(q)) {
+  // Years of experience: a number of years (months when asked).
+  if (isExperienceQ(q) && !/\b(describe|tell|explain|what|which|how did)\b/.test(q)) {
     const years = parseYears(s);
-    const unit = /\b(in months|months)\b/.test(q) && !/\byears?\b/.test(q) ? 'months' : numOnly || /\b(in years|no of years|number of years)\b/.test(q) ? 'years' : null;
-    if (years !== null && unit) return unit === 'months' ? String(Math.round(years * 12)) : round(years, dec);
+    const unit = /\b(in months|months)\b/.test(q) && !/\byears?\b/.test(q) ? 'months' : 'years';
+    if (years !== null) return unit === 'months' ? String(Math.round(years * 12)) : round(years, dec);
   }
 
   // Percentages / scores.
   if (numOnly && /%/.test(s)) return s.match(/\d+(?:\.\d+)?/)?.[0] ?? s;
+
+  // A number written with separators ("15,00,000", "1,500") goes in without them.
+  if (/^\s*\d{1,3}(,\d{2,3})+(\.\d+)?\s*$/.test(s)) return s.replace(/,/g, '');
 
   // Anything else in a numbers-only field: the first number, without separators.
   if (numOnly) {
@@ -252,6 +263,56 @@ export function adaptValue(text: string, f: FieldSpec): string {
     return dec ? m[0] : String(Math.round(Number(m[0])));
   }
   return s;
+}
+
+// ---------------------------------------------------------------- after "Invalid input"
+
+/** The limits a validation message states ("between 0 and 99", "larger than 0.0", "whole number"). */
+export function limitsFrom(msg: string): { min?: number; max?: number; whole: boolean } {
+  const t = msg.toLowerCase().replace(/(\d),(?=\d)/g, '$1');
+  const out: { min?: number; max?: number; whole: boolean } = { whole: /\b(whole number|integer|without decimals?)\b/.test(t) };
+  const b = t.match(/between\s*(-?\d+(?:\.\d+)?)\s*(?:and|-|to)\s*(-?\d+(?:\.\d+)?)/);
+  if (b) return { ...out, min: Number(b[1]), max: Number(b[2]) };
+  const lo = t.match(/(?:larger|greater|more|bigger) than\s*(-?\d+(?:\.\d+)?)|(?:at least|minimum(?: of)?|min)\s*(-?\d+(?:\.\d+)?)/);
+  const hi = t.match(/(?:smaller|less|lower) than\s*(-?\d+(?:\.\d+)?)|(?:at most|maximum(?: of)?|max|up to)\s*(-?\d+(?:\.\d+)?)/);
+  if (lo) out.min = Number(lo[1] ?? lo[2]);
+  if (hi) out.max = Number(hi[1] ?? hi[2]);
+  return out;
+}
+
+/**
+ * A field showed a validation error after Next: work out a value it will accept, or null.
+ * First try the same answer as a bare number; then, if the message gives a range the amount
+ * doesn't fit, rescale it (rupees → lakhs → thousands, days → months, months → years).
+ * `attempt` counts repairs already tried on this field.
+ */
+export function repairValue(value: string, msg: string, f: FieldSpec, attempt = 0): string | null {
+  const v = value.trim();
+  const lim = limitsFrom(msg);
+  const q = f.q;
+  const fits = (n: number) => (lim.min === undefined || n > lim.min || (n === lim.min && !/than/.test(msg.toLowerCase()))) && (lim.max === undefined || n <= lim.max);
+  const fmt = (n: number) => (lim.whole ? String(Math.round(n)) : String(Math.round(n * 100) / 100));
+  // The answer as a number, in the field's terms (adaptValue with a numbers-only spec).
+  const asNum = adaptValue(v, { ...f, inputMode: lim.whole ? 'numeric' : 'decimal' });
+  const n = Number(asNum.replace(/,/g, ''));
+  if (!asNum || Number.isNaN(n)) return null;
+  const candidates: number[] = [n];
+  if (isMoneyQ(q)) candidates.push(n / 1e5, n / 1e3, n * 1e5, n / 12);
+  else if (isDurationQ(q)) candidates.push(n / 30, n * 30, n / 7);
+  else if (isExperienceQ(q)) candidates.push(n * 12, n / 12);
+  const hasRange = lim.min !== undefined || lim.max !== undefined;
+  for (const c of candidates) {
+    if (hasRange && !fits(c)) continue;
+    const out = fmt(c);
+    if (out !== v) return out;
+  }
+  // No range given (just "Invalid input"): a bare number once, then lakhs for a big amount.
+  if (!hasRange) {
+    if (attempt === 0 && fmt(n) !== v) return fmt(n);
+    if (isMoneyQ(q) && n >= 1e5) return fmt(n / 1e5);
+    if (!lim.whole && /\./.test(String(n))) return String(Math.round(n));
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- dropdown / radio ranges
@@ -319,15 +380,18 @@ export function describeExpectation(f: FieldSpec): string {
   const out: string[] = [];
   if (wantsNumberOnly(f)) out.push(decimalsAllowed(f) ? 'answer with a number only (decimals allowed)' : 'answer with a whole number only, no text or units');
   const q = f.q;
+  const single = f.type !== 'textarea';
   if (isMoneyQ(q)) {
     const u = moneyUnitAsked(q);
-    if (u) out.push(`amount in ${u === 1e5 ? 'lakhs' : u === 1e7 ? 'crores' : u === 1e3 ? 'thousands' : 'rupees'}`);
+    out.push(`amount in ${u === 1e5 ? 'lakhs (e.g. 15 for 15 LPA)' : u === 1e7 ? 'crores' : u === 1e3 ? 'thousands' : 'full rupees (e.g. 1500000)'}`);
     const p = periodAsked(q);
     if (p) out.push(p === 'month' ? 'per month' : 'per year');
+    if (single) out.push('digits only, no commas or words');
   }
   if (isDurationQ(q)) {
     const u = durationUnitAsked(q);
-    if (u) out.push(`in ${u}`);
+    out.push(`in ${u ?? 'days'}`);
+    if (single) out.push('a number only');
   }
   const fmt = dateFormatAsked(f);
   if (fmt) out.push(`date as ${fmt}`);

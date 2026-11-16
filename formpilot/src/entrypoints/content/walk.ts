@@ -3,8 +3,11 @@
  * and the like), press Next/Review for the user, fill the next step, and stop at the Submit
  * button, highlighted. It never presses Submit, and it stops the moment a step needs the user.
  */
-import { decideStep, firstEmptyField, settled, stepScope } from '@/lib/walk';
+import { decideStep, fieldErrors, firstEmptyField, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
 import { createLogger } from '@/lib/logger';
+import { fillElement } from '@/lib/fields/fill';
+import { repairValue, specOf } from '@/lib/fields/adapt';
+import { readValue, type FillableElement } from '@/lib/fields/context';
 
 const log = createLogger('content:walk');
 const MAX_STEPS = 12;
@@ -40,36 +43,66 @@ export class ApplyWalker {
     this.clearHighlight();
     try {
       let scope = stepScope(anchor);
+      const tries = new WeakMap<HTMLElement, number>();
+      let repaired = false;
+      let stuck = 0;
       for (let step = 0; step < MAX_STEPS; step++) {
-        const d = decideStep(scope);
+        // A field the site rejected ("Invalid input", "Enter a whole number between 0 and 99"):
+        // fix the value ourselves first; only ask the user when no fix fits.
+        const errs = fieldErrors(scope).filter((e) => e.shown);
+        if (errs.length) {
+          log.info(`walk: ${errs.length} field error(s) on this step`, errs.map((e) => `${e.label}: "${e.msg}" (value ${JSON.stringify(readValue(e.field as FillableElement))})`));
+          const fixed = this.repair(errs, tries);
+          if (fixed) {
+            repaired = true;
+            await settled(scope.getRootNode(), 300, 1500);
+          }
+        }
+        const d = decideStep(scope, { ignoreErrors: repaired });
+        repaired = false;
         if (d.kind === 'blocked') {
           log.info(`walk stopped: ${d.reason}`);
           d.field?.focus?.({ preventScroll: false });
           d.field?.scrollIntoView?.({ block: 'center' });
-          toast(`${d.reason}. Fill it in, then press Next yourself.`, 'info', undefined, 8000);
+          toast(`${d.reason}. Fix it, then press Next yourself.`, 'info', undefined, 8000);
           this.lastReason = d.reason;
           return 'blocked';
         }
         if (d.kind === 'submit') {
           this.highlight(d.button);
           d.button.scrollIntoView?.({ block: 'center' });
+          log.info('walk: reached Submit; waiting for you');
           toast('Ready to submit. Check the answers, then press the highlighted button.', 'success', undefined, 20_000);
           return 'submit';
         }
         if (d.kind === 'none') {
-          log.debug('walk: no Next or Submit button on this step');
+          log.info('walk: no Next or Submit button on this step');
           return 'none';
         }
         // Next step: keep the answers of this step for the tracker, move on, fill what appears.
         this.deps.collect(scope);
+        const before = stepFingerprint(scope);
         log.info(`walk: pressing "${d.button.textContent?.trim()}" (step ${step + 1})`);
         d.button.click();
         await settled(scope.getRootNode(), 450, 4000);
         if (!scope.isConnected) scope = stepScope(anchor.isConnected ? anchor : document.body);
+        if (scope.isConnected && stepFingerprint(scope) === before) {
+          // Didn't move on. Errors are handled at the top of the loop; with none to fix twice
+          // in a row, something on this step needs the user.
+          const left = fieldErrors(scope).filter((e) => e.shown);
+          if (!left.length && ++stuck >= 2) {
+            this.lastReason = 'Next did not move on; something on this step needs you';
+            log.info(`walk stopped: ${this.lastReason}`, (scope.textContent ?? '').replace(/\s+/g, ' ').slice(0, 300));
+            toast(`${this.lastReason}.`, 'info', undefined, 8000);
+            return 'blocked';
+          }
+          continue;
+        }
+        stuck = 0;
         const next = firstEmptyField(scope);
         if (next) {
           const r = await this.deps.fill(next);
-          log.debug(`walk: filled ${r.filled}/${r.total} on the new step`);
+          log.info(`walk: filled ${r.filled}/${r.total} on the new step`);
           await settled(scope.getRootNode(), 300, 1500);
         }
       }
@@ -82,6 +115,29 @@ export class ApplyWalker {
     } finally {
       this.running = false;
     }
+  }
+
+  /** Rewrite rejected values (number only, rescaled to the stated range). Returns how many changed. */
+  private repair(errs: FieldError[], tries: WeakMap<HTMLElement, number>): number {
+    let n = 0;
+    for (const e of errs) {
+      const el = e.field as HTMLInputElement;
+      if (!(el instanceof HTMLInputElement) || ['radio', 'checkbox'].includes(el.type)) continue;
+      const attempt = tries.get(el) ?? 0;
+      if (attempt >= 3) continue;
+      tries.set(el, attempt + 1);
+      const now = el.value;
+      const fix = repairValue(now, e.msg, specOf(el, e.label), attempt);
+      if (fix === null || fix === now) {
+        log.info(`repair: no better value for "${e.label}" (${JSON.stringify(now)}, "${e.msg}")`);
+        continue;
+      }
+      const r = fillElement(el, fix, 'replace', e.label, { exact: true });
+      el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      log.info(`repair: "${e.label}" ${JSON.stringify(now)} → ${JSON.stringify(r.value)} after "${e.msg}" (try ${attempt + 1})`);
+      if (r.ok) n++;
+    }
+    return n;
   }
 
   private highlight(el: HTMLElement) {
