@@ -201,6 +201,16 @@ const AutopilotSchema = z.object({
   skipWords: z.string().catch('Intern, Director, Head of, VP'),
   /** Only open jobs whose title has one of these words. Empty: taken from your job titles. */
   mustWords: z.string().catch(''),
+  /** LinkedIn Easy Apply (dailyCap and dryRun above are LinkedIn's). */
+  linkedinEnabled: z.boolean().catch(true),
+  /** Naukri: Apply + recruiter chatbot. Off until you turn it on; dry run first. */
+  naukri: z
+    .object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(20), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) })
+    .prefault(EMPTY),
+  /** Cutshort: Apply now + its application form. Off until you turn it on; dry run first. */
+  cutshort: z
+    .object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(10), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) })
+    .prefault(EMPTY),
   /** Advanced/tests: a search page to use instead of LinkedIn's ("{title}" is replaced). */
   searchUrl: z.string().catch(''),
 });

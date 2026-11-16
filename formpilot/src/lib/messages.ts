@@ -42,6 +42,7 @@ export type RpcRequest =
   | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[]; recordedBy?: string }
   | { type: 'autopilot-batch-done'; result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string } }
   | { type: 'autopilot-progress'; text: string }
+  | { type: 'autopilot-job-done'; result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string } }
   | { type: 'autopilot'; action: 'start' | 'stop' | 'status' | 'run-now' | 'resume' }
   | { type: 'tracker-test'; url?: string }
   /** Popup: is this job already in the tracker? */
@@ -92,8 +93,8 @@ export async function rpc<T = unknown>(req: RpcRequest): Promise<T> {
 }
 
 // ---- Background → content (tabs.sendMessage) ----
-export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job' | 'apply-queue' | 'apply-queue-stop' | 'apply-queue-status' | 'apply-queue-skip-pause';
-export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' | 'autopilot'; opts?: { batch?: number; dryRun?: boolean; unattended?: boolean; autoSubmit?: boolean; cap?: number; relevant?: string[]; skipTitles?: string; pauseSec?: [number, number] } } | { type: 'settings-ping' };
+export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job' | 'apply-queue' | 'apply-queue-stop' | 'apply-queue-status' | 'apply-queue-skip-pause' | 'site-list' | 'site-apply';
+export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' | 'autopilot'; opts?: { batch?: number; dryRun?: boolean; unattended?: boolean; autoSubmit?: boolean; cap?: number; relevant?: string[]; skipTitles?: string; pauseSec?: [number, number] }; platform?: 'naukri' | 'cutshort' } | { type: 'settings-ping' };
 
 export interface Stats {
   docs: number;

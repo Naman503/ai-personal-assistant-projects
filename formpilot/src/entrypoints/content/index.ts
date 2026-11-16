@@ -1,3 +1,5 @@
+import { applyHere } from './sites';
+import { siteJobs, sitePushback } from '@/lib/sites';
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
 import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-core';
 import type { Settings } from '@/lib/settings';
@@ -176,6 +178,17 @@ export default defineContentScript({
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       if (msg?.type !== 'command') return;
       // Apply queue (LinkedIn job lists): top frame only, no focus needed (the popup has it).
+      // Autopilot on Naukri / Cutshort: read the job list, or apply to the job on this page.
+      if (msg.name === 'site-list' || msg.name === 'site-apply') {
+        if (window !== window.top || !msg.platform) return;
+        const push = sitePushback(msg.platform);
+        if (msg.name === 'site-list') return void reply({ jobs: siteJobs(msg.platform), pushback: push });
+        reply({ ok: true });
+        void applyHere(msg.platform, !!msg.opts?.dryRun, (anchor) => controller.fillForm('toolbar', { anchor, quiet: true }))
+          .catch((e) => ({ outcome: 'skip' as const, reason: `error: ${(e as Error).message}` }))
+          .then((result) => chrome.runtime.sendMessage({ type: 'autopilot-job-done', result }).catch(() => {}));
+        return;
+      }
       if (msg.name === 'apply-queue-skip-pause') {
         if (window !== window.top) return;
         queue.skipPause();

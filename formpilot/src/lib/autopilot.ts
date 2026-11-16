@@ -68,11 +68,27 @@ export interface DayState {
   dry: number;
   skipped: number;
   perTitle: Record<string, number>;
-  /** Titles whose search had nothing left today. */
+  /** Titles whose search had nothing left today ("naukri:Mobile Engineer" for other sites). */
   exhausted: string[];
+  /** Per platform: sent / would apply / skipped. */
+  byPlatform: Record<'linkedin' | 'naukri' | 'cutshort', { sent: number; dry: number; skipped: number }>;
+  /** Naukri / Cutshort job pages already tried today. */
+  seen: string[];
 }
 
-export const freshDay = (date: string): DayState => ({ date, sent: 0, dry: 0, skipped: 0, perTitle: {}, exhausted: [] });
+const zero = () => ({ sent: 0, dry: 0, skipped: 0 });
+export const freshDay = (date: string): DayState => ({ date, sent: 0, dry: 0, skipped: 0, perTitle: {}, exhausted: [], byPlatform: { linkedin: zero(), naukri: zero(), cutshort: zero() }, seen: [] });
+
+/** A stored day from an older version: fill in what it lacks. */
+export function normalizeDay(d: Partial<DayState> & { date: string }): DayState {
+  const f = freshDay(d.date);
+  const day = { ...f, ...d, byPlatform: { ...f.byPlatform, ...(d.byPlatform ?? {}) } } as DayState;
+  if (!d.byPlatform) day.byPlatform.linkedin = { sent: d.sent ?? 0, dry: d.dry ?? 0, skipped: d.skipped ?? 0 };
+  return day;
+}
+
+/** Per-title counter key: LinkedIn keeps the plain title (older days), other sites are prefixed. */
+export const titleKey = (platform: string, title: string) => (platform === 'linkedin' ? title : `${platform}:${title}`);
 
 /** Next title to search: round-robin after `last`, skipping titles at their cap or exhausted. */
 export function pickTitle(titles: string[], day: DayState, perTitleCap: number, last = -1): { title: string; index: number } | null {

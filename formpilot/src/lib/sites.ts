@@ -1,0 +1,137 @@
+/**
+ * Naukri and Cutshort for the autopilot: search links, reading the job list, and the signs on a
+ * job page (Apply button, already applied, external apply, sent, pushback). Markup read live on
+ * 2026-11-16:
+ *  - Naukri search: .srp-jobtuple-wrapper[data-job-id] › a.title (href = job page),
+ *    a.comp-name, .expwdth ("4-6 Yrs"), .locWdth. Job page: button#apply-button "Apply"; jobs
+ *    that apply on the company's site show "Apply on company site" instead. Applying may open a
+ *    recruiter chatbot drawer (.chatbot_Drawer) asking one question at a time.
+ *  - Cutshort search: cards with h3 › a[href*="/job/"], "at <a>Company</a>", "1 - 3 yrs",
+ *    and a button "Apply now".
+ */
+
+import { isVisible } from './fields/context';
+
+export type Platform = 'linkedin' | 'naukri' | 'cutshort';
+export const PLATFORMS: Platform[] = ['linkedin', 'naukri', 'cutshort'];
+export const PLATFORM_NAME: Record<Platform, string> = { linkedin: 'LinkedIn', naukri: 'Naukri', cutshort: 'Cutshort' };
+
+export interface SiteJob {
+  url: string;
+  title: string;
+  company: string;
+  /** Minimum years asked ("4-6 Yrs" → 4), when the list shows it. */
+  expMin?: number;
+  location?: string;
+  applied?: boolean;
+}
+
+const clean = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
+
+export function platformOf(href: string): Platform | null {
+  const h = (() => {
+    try {
+      return new URL(href).hostname;
+    } catch {
+      return '';
+    }
+  })();
+  if (h.endsWith('linkedin.com')) return 'linkedin';
+  if (h.endsWith('naukri.com')) return 'naukri';
+  if (h.endsWith('cutshort.io')) return 'cutshort';
+  return null;
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/** Naukri search: newest within `days`, matching ~your experience (3 years). */
+export function naukriSearchUrl(title: string, days: number, years = 3): string {
+  const p = new URLSearchParams({ k: title, jobAge: String(Math.max(1, Math.min(30, days))), experience: String(years) });
+  return `https://www.naukri.com/${slug(title)}-jobs?${p}`;
+}
+
+export function cutshortSearchUrl(title: string): string {
+  return `https://cutshort.io/search-jobs?${new URLSearchParams({ free_text: title })}`;
+}
+
+/** "4-6 Yrs", "1 - 3 yrs", "5+ years" → 4, 1, 5. */
+export function expMinOf(text: string): number | undefined {
+  const m = /(\d+(?:\.\d+)?)\s*(?:-|–|to|\+)?\s*(?:\d+(?:\.\d+)?)?\s*(?:yrs?|years?)/i.exec(text);
+  return m ? Number(m[1]) : undefined;
+}
+
+export function naukriJobs(doc: ParentNode = document): SiteJob[] {
+  return [...doc.querySelectorAll<HTMLElement>('.srp-jobtuple-wrapper, article.jobTuple')].flatMap((c) => {
+    const a = c.querySelector<HTMLAnchorElement>('a.title, a[class*="title"]');
+    if (!a?.href) return [];
+    const exp = clean(c.querySelector('.expwdth, [class*="exp"] span[title]')?.textContent);
+    return [
+      {
+        url: a.href.replace(/[?&](src|sid|xp|px|nignbevent_src)=[^&]*/g, ''),
+        title: clean(a.getAttribute('title') || a.textContent),
+        company: clean(c.querySelector('a.comp-name, [class*="comp-name"]')?.textContent),
+        expMin: expMinOf(exp),
+        location: clean(c.querySelector('.locWdth, [class*="locWdth"]')?.textContent),
+        applied: /\bapplied\b/i.test(clean(c.querySelector('.row6, [class*="applied"]')?.textContent)),
+      },
+    ];
+  });
+}
+
+export function cutshortJobs(doc: ParentNode = document): SiteJob[] {
+  const seen = new Set<string>();
+  return [...doc.querySelectorAll<HTMLAnchorElement>('h3 a[href*="job"], h2 a[href*="job"]')].flatMap((a) => {
+    const url = a.href;
+    if (seen.has(url)) return [];
+    seen.add(url);
+    // The card: the nearest ancestor that also holds the "Apply" button or the experience line.
+    let card: HTMLElement | null = a.parentElement;
+    for (let i = 0; i < 8 && card && !/\byrs?\b|apply now|applied/i.test(card.innerText || card.textContent || ''); i++) card = card.parentElement;
+    const text = clean(card?.innerText || card?.textContent);
+    const at = card?.querySelector<HTMLAnchorElement>('a[href*="/company/"]');
+    return [{ url, title: clean(a.textContent), company: clean(at?.textContent), expMin: expMinOf(text), applied: /\bapplied\b/i.test(text) && !/apply now/i.test(text) }];
+  });
+}
+
+export function siteJobs(p: Platform, doc: ParentNode = document): SiteJob[] {
+  return p === 'naukri' ? naukriJobs(doc) : p === 'cutshort' ? cutshortJobs(doc) : [];
+}
+
+/** A button or link whose own text is exactly one of these (case-insensitive). */
+export function buttonByText(re: RegExp, root: ParentNode = document): HTMLElement | null {
+  return (
+    [...root.querySelectorAll<HTMLElement>('button, a[role=button], [role=button]')].find((b) => {
+      const t = clean(b.innerText || b.textContent);
+      return re.test(t) && !(b as HTMLButtonElement).disabled && isVisible(b);
+    }) ?? null
+  );
+}
+
+/** On a job page: can it be applied to here, is it done already, or does it go elsewhere? */
+export function jobPageState(p: Platform, doc: Document = document): { apply: HTMLElement | null; applied: boolean; external: boolean } {
+  if (p === 'naukri') {
+    const apply = doc.querySelector<HTMLElement>('button#apply-button');
+    const label = clean(apply?.textContent);
+    const external = !apply && !!buttonByText(/apply on company site/i, doc);
+    return { apply: apply && /^apply$/i.test(label) ? apply : null, applied: /^applied$/i.test(label) || /you have (already )?applied/i.test(doc.body?.innerText ?? ''), external };
+  }
+  const apply = buttonByText(/^(apply now|apply|apply for this job)$/i, doc);
+  return { apply, applied: !apply && !!buttonByText(/^applied$/i, doc), external: false };
+}
+
+/** The site says the application went through. */
+export function sentNotice(p: Platform, doc: Document = document, href = location.href): boolean {
+  if (p === 'naukri' && /naukri\.com\/myapply\//.test(href)) return true;
+  const t = (doc.body?.innerText ?? '').slice(0, 30000);
+  if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted))/i.test(t)) return true;
+  return p === 'naukri' ? /^applied$/i.test(clean(doc.querySelector('button#apply-button')?.textContent)) : !!buttonByText(/^applied$/i, doc);
+}
+
+/** Login walls, captchas and limits: stop the platform for the day. */
+export function sitePushback(p: Platform, doc: Document = document, href = location.href): string {
+  if (p === 'naukri' && /naukri\.com\/(nlogin|login)/.test(href)) return 'Naukri wants you to sign in';
+  if (p === 'cutshort' && /cutshort\.io\/(login|signin|signup)/.test(href)) return 'Cutshort wants you to sign in';
+  const t = (doc.body?.innerText ?? '').slice(0, 20000);
+  const m = t.match(/(daily (apply|application) limit|reached (the|your) (daily )?limit|too many (requests|applications)|verify (that )?you are (a )?human|captcha|unusual activity|access denied)/i);
+  return m ? `${PLATFORM_NAME[p]} says: "${m[0]}"` : '';
+}

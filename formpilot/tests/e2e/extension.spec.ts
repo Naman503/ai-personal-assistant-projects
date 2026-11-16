@@ -929,6 +929,51 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
 });
 
 
+test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form filled, closed unsent)', async ({ context, sw, extId }) => {
+  test.setTimeout(330_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false },
+    behavior: { enabled: false },
+    autopilot: {
+      titles: 'React Native Developer',
+      batchMin: 1,
+      batchMax: 1,
+      gapMinMin: 30,
+      gapMaxMin: 30,
+      startTime: '00:00',
+      endTime: '24:00',
+      days: [0, 1, 2, 3, 4, 5, 6],
+      skipWords: '',
+      linkedinEnabled: false,
+      naukri: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5 },
+      cutshort: { enabled: true, dryRun: true, dailyCap: 5, maxExpMin: 5 },
+      searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}',
+    },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot']));
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  type St = { day: { byPlatform: Record<string, { sent: number; dry: number; skipped: number }>; seen: string[] }; phase: string; history: { msg: string }[] };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  // Naukri: the relevant job only (Operations Manager is off-topic, 8+ years is too senior).
+  await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 150_000 }).toBe(1);
+  const nk = context.pages().find((p) => p.url().includes('naukri-job.html'))!;
+  expect(await nk.evaluate(() => (window as unknown as { __answers: string[] }).__answers)).toEqual(['3', 'Yes']);
+  expect((await state()).day.seen.filter((u) => u.includes('naukri-job'))).toHaveLength(1);
+  // Skip the break: Cutshort is next.
+  await expect.poll(async () => (await state()).phase, { timeout: 10_000 }).toBe('waiting');
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'run-now' }));
+  await expect.poll(async () => (await state()).day.byPlatform.cutshort.dry, { timeout: 150_000 }).toBe(1);
+  const cs = context.pages().find((p) => p.url().includes('cutshort-job.html'))!;
+  expect(await cs.evaluate(() => (window as unknown as { __applied: boolean }).__applied)).toBe(false);
+  expect(await cs.locator('[role=dialog]').count()).toBe(0);
+  const hist = (await state()).history.map((h) => h.msg).join('\n');
+  expect(hist).toContain('Naukri · Applied: React Native Developer - Wissen');
+  expect(hist).toContain('Cutshort · Would apply: Junior React Native Developer');
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {
