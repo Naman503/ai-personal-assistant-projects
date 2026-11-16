@@ -214,6 +214,7 @@ export const DEFAULTS: Settings = {
     batchMax: 5,
     gapMinMin: 20,
     gapMaxMin: 40,
+    useHours: true,
     startTime: '10:00',
     endTime: '19:30',
     days: [1, 2, 3, 4, 5, 6],

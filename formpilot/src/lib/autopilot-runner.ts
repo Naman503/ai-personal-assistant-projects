@@ -89,6 +89,7 @@ function newDay(st: ApState) {
 }
 
 function tomorrowStart(ap: Settings['autopilot']): Date {
+  if (!ap.useHours) return nextStart(ap); // just after the next midnight India time
   const endOfToday = Date.parse(`${ist().date}T23:59:00Z`) - 330 * 60_000 + 120_000;
   return nextStart(ap, new Date(endOfToday));
 }

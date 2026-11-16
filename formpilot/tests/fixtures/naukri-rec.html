@@ -33,12 +33,27 @@ apply.onclick = () => {
   const ids = [...picked];
   window.__applied = ids;
   const c = document.createElement('div');
-  c.innerHTML = `<div class="chatbot_Drawer chatbot_right"><div class="chatbot_DrawerContentWrapper"><ul class="list"><li class="botItem chatbot_ListItem"><div class="botMsg msg"><div><span>Hi Alex, thank you for showing interest. Kindly answer all the recruiter's questions to successfully apply for the job.</span></div></div></li></ul><div class="chatbot_InputContainer"><div class="textArea" contenteditable="true"></div></div><div class="sendMsg">Save</div></div></div>`;
+  c.innerHTML = `<div class="chatbot_Drawer chatbot_right"><div class="chatbot_DrawerContentWrapper"><ul class="list"><li class="botItem chatbot_ListItem"><div class="botMsg msg"><div><span>Hi Alex, thank you for showing interest. Kindly answer all the recruiter's questions to successfully apply for the job.</span></div></div></li></ul><div class="multiselectcheckboxes"></div><div class="footerWrapper"><div class="chatbot_SendMessageContainer"><div class="chatbot_InputContainer"><div class="textArea" contenteditable="true"></div></div></div></div><div class="sendMsg">Save</div></div></div>`;
   document.body.appendChild(c);
   const ul = c.querySelector('.list'), input = c.querySelector('.textArea');
-  setTimeout(() => { const li = document.createElement('li'); li.className = 'botItem chatbot_ListItem'; li.innerHTML = '<div class="botMsg msg"><div><span>What is your notice period?</span></div></div>'; ul.appendChild(li); }, 700);
+  const bar = c.querySelector('.chatbot_SendMessageContainer'), multi = c.querySelector('.multiselectcheckboxes');
+  let step = 0;
+  const ask = (q) => { const li = document.createElement('li'); li.className = 'botItem chatbot_ListItem'; li.innerHTML = `<div class="botMsg msg"><div><span>${q}</span></div></div>`; ul.appendChild(li); };
+  setTimeout(() => ask('What is your notice period?'), 700);
   c.querySelector('.sendMsg').onclick = () => {
-    const v = input.textContent.trim(); if (!v) return;
+    if (step === 0) {
+      const v = input.textContent.trim(); if (!v) return;
+      window.__answers.push(v);
+      input.textContent = '';
+      step = 1;
+      // Live Naukri (2026-11-16): checkboxes are hidden, labels show; the text bar gets d-none.
+      bar.classList.add('d-none');
+      multi.innerHTML = `<div class="multicheckboxes-container"><input type="checkbox" id="Mumbai" value="Mumbai" class="mcc__checkbox" style="position:absolute;opacity:0;width:0;height:0"><label for="Mumbai" class="mcc__label">Mumbai</label><br><input type="checkbox" id="Bengaluru" value="Bengaluru" class="mcc__checkbox" style="position:absolute;opacity:0;width:0;height:0"><label for="Bengaluru" class="mcc__label">Bengaluru</label></div>`;
+      setTimeout(() => ask('Which of these locations are you willing to relocate to?'), 500);
+      return;
+    }
+    const v = [...multi.querySelectorAll('input:checked')].map((b) => b.value).join(',');
+    if (!v) return;
     window.__answers.push(v);
     const resp = Object.fromEntries(ids.map((id) => [id, 200]));
     setTimeout(() => (location.href = `/myapply/saveApply.html?strJobsarr=[${ids}]&applytype=multiple&multiApplyResp=${encodeURIComponent(JSON.stringify(resp))}`), 600);

@@ -1029,6 +1029,7 @@ test('autopilot on Naukri Recommended jobs: ticks the jobs that fit (up to 5), p
   // Angular is off-topic, 9+ years is too senior: the React Native job on the first tab.
   await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 180_000 }).toBe(1);
   expect((await state()).history.map((h) => h.msg).join('\n')).toContain('Naukri · Applied: React Native Developer · Acme Apps');
+  // The location question (hidden checkboxes, like live Naukri): every location ticked.
   // The next batch (skip the break) takes the next tab's fitting job; the first isn't tried again.
   await expect.poll(async () => (await state()).phase, { timeout: 15_000 }).toBe('waiting');
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'run-now' }));

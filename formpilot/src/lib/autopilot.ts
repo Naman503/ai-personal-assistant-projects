@@ -19,13 +19,19 @@ const hm = (s: string, fallback: number) => {
   return m ? Math.min(24 * 60, Number(m[1]) * 60 + Number(m[2])) : fallback;
 };
 
-export function inActiveHours(ap: Pick<AP, 'startTime' | 'endTime' | 'days'>, now = new Date()): boolean {
+export function inActiveHours(ap: Pick<AP, 'startTime' | 'endTime' | 'days'> & { useHours?: boolean }, now = new Date()): boolean {
+  if (ap.useHours === false) return true;
   const t = ist(now);
   return ap.days.includes(t.day) && t.minutes >= hm(ap.startTime, 600) && t.minutes < hm(ap.endTime, 1170);
 }
 
 /** The next moment the active hours start (now if they already have). */
-export function nextStart(ap: Pick<AP, 'startTime' | 'endTime' | 'days'>, now = new Date()): Date {
+export function nextStart(ap: Pick<AP, 'startTime' | 'endTime' | 'days'> & { useHours?: boolean }, now = new Date()): Date {
+  // No hours: after a full day, the next start is just after midnight India time (new limits).
+  if (ap.useHours === false) {
+    const t = ist(now);
+    return new Date(Date.parse(`${t.date}T00:00:00Z`) - IST_MS + 86_400_000 + 5 * 60_000);
+  }
   if (inActiveHours(ap, now)) return now;
   const start = hm(ap.startTime, 600);
   for (let add = 0; add < 8; add++) {

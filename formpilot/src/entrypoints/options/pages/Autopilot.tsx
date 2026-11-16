@@ -204,8 +204,11 @@ export function Autopilot({ settings, update }: PageProps) {
 
       <Card className="mb-5">
         <CardHeader icon={<Clock className="size-4" />} title="When" />
-        <Row label="Active hours (India time)" description="It only applies inside these hours, on the ticked days. Outside them it waits; “Skip break” runs one batch anyway.">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Row label="Only run during active hours" description="Off: it applies whenever your Mac is awake, day or night, every day. Each platform's daily limit is still the cap; the limits start again at midnight India time.">
+          <Switch checked={a.useHours} onCheckedChange={(v) => set('useHours', v)} />
+        </Row>
+        <Row label="Active hours (India time)" description={a.useHours ? 'It only applies inside these hours, on the ticked days. Outside them it waits; “Skip break” runs one batch anyway.' : 'Not used while “Only run during active hours” is off.'}>
+          <div className={`flex flex-wrap items-center gap-2 text-sm ${a.useHours ? '' : 'pointer-events-none opacity-40'}`}>
             <Input className="w-20" value={a.startTime} onChange={(e) => set('startTime', e.target.value)} />–<Input className="w-20" value={a.endTime} onChange={(e) => set('endTime', e.target.value)} />
             {DAYS.map((dn, i) => (
               <label key={dn} className="flex items-center gap-1">
