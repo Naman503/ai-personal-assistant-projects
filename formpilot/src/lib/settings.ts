@@ -194,6 +194,13 @@ const AutopilotSchema = z.object({
   days: z.array(z.number().int().min(0).max(6)).catch([1, 2, 3, 4, 5, 6]),
   /** Fill to Submit and record "would apply", without sending. */
   dryRun: z.boolean().catch(true),
+  /** Pause between jobs inside a batch, seconds (random in the range). */
+  pauseMinSec: z.number().min(0).max(600).catch(40),
+  pauseMaxSec: z.number().min(0).max(600).catch(120),
+  /** Skip jobs whose title contains any of these (comma separated), e.g. Intern, Director. */
+  skipWords: z.string().catch('Intern, Director, Head of, VP'),
+  /** Only open jobs whose title has one of these words. Empty: taken from your job titles. */
+  mustWords: z.string().catch(''),
   /** Advanced/tests: a search page to use instead of LinkedIn's ("{title}" is replaced). */
   searchUrl: z.string().catch(''),
 });

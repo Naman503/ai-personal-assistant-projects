@@ -231,6 +231,9 @@ export default defineBackground({
           return testTracker(msg.url ?? settings.tracker.url);
         case 'tracker-lookup':
           return lookupInTracker(settings.tracker.url, { url: msg.url, company: msg.company, role: msg.role });
+        case 'autopilot-progress':
+          await autopilot.onProgress(msg.text, sender.tab?.id);
+          return null;
         case 'autopilot-batch-done':
           await autopilot.onBatchDone(msg.result, sender.tab?.id);
           return null;

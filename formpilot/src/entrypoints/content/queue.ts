@@ -70,6 +70,8 @@ export interface QueuePrefs {
   unattended?: boolean;
   /** Autopilot: only jobs whose title shares a distinctive word with these (react, native, mobile…). */
   relevant?: string[];
+  /** Autopilot: pause between jobs, seconds [min, max]. */
+  pauseSec?: [number, number];
 }
 
 /** What one queue run did (sent back to the autopilot). */
@@ -88,6 +90,8 @@ export class ApplyQueue {
   private running = false;
   private stopRequested = false;
   private skipRequested = false;
+  /** "Skip the pause": end the current wait between jobs now. */
+  private goNow = false;
   private tried = new Set<string>();
   private sent = 0;
   /** Sent since the last break; a longer pause comes after a handful, like a person would take. */
@@ -116,6 +120,11 @@ export class ApplyQueue {
 
   stop() {
     this.stopRequested = true;
+  }
+
+  /** End the pause between jobs now (from the popup or the autopilot page). */
+  skipPause() {
+    this.goNow = true;
   }
 
   /** The prefs for this run: settings plus what the autopilot asked for. */
@@ -158,6 +167,8 @@ export class ApplyQueue {
 
   private status(text: string, tone: 'info' | 'success' | 'error' = 'info', ms = 10 * 60_000) {
     this.deps.toast(text, tone, this.running ? this.bar() : undefined, ms);
+    // The autopilot shows this live in the popup and its page.
+    if (this.overrides.unattended) chrome.runtime.sendMessage({ type: 'autopilot-progress', text }).catch(() => {});
   }
 
   private async countToday(add = 0): Promise<number> {
@@ -196,6 +207,13 @@ export class ApplyQueue {
           await this.rest(between(60, 150));
           this.sinceBreak = 0;
           this.breakAfter = 6 + Math.floor(Math.random() * 5);
+        } else if (prefs.pauseSec && (sent || this.dry > dryBefore)) {
+          // Autopilot: a person-like pause after each job that reached Submit.
+          const ms = between(prefs.pauseSec[0], prefs.pauseSec[1]);
+          const until = Date.now() + ms;
+          this.status(`Pause before the next job · ${Math.round(ms / 1000)} s (${this.sent + this.dry} of ${prefs.batch ?? '?'} in this batch)`);
+          this.goNow = false;
+          await this.until(() => Date.now() >= until || this.goNow, ms, 500);
         } else await this.pause(sent ? jitter(Math.max(prefs.delaySec, 4)) : between(2, 4));
         list = candidates(jobCards(), prefs.skipTitles, this.tried, prefs.relevant);
         if (!list.length) {
@@ -350,6 +368,7 @@ export class ApplyQueue {
       else if (outcome === 'blocked') this.status(`${n} of ${prefs.cap} today · ${label} — ${this.deps.blockedReason()}. Fill it in and press Next; I'll take over again.`);
       else this.status(`${n} of ${prefs.cap} today · ${label} — Finish this one by hand, or Skip.`);
     };
+    this.status(`${prefs.dryRun ? 'Dry run · ' : ''}Filling ${label}`);
     await step();
     if (prefs.dryRun) {
       if (outcome === 'submit') {
