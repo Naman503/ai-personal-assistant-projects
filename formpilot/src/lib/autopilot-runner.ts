@@ -107,6 +107,20 @@ export class Autopilot {
     }
   }
 
+  /**
+   * The worker started (Brave restart, FormPilot update): alarms may be gone. If the autopilot
+   * was on, pick up again: a batch that was cut off is dropped, and the schedule resumes.
+   */
+  async resume() {
+    const st = await loadState();
+    if (!st.running) return;
+    const alarms = await Promise.all([TICK, GO, WATCHDOG].map((a) => chrome.alarms.get(a)));
+    if (alarms.some(Boolean)) return;
+    st.current = undefined; // its own window is reused if it's still open
+    await save(st, 'Picking up after Brave or FormPilot restarted');
+    await this.tick();
+  }
+
   /** Run a batch now (from the popup), even if the next one was scheduled later. */
   async runNow() {
     const st = await loadState();

@@ -111,6 +111,7 @@ export default defineBackground({
       if (a.name.startsWith('fp-ap-')) void ready.then(() => autopilot.onAlarm(a.name));
     });
     chrome.windows?.onRemoved.addListener((id) => void ready.then(() => autopilot.onWindowRemoved(id)));
+    void ready.then(() => autopilot.resume()).catch(() => {});
     self.addEventListener('error', (e) => void usage.error((e as ErrorEvent).error, true));
     self.addEventListener('unhandledrejection', (e) => {
       if (!isAbort((e as PromiseRejectionEvent).reason)) void usage.error((e as PromiseRejectionEvent).reason);
@@ -237,6 +238,7 @@ export default defineBackground({
           if (msg.action === 'start') await autopilot.start();
           else if (msg.action === 'stop') await autopilot.stop();
           else if (msg.action === 'run-now') await autopilot.runNow();
+          else if (msg.action === 'resume') await autopilot.resume();
           return autopilot.status();
         case 'tracker-summary':
           return trackerSummary(settings.tracker.url);
