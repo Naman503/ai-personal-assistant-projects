@@ -63,3 +63,12 @@ describe('Gemini quota reset', () => {
     expect(nextPacificMidnight(new Date('2026-07-01T12:00:00Z')).toISOString()).toBe('2026-07-02T07:00:00.000Z');
   });
 });
+
+describe('no active hours', () => {
+  it('runs any time, and after a full day comes back just after midnight India time', () => {
+    const off = { ...{ startTime: '10:00', endTime: '19:30', days: [1, 2, 3, 4, 5, 6] }, useHours: false };
+    expect(inActiveHours(off, new Date('2026-11-22T20:00:00Z'))).toBe(true); // Monday 01:30 IST, and Sunday nights too
+    expect(inActiveHours(off, new Date('2026-11-21T22:00:00Z'))).toBe(true); // Sunday 03:30 IST
+    expect(nextStart(off, new Date('2026-11-16T15:00:00Z')).toISOString()).toBe('2026-11-16T18:35:00.000Z'); // 20:30 IST → 00:05 IST
+  });
+});

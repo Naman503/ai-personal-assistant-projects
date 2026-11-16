@@ -189,6 +189,8 @@ const AutopilotSchema = z.object({
   batchMax: z.number().int().min(1).max(20).catch(5),
   gapMinMin: z.number().min(1).max(240).catch(20),
   gapMaxMin: z.number().min(1).max(240).catch(40),
+  /** Only apply inside the active hours below. Off: any time the Mac is awake (the daily limits still apply). */
+  useHours: z.boolean().catch(true),
   /** Active hours, India time, "HH:MM". */
   startTime: z.string().catch('10:00'),
   endTime: z.string().catch('19:30'),
