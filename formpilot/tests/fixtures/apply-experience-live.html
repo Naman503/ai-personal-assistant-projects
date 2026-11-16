@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply to The Future University | LinkedIn</title>
+<style>body{font:14px system-ui;margin:20px} [data-testid=select-helper-text] p{color:rgb(203,17,45)}</style></head>
+<body>
+<!-- LinkedIn's Easy Apply as captured live on 2026-11-16: the "Edit experience" form opens on
+     step 2, after the walk has pressed Next. Its Month / Year dropdowns have empty <label>s and
+     placeholder options "Month" / "Year"; "This field is required" appears under each one only
+     after Next is pressed. Markup copied from the live page (classes stripped). -->
+<button id="easy" type="button">Easy Apply</button>
+<script>
+const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const mo = '<option value="">Month</option>' + months.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+const yo = '<option value="">Year</option>' + Array.from({ length: 61 }, (_, i) => `<option value="${2036 - i}">${2036 - i}</option>`).join('');
+const sel = (id, opts, ck) => `<div${ck ? ` componentkey="${ck}"` : ''}><label for="${id}"><div></div></label><div><select id="${id}" aria-describedby="${id}-h">${opts}</select></div><div data-testid="select-helper-text"><p id="${id}-h"></p></div></div>`;
+const exp = `<div><div><div><div><p>Edit experience</p><button type="button"><span><span>Save</span></span></button></div><div>
+  <div><p>Your title*</p><div><div><input required id="x-t" aria-label="Your title" type="text" value="Software Engineer"></div></div></div>
+  <div><p>Company</p><div><div><input id="x-c" aria-label="Company" type="text" value="Metafic"></div></div></div>
+  <div><p>Dates of employment</p>
+    <div><p>From</p><div>${sel('x-fm', mo)}${sel('x-fy', yo, 'start_year')}</div></div>
+    <div><div><div><div><div><input id="x-cur" aria-label="I currently work here" type="checkbox"><label for="x-cur"></label></div></div><div><p>I currently work here</p></div></div></div></div>
+    <div id="x-to"><p>To</p><div>${sel('x-tm', mo)}${sel('x-ty', yo, 'end_year')}</div></div>
+  </div>
+  <div><p>City</p><div><div><input id="x-city" aria-label="City" type="text" value="Indore"></div></div></div>
+</div></div></div></div>`;
+document.getElementById('easy').onclick = () => {
+  const d = document.createElement('dialog');
+  d.setAttribute('data-testid', 'dialog');
+  d.innerHTML = `<h2>Apply to The Future University</h2>
+    <div id="s1"><label for="email">Email address</label><input id="email" type="email" value="me@example.com"><label for="city">Location (city)</label><input id="city" type="text"><button id="n1" type="button">Next</button></div>
+    <div id="s2" hidden><h3>Work experience</h3><div id="slot"></div><button id="n2" type="button">Review</button></div>
+    <div id="s3" hidden><button id="send" type="button">Submit application</button></div>`;
+  document.body.appendChild(d);
+  d.show();
+  d.querySelector('#n1').onclick = () => {
+    d.querySelector('#s1').hidden = true;
+    d.querySelector('#s2').hidden = false;
+    // LinkedIn renders the experience form a moment after the step appears.
+    setTimeout(() => {
+      d.querySelector('#slot').innerHTML = exp;
+      d.querySelector('#x-cur').addEventListener('change', (e) => { d.querySelector('#x-to').style.display = e.target.checked ? 'none' : ''; });
+    }, 300);
+  };
+  d.querySelector('#n2').onclick = () => {
+    let bad = 0;
+    for (const s of d.querySelectorAll('#s2 select')) {
+      const need = s.closest('#x-to')?.style.display !== 'none' && !s.value;
+      d.querySelector(`#${s.id}-h`).textContent = need ? 'This field is required' : '';
+      if (need) bad++;
+    }
+    if (!bad) { d.querySelector('#s2').hidden = true; d.querySelector('#s3').hidden = false; }
+  };
+  d.querySelector('#send').onclick = () => { window.__submitted = true; };
+};
+</script>
+</body>
+</html>

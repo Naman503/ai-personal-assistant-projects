@@ -788,6 +788,26 @@ test('LinkedIn Edit experience: fills employment Month/Year without AI, leaves u
   expect((await msgs()).some((m) => /fill-form: \d+ fields?, .*to the model/.test(m) && /Month|Year/.test(m))).toBe(false);
 });
 
+test('LinkedIn Edit experience that opens on a later step (live markup): the walk fills its Month/Year and goes on to Submit', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: false, walkToSubmit: true }, behavior: { enabled: false } });
+  await sw.evaluate(() => chrome.storage.local.set({ fpWorkHistory: { metafic: { from: { y: 2023, m: 4 }, to: { y: 2025, m: 8 } } } }));
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-experience-live.html');
+  await page.click('#easy');
+  await page.locator('#city').click();
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-experience-live.html' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
+  });
+  await expect.poll(() => page.evaluate(() => !(document.getElementById('s3') as HTMLElement).hidden), { timeout: 40_000 }).toBe(true);
+  const v = await page.evaluate(() => ['x-fm', 'x-fy', 'x-tm', 'x-ty'].map((id) => (document.getElementById(id) as HTMLSelectElement).value));
+  expect(v).toEqual(['4', '2023', '8', '2025']);
+  await expect(page.locator('#send')).toHaveCSS('outline-width', '3px');
+  expect(await page.evaluate(() => (window as unknown as { __submitted?: boolean }).__submitted)).toBeFalsy();
+  const msgs = () => sw.evaluate(async () => (((await chrome.storage.session.get('fpLogs')).fpLogs ?? []) as { msg: string }[]).map((e) => e.msg));
+  await expect.poll(async () => (await msgs()).includes('✓ "Start month at Metafic" ← "April"'), { timeout: 10_000 }).toBe(true);
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {

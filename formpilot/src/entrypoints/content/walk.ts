@@ -3,7 +3,7 @@
  * and the like), press Next/Review for the user, fill the next step, and stop at the Submit
  * button, highlighted. It never presses Submit, and it stops the moment a step needs the user.
  */
-import { decideStep, fieldErrors, firstEmptyField, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
+import { decideStep, fieldErrors, firstEmptyField, isUnchosen, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
 import { createLogger } from '@/lib/logger';
 import { quietFocus } from '@/lib/automation';
 import { fillElement } from '@/lib/fields/fill';
@@ -47,10 +47,24 @@ export class ApplyWalker {
       const tries = new WeakMap<HTMLElement, number>();
       let repaired = false;
       let stuck = 0;
+      // Steps already filled (the first one by the fill that started this walk).
+      const refilled = new Set<string>([stepFingerprint(scope)]);
       for (let step = 0; step < MAX_STEPS; step++) {
         // A field the site rejected ("Invalid input", "Enter a whole number between 0 and 99"):
         // fix the value ourselves first; only ask the user when no fix fits.
         const errs = fieldErrors(scope).filter((e) => e.shown);
+        // "This field is required" on a box nothing was put in (it appeared after the step
+        // loaded, or LinkedIn opened an "Edit experience" form): fill this step once more.
+        const blank = errs.map((e) => e.field as HTMLElement).find((f) => (f instanceof HTMLSelectElement ? isUnchosen(f) : !readValue(f as FillableElement).trim()));
+        if (blank && !refilled.has(stepFingerprint(scope))) {
+          refilled.add(stepFingerprint(scope));
+          log.info(`walk: "${errs.find((e) => e.field === blank)?.label ?? '?'}" is required and empty; filling this step again`);
+          const r = await this.deps.fill(blank);
+          log.info(`walk: filled ${r.filled}/${r.total} on this step`);
+          await settled(scope.getRootNode(), 300, 1500);
+          step--;
+          continue;
+        }
         if (errs.length) {
           log.info(`walk: ${errs.length} field error(s) on this step`, errs.map((e) => `${e.label}: "${e.msg}" (value ${JSON.stringify(readValue(e.field as FillableElement))})`));
           const fixed = this.repair(errs, tries);
@@ -103,7 +117,9 @@ export class ApplyWalker {
         }
         stuck = 0;
         const next = firstEmptyField(scope);
+        log.info(`walk: new step, first empty field: ${next ? (next.getAttribute('aria-label') || next.id || next.tagName) : 'none'}`);
         if (next) {
+          refilled.add(stepFingerprint(scope));
           const r = await this.deps.fill(next);
           log.info(`walk: filled ${r.filled}/${r.total} on the new step`);
           await settled(scope.getRootNode(), 300, 1500);

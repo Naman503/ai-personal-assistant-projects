@@ -153,6 +153,12 @@ export function stepScope(el: Element): Element {
   return el.ownerDocument.body;
 }
 
+/** A <select> still on its empty placeholder option ("Month", "Select an option"). */
+export function isUnchosen(el: HTMLSelectElement): boolean {
+  const o = el.selectedOptions[0];
+  return !o || (o.value === '' && el.selectedIndex === 0) || (el.selectedIndex === 0 && /^(select|choose|please|--|month|year|day)\b/i.test(o.text.trim()));
+}
+
 /** First empty, visible, fillable field in a scope (where the next fill should anchor). */
 export function firstEmptyField(scope: Element): HTMLElement | null {
   for (const el of scope.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')) {
@@ -160,6 +166,12 @@ export function firstEmptyField(scope: Element): HTMLElement | null {
     if (!isVisibleControl(el) || (input.type !== 'radio' && !fieldKind(el))) continue;
     if (['checkbox', 'file', 'hidden', 'password', 'submit', 'button'].includes(input.type)) continue;
     if (input.type === 'radio') return el;
+    // A dropdown still on its placeholder ("Month", "Year", "Select an option") is empty, even
+    // though it shows text.
+    if (el instanceof HTMLSelectElement) {
+      if (isUnchosen(el)) return el;
+      continue;
+    }
     if (!readValue(el as FillableElement).trim()) return el;
   }
   return null;

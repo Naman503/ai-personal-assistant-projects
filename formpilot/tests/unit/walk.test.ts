@@ -91,4 +91,16 @@ describe('walking a multi-step form', () => {
     expect(scope.getAttribute('role')).toBe('dialog');
     expect(firstEmptyField(scope)?.id).toBe('todo');
   });
+
+  it('treats a dropdown on its "Month" / "Year" placeholder as empty (LinkedIn Edit experience)', () => {
+    document.body.innerHTML = `<div id="s"><input id="t" type="text" value="Software Engineer">
+      <select id="m"><option value="">Month</option><option value="1">January</option></select>
+      <select id="y"><option value="">Year</option><option value="2025">2025</option></select></div>`;
+    const scope = document.getElementById('s')!;
+    expect(firstEmptyField(scope)?.id).toBe('m');
+    (document.getElementById('m') as HTMLSelectElement).value = '1';
+    expect(firstEmptyField(scope)?.id).toBe('y');
+    (document.getElementById('y') as HTMLSelectElement).value = '2025';
+    expect(firstEmptyField(scope)).toBeNull();
+  });
 });
