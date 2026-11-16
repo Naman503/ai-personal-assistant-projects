@@ -61,6 +61,22 @@ export interface QueuePrefs {
   skipTitles: string;
   /** Press Submit after a short countdown once the walk reaches it with nothing left for you. */
   autoSubmit?: boolean;
+  /** Autopilot: stop after this many jobs reached Submit (sent or, in a dry run, "would apply"). */
+  batch?: number;
+  /** Autopilot dry run: fill to Submit, record "would apply", close without sending. */
+  dryRun?: boolean;
+  /** Autopilot: nobody is watching, so a job that needs you is skipped instead of waited for. */
+  unattended?: boolean;
+}
+
+/** What one queue run did (sent back to the autopilot). */
+export interface QueueResult {
+  sent: number;
+  dry: number;
+  skipped: number;
+  reason: string;
+  /** LinkedIn pushed back (limit, checkpoint, login): the autopilot stops. */
+  pushback?: string;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -74,6 +90,10 @@ export class ApplyQueue {
   /** Sent since the last break; a longer pause comes after a handful, like a person would take. */
   private sinceBreak = 0;
   private breakAfter = 0;
+  private dry = 0;
+  private skipped = 0;
+  private overrides: Partial<QueuePrefs> = {};
+  private result: QueueResult | null = null;
 
   constructor(
     private deps: {
@@ -82,6 +102,8 @@ export class ApplyQueue {
       walk: (anchor: HTMLElement) => Promise<WalkOutcome>;
       blockedReason: () => string;
       toast: Toast;
+      /** Dry run: record "would apply" with the answers on the open form. */
+      dryRecord?: (dialog: Element | null) => Promise<void>;
     },
   ) {}
 
@@ -93,8 +115,20 @@ export class ApplyQueue {
     this.stopRequested = true;
   }
 
-  async start() {
-    if (this.running) return this.status('The apply queue is already running.', 'info');
+  /** The prefs for this run: settings plus what the autopilot asked for. */
+  private prefs(): QueuePrefs {
+    return { ...this.deps.prefs(), ...this.overrides };
+  }
+
+  async start(overrides: Partial<QueuePrefs> = {}): Promise<QueueResult | null> {
+    if (this.running) {
+      this.status('The apply queue is already running.', 'info');
+      return null;
+    }
+    this.overrides = overrides;
+    this.result = null;
+    this.dry = 0;
+    this.skipped = 0;
     this.running = true;
     this.stopRequested = false;
     this.sent = 0;
@@ -105,9 +139,11 @@ export class ApplyQueue {
     } catch (e) {
       log.warn('queue failed', e);
       this.deps.toast(`Apply queue stopped: ${(e as Error).message}`, 'error', undefined, 15_000);
+      this.result = { sent: this.sent, dry: this.dry, skipped: this.skipped, reason: `error: ${(e as Error).message}` };
     } finally {
       this.running = false;
     }
+    return this.result ?? { sent: this.sent, dry: this.dry, skipped: this.skipped, reason: 'stopped' };
   }
 
   private bar(): Action[] {
@@ -130,8 +166,8 @@ export class ApplyQueue {
   }
 
   private async loop() {
-    const prefs = this.deps.prefs();
-    trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles, autoSubmit: !!prefs.autoSubmit });
+    const prefs = this.prefs();
+    trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles, autoSubmit: !!prefs.autoSubmit, batch: prefs.batch ?? null, dryRun: !!prefs.dryRun, unattended: !!prefs.unattended });
     for (let page = 0; page < 10 && !this.stopRequested; page++) {
       await this.loadWholeList();
       let list = candidates(jobCards(), prefs.skipTitles, this.tried);
@@ -140,11 +176,14 @@ export class ApplyQueue {
       if (!all.length && page === 0) return this.finish('No job list found on this page. Open a LinkedIn job search first.');
       while (list.length && !this.stopRequested) {
         const push = pushbackNotice();
-        if (push) return this.finish(`${push}. Stopped for today so your account stays safe.`, 'error');
-        if ((await this.countToday()) >= prefs.cap) return this.finish(`Daily limit reached (${prefs.cap}). Change it in FormPilot settings → Behavior.`);
+        if (push) return this.finish(`${push}. Stopped for today so your account stays safe.`, 'error', push);
+        if (prefs.batch && this.sent + this.dry >= prefs.batch) return this.finish(`Batch done: ${this.sent} sent${prefs.dryRun ? `, ${this.dry} would apply (dry run)` : ''}.`);
+        if (!prefs.dryRun && (await this.countToday()) >= prefs.cap) return this.finish(`Daily limit reached (${prefs.cap}). Change it in FormPilot settings → Behavior.`);
         const card = list[0];
         this.tried.add(cardKey(card));
+        const dryBefore = this.dry;
         const sent = await this.one(card, prefs);
+        if (!sent && this.dry === dryBefore) this.skipped++;
         if (this.stopRequested) break;
         if (sent && ++this.sinceBreak >= this.breakAfter) {
           await this.rest(between(60, 150));
@@ -210,8 +249,9 @@ export class ApplyQueue {
     }
   }
 
-  private finish(msg: string, tone: 'success' | 'error' = 'success') {
-    trace(`queue finished: ${msg}`);
+  private finish(msg: string, tone: 'success' | 'error' = 'success', pushback?: string) {
+    trace(`queue finished: ${msg}`, { sent: this.sent, dry: this.dry, skipped: this.skipped });
+    this.result = { sent: this.sent, dry: this.dry, skipped: this.skipped, reason: msg, ...(pushback ? { pushback } : {}) };
     this.running = false;
     this.deps.toast(msg, tone, undefined, tone === 'error' ? 60_000 : 12_000);
   }
@@ -304,9 +344,23 @@ export class ApplyQueue {
       else this.status(`${n} of ${prefs.cap} today · ${label} — Finish this one by hand, or Skip.`);
     };
     await step();
+    if (prefs.dryRun) {
+      if (outcome === 'submit') {
+        this.dry++;
+        trace(`dry run: would apply to ${label}`);
+        await this.deps.dryRecord?.(applyDialog()).catch(() => {});
+      } else trace(`dry run: skipped ${label} (${outcome === 'blocked' ? this.deps.blockedReason() : outcome})`);
+      await this.discard(applyDialog());
+      return false;
+    }
+    if (prefs.unattended && outcome !== 'submit') {
+      trace(`skipped (nobody to fill it in): ${label} (${outcome === 'blocked' ? this.deps.blockedReason() : outcome})`);
+      await this.discard(applyDialog());
+      return false;
+    }
     if (outcome === 'submit' && prefs.autoSubmit) await this.autoSubmit(label, n, prefs);
-    // Wait for the user. Up to 15 minutes per job.
-    const end = Date.now() + 15 * 60_000;
+    // Wait for the user. Up to 15 minutes per job (1 minute when nobody is watching).
+    const end = Date.now() + (prefs.unattended ? 60_000 : 15 * 60_000);
     while (Date.now() < end && !this.stopRequested) {
       await sleep(700);
       const d = applyDialog();

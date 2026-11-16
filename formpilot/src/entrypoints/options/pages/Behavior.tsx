@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { MousePointerClick, Globe, TextCursorInput, Plus, X, Briefcase } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Slider, Switch } from '@/components/ui';
+import { MousePointerClick, Globe, TextCursorInput, Plus, X, Briefcase, Bot } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Slider, Switch, Textarea } from '@/components/ui';
 import { rpc } from '@/lib/messages';
 import type { PageProps } from '../App';
 
@@ -151,6 +151,7 @@ export function Behavior({ settings, update }: PageProps) {
       </Card>
 
       <JobTracker settings={settings} update={update} />
+      <AutopilotCard settings={settings} update={update} />
     </>
   );
 }
@@ -214,6 +215,54 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
       </Row>
       <Row label="Apply queue: skip job titles containing" description="Comma separated, e.g. Engineering Manager, Director, iOS, .NET" stacked>
         <Input placeholder="Engineering Manager, Director, iOS" value={t.queueSkipTitles} onChange={(e) => set('queueSkipTitles', e.target.value)} />
+      </Row>
+    </Card>
+  );
+}
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function AutopilotCard({ settings, update }: Pick<PageProps, 'settings' | 'update'>) {
+  const a = settings.autopilot;
+  const set = <K extends keyof typeof a>(k: K, v: (typeof a)[K]) => update((d) => void (d.autopilot[k] = v));
+  const num = (k: 'dailyCap' | 'perTitleCap' | 'batchMin' | 'batchMax' | 'gapMinMin' | 'gapMaxMin', min: number, max: number) => (
+    <Input type="number" min={min} max={max} className="w-20" value={String(a[k])} onChange={(e) => set(k, Math.max(min, Math.min(max, Number(e.target.value) || min)))} />
+  );
+  const [titles, setTitles] = useState(a.titles);
+  return (
+    <Card className="mt-5">
+      <CardHeader icon={<Bot className="size-4" />} title="Autopilot (LinkedIn)" />
+      <Row label="What it does" description="Start it from the toolbar popup. It opens its own Brave window without taking focus, and every 20–40 minutes in your active hours it searches LinkedIn for the next job title and applies to a small batch of Easy Apply jobs. Jobs that need you are skipped, never waited on. It stops on any security check, limit or sign-out and tells you. Keep its window open (it can sit behind other windows); closing it stops the autopilot." stacked>
+        <span />
+      </Row>
+      <Row label="Dry run" description="On: fills each form to Submit and saves the job to your tracker as “would apply” with every answer in Options → Logs, but sends nothing. Turn it off only after checking a few days of dry runs.">
+        <Switch checked={a.dryRun} onCheckedChange={(v) => set('dryRun', v)} />
+      </Row>
+      <Row label="Job titles" description="One search per title, taken in turn. Comma separated or one per line." stacked>
+        <Textarea rows={3} value={titles} onChange={(e) => setTitles(e.target.value)} onBlur={() => set('titles', titles)} />
+      </Row>
+      <Row label="Where" description="All of India includes on-site, hybrid and remote jobs in India.">
+        <Segmented value={a.location} onChange={(v) => set('location', v as typeof a.location)} options={[{ value: 'india', label: 'All India + remote' }, { value: 'india-remote', label: 'Remote only' }]} />
+      </Row>
+      <Row label="Posted within" description="Newer jobs get fewer applicants.">
+        <Segmented value={String(a.postedDays)} onChange={(v) => set('postedDays', Number(v))} options={[{ value: '1', label: '24 hours' }, { value: '7', label: 'Week' }, { value: '30', label: 'Month' }]} />
+      </Row>
+      <Row label="Daily limit" description="Applications (or dry-run “would apply”) per day, and per job title.">
+        <div className="flex items-center gap-2 text-sm">{num('dailyCap', 1, 100)} total · {num('perTitleCap', 1, 100)} per title</div>
+      </Row>
+      <Row label="Batch size and gap" description="Jobs per batch, and minutes between batches (random in the range).">
+        <div className="flex items-center gap-2 text-sm">{num('batchMin', 1, 20)}–{num('batchMax', 1, 20)} jobs · every {num('gapMinMin', 1, 240)}–{num('gapMaxMin', 1, 240)} min</div>
+      </Row>
+      <Row label="Active hours (India time)" description="It only applies inside these hours, on the ticked days.">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Input className="w-20" value={a.startTime} onChange={(e) => set('startTime', e.target.value)} />–<Input className="w-20" value={a.endTime} onChange={(e) => set('endTime', e.target.value)} />
+          {DAYS.map((d, i) => (
+            <label key={d} className="flex items-center gap-1">
+              <input type="checkbox" checked={a.days.includes(i)} onChange={(e) => set('days', e.target.checked ? [...a.days, i].sort() : a.days.filter((x) => x !== i))} />
+              {d}
+            </label>
+          ))}
+        </div>
       </Row>
     </Card>
   );

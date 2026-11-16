@@ -33,6 +33,10 @@ export default defineConfig({
       'declarativeNetRequestWithHostAccess',
       // Sends anonymous usage a few times a day (lib/usage.ts).
       'alarms',
+      // Autopilot: keeps the display awake while it runs (a sleeping display hides its window),
+      // and tells you when it stops on a security check or limit.
+      'power',
+      'notifications',
     ],
     host_permissions: ['<all_urls>'],
     action: { default_title: 'FormPilot' },

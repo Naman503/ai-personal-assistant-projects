@@ -60,6 +60,7 @@ export default defineContentScript({
       walk: (anchor) => walker.run(anchor, { silent: true }),
       blockedReason: () => walker.lastReason || 'This step needs you',
       toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
+      dryRecord: (dialog) => watcher.recordDryRun(dialog),
     });
     controller.afterFill = (anchor) => {
       if (settings.tracker.walkToSubmit) void walker.run(anchor);
@@ -180,8 +181,11 @@ export default defineContentScript({
         if (msg.name === 'apply-queue-status') return void reply({ running: queue.active, list: onList });
         if (msg.name === 'apply-queue-stop') queue.stop();
         else if (!onList) controller.showToast('Open a LinkedIn job search (Jobs → search) to use the apply queue.', 'info');
-        else void queue.start();
-        reply({ ok: true });
+        else if (msg.via === 'autopilot') {
+          // The autopilot runs a batch in its own window and wants to know how it went.
+          void queue.start({ ...msg.opts }).then((result) => chrome.runtime.sendMessage({ type: 'autopilot-batch-done', result: result ?? { sent: 0, dry: 0, skipped: 0, reason: 'already running' } }).catch(() => {}));
+        } else void queue.start();
+        reply({ ok: true, list: onList });
         return;
       }
       // Popup asks what job this page shows (top frame only; no description, it's not needed there).

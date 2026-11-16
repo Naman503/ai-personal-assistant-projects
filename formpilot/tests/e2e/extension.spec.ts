@@ -876,6 +876,39 @@ test('LinkedIn checkbox list, City typeahead, start date; and your own answer is
   await expect.poll(() => page.locator('#wb-n').isChecked(), { timeout: 20_000 }).toBe(true);
 });
 
+test('autopilot: opens its own unfocused window, runs a dry-run batch on the job list, sends nothing', async ({ context, sw, extId }) => {
+  test.setTimeout(180_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 10, queueDelaySec: 0, queueSkipTitles: 'Engineering Manager' },
+    behavior: { enabled: false },
+    autopilot: { titles: 'Mobile Engineer', dryRun: true, batchMin: 1, batchMax: 1, startTime: '00:00', endTime: '24:00', days: [0, 1, 2, 3, 4, 5, 6], searchUrl: 'http://localhost:4173/linkedin-list.html?q={title}' },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot', 'fpQueueDay']));
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  const before = context.pages().length;
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  // Its own window, with the search for the first title.
+  await expect.poll(() => context.pages().some((p) => p.url().includes('linkedin-list.html?q=Mobile')), { timeout: 15_000 }).toBe(true);
+  expect(context.pages().length).toBeGreaterThan(before);
+  const win = await sw.evaluate(async () => {
+    const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { windowId: number };
+    return chrome.windows.get(st.windowId);
+  });
+  expect(win.focused).toBe(false);
+  const list = context.pages().find((p) => p.url().includes('linkedin-list.html?q=Mobile'))!;
+  // One dry-run batch: one job filled to Submit, recorded as "would apply", nothing sent.
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { day: { dry: number; sent: number }; phase: string; message: string });
+  await expect.poll(async () => (await state()).day.dry, { timeout: 120_000 }).toBe(1);
+  expect((await state()).day.sent).toBe(0);
+  expect((await state()).phase).toBe('waiting');
+  expect(await list.evaluate(() => (window as unknown as { __sent: string[] }).__sent)).toEqual([]);
+  // Stop: the badge clears and nothing more is scheduled.
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
+  await expect.poll(async () => (await state()).phase, { timeout: 5000 }).toBe('stopped');
+  expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-tick'))).toBeFalsy();
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {
