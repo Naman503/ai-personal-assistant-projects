@@ -92,6 +92,9 @@ function drawer(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.chatbot_Drawer, [class*="chatbot_Drawer"]');
 }
 
+/** The chatbot's closing lines, not questions. */
+const DONE_MSG = /^(thank you|thanks)\b[^?]*$|successfully applied|application (has been )?(sent|submitted)|all the best|we will (get back|reach out)/i;
+
 /** The latest question in the chatbot (the last bot message that isn't the greeting). */
 function lastQuestion(d: HTMLElement): string {
   const msgs = [...d.querySelectorAll<HTMLElement>('.botItem .botMsg, [class*="botItem"] [class*="botMsg"]')].map((m) => clean(m.innerText || m.textContent));
@@ -171,6 +174,8 @@ async function runChatbot(ms: number, maxQuestions: number): Promise<JobResult> 
     const d = drawer();
     if (!d) continue;
     const q = lastQuestion(d);
+    // The bot's sign-off ("Thank you for your responses."): nothing to answer, Naukri applies now.
+    if (q && DONE_MSG.test(q)) continue;
     if (!q || q === asked) {
       if (q && ++stuck > 12) return { outcome: 'skip', reason: `the chatbot didn't accept the answer to "${q.slice(0, 60)}"`, answers };
       continue;

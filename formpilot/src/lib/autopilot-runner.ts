@@ -13,6 +13,7 @@
 import type { Settings } from './settings';
 import { AI_BLOCKING, nextPacificMidnight, batchSize, freshDay, gapMinutes, inActiveHours, ist, linkedInSearchUrl, nextStart, normalizeDay, pickTitle, titleKey, titlesOf, type DayState } from './autopilot';
 import { createLogger } from './logger';
+import { recordInTracker } from './tracker';
 import { relevantWords, titleRelevant, titleSkipped } from './queue';
 import { cutshortSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
 
@@ -52,6 +53,8 @@ export interface ApState {
     skipped?: number;
   };
   nextAt?: number;
+  /** The last Naukri Recommended batch, so a confirmation that arrives late still counts. */
+  lastRec?: { at: number; jobs: { id: string; title: string; company: string; url: string }[]; counted: string[] };
   message: string;
   progress?: { text: string; at: number };
   history: { t: number; msg: string }[];
@@ -486,7 +489,27 @@ export class Autopilot {
   async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string }, tabId?: number) {
     const st = await loadState();
     const cur = st.current;
-    if (!st.running || cur?.stage !== 'rec' || (tabId !== undefined && tabId !== st.tabId)) return;
+    if (tabId !== undefined && tabId !== st.tabId) return;
+    // Naukri's confirmation page loaded after the batch was already closed (its first report
+    // said "skipped"): count the jobs Naukri says went through.
+    if (cur?.stage !== 'rec') {
+      const last = st.lastRec;
+      if (!st.running || !last || Date.now() - last.at > 10 * 60_000 || !result.status) return;
+      newDay(st);
+      for (const j of last.jobs) {
+        if (result.status[j.id] !== 200 || last.counted.includes(j.id)) continue;
+        last.counted.push(j.id);
+        const c = st.day.byPlatform.naukri;
+        c.sent++;
+        st.day.sent++;
+        if (c.skipped > 0) (c.skipped--, st.day.skipped--);
+        st.history = [...st.history, { t: Date.now(), msg: `Naukri · Applied: ${j.title} · ${j.company} (confirmed by Naukri)` }].slice(-80);
+        // The page that would have recorded it is gone: record it in the job tracker here.
+        const s = this.settings();
+        if (s.tracker.enabled) await recordInTracker(s, 'applied', { url: j.url, role: j.title, company: j.company, location: '', source: 'Naukri', salary: '', description: '' }, [], 'Autopilot naukri').catch(() => {});
+      }
+      return save(st);
+    }
     newDay(st);
     if (result.pushback) {
       await save(st, `Naukri: ${result.reason}`);
@@ -497,6 +520,7 @@ export class Autopilot {
     const counts = st.day.byPlatform.naukri;
     // From the confirmation page the list is empty: use what was ticked.
     const picked = result.picked.length ? result.picked : ((cur.jobs ?? []) as unknown as { id: string; title: string; company: string; url: string }[]);
+    st.lastRec = { at: Date.now(), jobs: picked, counted: [] };
     for (const j of picked) {
       st.day.seen = [...st.day.seen, `naukri:${j.id}`, jobKey(j)].slice(-1500);
       const outcome = result.outcome === 'dry' ? 'dry' : result.status ? (result.status[j.id] === 200 ? 'sent' : 'skip') : result.outcome === 'sent' ? 'sent' : 'skip';
@@ -504,6 +528,7 @@ export class Autopilot {
         counts.sent++;
         st.day.sent++;
         cur.sent = (cur.sent ?? 0) + 1;
+        st.lastRec.counted.push(j.id);
       } else if (outcome === 'dry') {
         counts.dry++;
         st.day.dry++;
