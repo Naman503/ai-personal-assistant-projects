@@ -223,7 +223,7 @@ export const DEFAULTS: Settings = {
     skipWords: 'Intern, Director, Head of, VP',
     mustWords: '',
     linkedinEnabled: true,
-    naukri: { enabled: false, dailyCap: 20, dryRun: true, maxExpMin: 5 },
+    naukri: { enabled: false, dailyCap: 20, dryRun: true, maxExpMin: 5, mode: 'recommended', recUrl: '' },
     cutshort: { enabled: false, dailyCap: 10, dryRun: true, maxExpMin: 5 },
     searchUrl: '',
   },

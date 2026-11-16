@@ -945,7 +945,7 @@ test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form f
       days: [0, 1, 2, 3, 4, 5, 6],
       skipWords: '',
       linkedinEnabled: false,
-      naukri: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5 },
+      naukri: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5, mode: 'search' },
       cutshort: { enabled: true, dryRun: true, dailyCap: 5, maxExpMin: 5 },
       searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}',
     },
@@ -959,7 +959,9 @@ test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form f
   // Naukri: the relevant job only (Operations Manager is off-topic, 8+ years is too senior).
   await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 150_000 }).toBe(1);
   const nk = context.pages().find((p) => p.url().includes('naukri-job.html'))!;
-  expect(await nk.evaluate(() => (window as unknown as { __answers: string[] }).__answers)).toEqual(['3', 'Yes']);
+  const ans = await nk.evaluate(() => (window as unknown as { __answers: string[] }).__answers);
+  expect(ans[0]).toMatch(/^3\b/); // years of React Native
+  expect(ans[1]).toBe('Yes'); // relocating
   expect((await state()).day.seen.filter((u) => u.includes('naukri-job'))).toHaveLength(1);
   // Skip the break: Cutshort is next.
   await expect.poll(async () => (await state()).phase, { timeout: 10_000 }).toBe('waiting');
@@ -997,6 +999,45 @@ test('autopilot: when the AI\'s daily quota is used up, it waits for the reset i
   expect(st.day.skipped).toBe(0);
   expect(st.day.dry).toBe(0);
   await fetch(`${LLM}/reset`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
+});
+
+test('autopilot on Naukri Recommended jobs: ticks the jobs that fit (up to 5), presses Apply once, answers the chatbot, counts what Naukri confirms', async ({ context, sw, extId }) => {
+  test.setTimeout(240_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false },
+    behavior: { enabled: false },
+    autopilot: {
+      titles: 'React Native Developer, Mobile Engineer',
+      batchMin: 3,
+      batchMax: 3,
+      startTime: '00:00',
+      endTime: '24:00',
+      days: [0, 1, 2, 3, 4, 5, 6],
+      skipWords: '',
+      linkedinEnabled: false,
+      naukri: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5, mode: 'recommended', recUrl: 'http://localhost:4173/naukri-rec.html' },
+      cutshort: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5 },
+    },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot']));
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  type St = { phase: string; day: { byPlatform: Record<string, { sent: number; dry: number; skipped: number }>; seen: string[] }; history: { msg: string }[] };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  // Angular is off-topic, 9+ years is too senior: the React Native job on the first tab.
+  await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 180_000 }).toBe(1);
+  expect((await state()).history.map((h) => h.msg).join('\n')).toContain('Naukri · Applied: React Native Developer · Acme Apps');
+  // The next batch (skip the break) takes the next tab's fitting job; the first isn't tried again.
+  await expect.poll(async () => (await state()).phase, { timeout: 15_000 }).toBe('waiting');
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'run-now' }));
+  await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 150_000 }).toBe(2);
+  const hist = (await state()).history.map((h) => h.msg).join('\n');
+  expect(hist).toContain('Naukri · Applied: Mobile Engineer (React Native) · Zeta');
+  expect(hist).not.toContain('Angular');
+  expect((await state()).day.seen).toEqual(expect.arrayContaining(['naukri:12', 'naukri:14']));
+  expect((await state()).phase).toBe('waiting');
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
 });
 

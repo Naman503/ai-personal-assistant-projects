@@ -156,6 +156,9 @@ export function Autopilot({ settings, update }: PageProps) {
             </Row>
           );
         })}
+        <Row label="Naukri: where to find jobs" description="Recommended: ticks up to 5 jobs on Naukri's Recommended jobs page and presses Apply once (that page only lists jobs that apply on Naukri, so nothing is skipped for a company site). When none fit any more, it searches your job titles instead.">
+          <Segmented value={a.naukri.mode} onChange={(v) => update((d) => void (d.autopilot.naukri.mode = v as 'recommended' | 'search'))} options={[{ value: 'recommended', label: 'Recommended jobs first' }, { value: 'search', label: 'Title searches only' }]} />
+        </Row>
       </Card>
 
       <Card className="mb-5">

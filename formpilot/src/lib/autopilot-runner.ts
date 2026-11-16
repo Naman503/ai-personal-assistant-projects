@@ -14,7 +14,7 @@ import type { Settings } from './settings';
 import { AI_BLOCKING, nextPacificMidnight, batchSize, freshDay, gapMinutes, inActiveHours, ist, linkedInSearchUrl, nextStart, normalizeDay, pickTitle, titleKey, titlesOf, type DayState } from './autopilot';
 import { createLogger } from './logger';
 import { relevantWords, titleRelevant, titleSkipped } from './queue';
-import { cutshortSearchUrl, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
+import { cutshortSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
 
 const log = createLogger('autopilot');
 export const AP_KEY = 'fpAutopilot';
@@ -43,7 +43,7 @@ export interface ApState {
     startedAt: number;
     tries: number;
     /** Naukri / Cutshort: reading the list, on a job page, or pausing before the next job. */
-    stage?: 'list' | 'job' | 'pause';
+    stage?: 'list' | 'job' | 'pause' | 'rec';
     jobs?: SiteJob[];
     i?: number;
     done?: number;
@@ -191,12 +191,17 @@ export class Autopilot {
       const counts = st.day.byPlatform[p];
       if (counts.sent + counts.dry >= pp.dailyCap) continue;
       const view: DayState = { ...st.day, sent: counts.sent, dry: counts.dry };
+      // Naukri: the Recommended jobs page first (only Naukri-apply jobs, up to 5 per Apply).
+      if (p === 'naukri' && ap.naukri.mode === 'recommended' && !st.day.exhausted.includes('naukri:rec')) {
+        const size = Math.min(5, batchSize({ ...ap, dailyCap: pp.dailyCap, perTitleCap: 100 }, view, '__rec'));
+        if (size > 0) return { platform: p, pi, title: 'Recommended jobs', index: -1, size, dryRun: pp.dryRun, rec: true };
+      }
       const keys = titles.map((t) => titleKey(p, t));
       const pick = pickTitle(keys, view, ap.perTitleCap, st.lastTitleBy?.[p] ?? (p === 'linkedin' ? st.lastTitle : -1));
       if (!pick) continue;
       const title = titles[pick.index];
       const size = batchSize({ ...ap, dailyCap: pp.dailyCap }, view, pick.title);
-      if (size > 0) return { platform: p, pi, title, index: pick.index, size, dryRun: pp.dryRun };
+      if (size > 0) return { platform: p, pi, title, index: pick.index, size, dryRun: pp.dryRun, rec: false };
     }
     return null;
   }
@@ -232,11 +237,11 @@ export class Autopilot {
       /* ignore */
     }
     const custom = ap.searchUrl.includes('{title}') ? ap.searchUrl.replace('{title}', encodeURIComponent(c.title)).replace('{platform}', c.platform) : '';
-    const url = custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, ap) : c.platform === 'naukri' ? naukriSearchUrl(c.title, ap.postedDays) : cutshortSearchUrl(c.title));
+    const url = c.rec ? ap.naukri.recUrl || NAUKRI_REC_URL : custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, ap) : c.platform === 'naukri' ? naukriSearchUrl(c.title, ap.postedDays) : cutshortSearchUrl(c.title));
     const tabId = await this.ensureTab(st, url);
     if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
     st.lastPlatform = c.pi;
-    st.current = { platform: c.platform, title: c.title, index: c.index, batch: c.size, startedAt: Date.now(), tries: 0, ...(c.platform === 'linkedin' ? {} : { stage: 'list' as const, i: 0, done: 0, sent: 0, dry: 0, skipped: 0 }) };
+    st.current = { platform: c.platform, title: c.title, index: c.index, batch: c.size, startedAt: Date.now(), tries: 0, ...(c.platform === 'linkedin' ? {} : { stage: c.rec ? ('rec' as const) : ('list' as const), i: 0, done: 0, sent: 0, dry: 0, skipped: 0 }) };
     st.phase = 'loading';
     st.nextAt = undefined;
     st.progress = { text: `Opening the ${PLATFORM_NAME[c.platform]} search`, at: Date.now() };
@@ -299,13 +304,29 @@ export class Autopilot {
       st.phase = 'batch';
       return save(st, `LinkedIn: applying for "${cur.title}"`);
     }
+    if (cur.stage === 'rec') {
+      const ok = await chrome.tabs
+        .sendMessage(st.tabId, { type: 'command', name: 'naukri-rec', opts: { max: cur.batch, dryRun: pp.dryRun, relevant: this.relevant(ap), skipTitles: ap.skipWords, maxExpMin: pp.maxExpMin, seen: st.day.seen } }, { frameId: 0 })
+        .catch(() => null);
+      if (!ok) return this.notReady(st, "Naukri's Recommended jobs page didn't load", () => this.finishBatch(st, 'recommended page not ready', true, 'naukri:rec'));
+      st.phase = 'batch';
+      st.progress = { text: `${pp.dryRun ? 'Dry run · ' : ''}Naukri · choosing up to ${cur.batch} recommended jobs`, at: Date.now() };
+      return save(st, `Naukri: picking up to ${cur.batch} from Recommended jobs`);
+    }
     if (cur.stage === 'list') {
       const reply = (await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'site-list', platform: p }, { frameId: 0 }).catch(() => null)) as { jobs?: SiteJob[]; pushback?: string } | null;
       if (reply?.pushback) return this.stop(`${reply.pushback}. Stopped so your account stays safe.`, true);
       if (!reply?.jobs?.length) return this.notReady(st, `${PLATFORM_NAME[p]} showed no job list (signed out, no results, or the page changed)`, () => this.finishBatch(st, 'no job list', true));
       const rel = this.relevant(ap);
       const seen = new Set(st.day.seen);
-      const fresh = reply.jobs.filter((j) => !j.applied && !seen.has(j.url) && titleRelevant(j.title, rel) && !titleSkipped(j.title, ap.skipWords) && (j.expMin === undefined || j.expMin <= pp.maxExpMin));
+      const keys = new Set<string>();
+      // Naukri lists some jobs twice under different links: one try per company + title.
+      const fresh = reply.jobs.filter((j) => {
+        const k = jobKey(j);
+        const ok = !j.applied && !seen.has(j.url) && !seen.has(k) && !keys.has(k) && titleRelevant(j.title, rel) && !titleSkipped(j.title, ap.skipWords) && (j.expMin === undefined || j.expMin <= pp.maxExpMin);
+        if (ok) keys.add(k);
+        return ok;
+      });
       log.info(
         `${PLATFORM_NAME[p]} list for "${cur.title}": ${reply.jobs.length} jobs, ${fresh.length} to try`,
         reply.jobs.map((j) => `${fresh.includes(j) ? '+' : '-'} ${j.title} · ${j.company}${j.expMin !== undefined ? ` · ${j.expMin}+ yrs` : ''}${j.applied ? ' · applied' : ''}`),
@@ -350,7 +371,7 @@ export class Autopilot {
     const job = cur.jobs![cur.i ?? 0];
     cur.stage = 'job';
     cur.tries = 0;
-    st.day.seen = [...st.day.seen, job.url].slice(-800);
+    st.day.seen = [...st.day.seen, job.url, jobKey(job)].slice(-1500);
     st.progress = { text: `Opening ${job.title} · ${job.company}`, at: Date.now() };
     if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: job.url }).catch(() => {});
     await at(GO, Date.now() + loadWait());
@@ -434,12 +455,12 @@ export class Autopilot {
     await this.openJob(st);
   }
 
-  private async finishBatch(st: ApState, why: string, exhausted = false) {
+  private async finishBatch(st: ApState, why: string, exhausted = false, exhaustedKey?: string) {
     const ap = this.settings().autopilot;
     const cur = st.current!;
     const p = (cur.platform ?? 'linkedin') as Platform;
-    if (exhausted) st.day.exhausted = [...st.day.exhausted, titleKey(p, cur.title)];
-    st.lastTitleBy = { ...(st.lastTitleBy ?? {}), [p]: cur.index };
+    if (exhausted) st.day.exhausted = [...st.day.exhausted, exhaustedKey ?? titleKey(p, cur.title)];
+    if (cur.index >= 0) st.lastTitleBy = { ...(st.lastTitleBy ?? {}), [p]: cur.index };
     st.current = undefined;
     st.progress = undefined;
     await Promise.all([GO, NEXT, WATCHDOG].map((a) => chrome.alarms.clear(a)));
@@ -449,6 +470,52 @@ export class Autopilot {
     await at(TICK, next);
     const b = st.day.byPlatform[p];
     await save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. Next batch at ${fmt(next)}`);
+  }
+
+  /** Which recommended jobs were ticked, just before Apply (the result may come from another page). */
+  async onRecPicked(picked: { id: string; title: string; company: string; url: string }[], tabId?: number) {
+    const st = await loadState();
+    if (!st.running || st.current?.stage !== 'rec' || (tabId !== undefined && tabId !== st.tabId)) return;
+    st.current.jobs = picked.map((j) => ({ ...j, id: j.id }) as SiteJob & { id: string });
+    st.progress = { text: `Naukri · applying to ${picked.length}: ${picked.map((j) => j.title).join(', ')}`, at: Date.now() };
+    await save(st);
+  }
+
+  /** The Recommended jobs batch on Naukri finished (ticked + Apply + chatbot, or a dry run). */
+  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string }, tabId?: number) {
+    const st = await loadState();
+    const cur = st.current;
+    if (!st.running || cur?.stage !== 'rec' || (tabId !== undefined && tabId !== st.tabId)) return;
+    newDay(st);
+    if (result.pushback) {
+      await save(st, `Naukri: ${result.reason}`);
+      return this.stop(`${result.pushback}. Stopped so your account stays safe.`, true);
+    }
+    if (result.aiError && AI_BLOCKING.has(result.aiError)) return this.aiPause(st, result.aiError);
+    if (result.outcome === 'none') return this.finishBatch(st, 'no recommended job fits; job searches next', true, 'naukri:rec');
+    const counts = st.day.byPlatform.naukri;
+    // From the confirmation page the list is empty: use what was ticked.
+    const picked = result.picked.length ? result.picked : ((cur.jobs ?? []) as unknown as { id: string; title: string; company: string; url: string }[]);
+    for (const j of picked) {
+      st.day.seen = [...st.day.seen, `naukri:${j.id}`, jobKey(j)].slice(-1500);
+      const outcome = result.outcome === 'dry' ? 'dry' : result.status ? (result.status[j.id] === 200 ? 'sent' : 'skip') : result.outcome === 'sent' ? 'sent' : 'skip';
+      if (outcome === 'sent') {
+        counts.sent++;
+        st.day.sent++;
+        cur.sent = (cur.sent ?? 0) + 1;
+      } else if (outcome === 'dry') {
+        counts.dry++;
+        st.day.dry++;
+        cur.dry = (cur.dry ?? 0) + 1;
+      } else {
+        counts.skipped++;
+        st.day.skipped++;
+        cur.skipped = (cur.skipped ?? 0) + 1;
+      }
+      const verb = outcome === 'sent' ? 'Applied' : outcome === 'dry' ? 'Would apply' : 'Not applied';
+      st.history = [...st.history, { t: Date.now(), msg: `Naukri · ${verb}: ${j.title} · ${j.company}${outcome === 'skip' ? ` (${result.status ? `Naukri status ${result.status[j.id] ?? '?'}` : result.reason})` : ''}` }].slice(-80);
+    }
+    return this.finishBatch(st, result.reason);
   }
 
   /** LinkedIn's queue finished a batch. */

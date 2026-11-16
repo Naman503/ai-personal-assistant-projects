@@ -123,7 +123,7 @@ export function jobPageState(p: Platform, doc: Document = document): { apply: HT
 
 /** The site says the application went through. */
 export function sentNotice(p: Platform, doc: Document = document, href = location.href): boolean {
-  if (p === 'naukri' && /naukri\.com\/myapply\//.test(href)) return true;
+  if (p === 'naukri' && /\/myapply\/(saveApply|)/i.test(href)) return true;
   const t = (doc.body?.innerText ?? '').slice(0, 30000);
   if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted))/i.test(t)) return true;
   return p === 'naukri' ? /^applied$/i.test(clean(doc.querySelector('button#apply-button')?.textContent)) : !!buttonByText(/^applied$/i, doc);
@@ -137,3 +137,56 @@ export function sitePushback(p: Platform, doc: Document = document, href = locat
   const m = t.match(/(daily (apply|application) limit|reached (the|your) (daily )?limit|too many (requests|applications)|verify (that )?you are (a )?human|captcha|unusual activity|access denied)/i);
   return m ? `${PLATFORM_NAME[p]} says: "${m[0]}"` : '';
 }
+
+// ------------------------------------------------------------------ Naukri "Recommended jobs"
+
+/**
+ * naukri.com/mnjuser/recommendedjobs (read live 2026-11-16): tabs "Applies (66)", "Handpicked
+ * for you", "Profile", "You might like"; cards article.jobTuple[data-job-id] with a checkbox
+ * input.tuple-check-input ("Select <title> for apply"), a.jt-title-link, the company in
+ * .subTitle, li.experience. Only jobs that apply on Naukri get a checkbox. Up to 5 can be
+ * ticked, then one button.multi-apply-button "Apply" applies to all of them.
+ */
+export const NAUKRI_REC_URL = 'https://www.naukri.com/mnjuser/recommendedjobs';
+export const NAUKRI_REC_TABS = [/^applies\b/i, /^handpicked/i, /^you might like/i, /^profile\b/i];
+
+export interface RecJob extends SiteJob {
+  id: string;
+  box: HTMLInputElement;
+}
+
+export function naukriRecJobs(doc: ParentNode = document): RecJob[] {
+  return [...doc.querySelectorAll<HTMLElement>('article.jobTuple[data-job-id], article[data-job-id]')].flatMap((c) => {
+    const box = c.querySelector<HTMLInputElement>('input.tuple-check-input, input[type=checkbox]');
+    const a = c.querySelector<HTMLAnchorElement>('a.jt-title-link, a[data-tuple-title], p.title a');
+    if (!box || !a) return [];
+    const exp = clean(c.querySelector('li.experience span, .experience span')?.textContent);
+    return [
+      {
+        id: c.getAttribute('data-job-id') ?? '',
+        url: a.href,
+        title: clean(a.getAttribute('title') || a.textContent),
+        company: clean(c.querySelector('.subTitle, [class*="companyInfo"] [title]')?.textContent),
+        expMin: expMinOf(exp),
+        location: clean(c.querySelector('li.location span')?.textContent),
+        box,
+      },
+    ];
+  });
+}
+
+/** The "Apply" button for the ticked jobs. */
+export const naukriMultiApply = (doc: ParentNode = document) => doc.querySelector<HTMLButtonElement>('button.multi-apply-button');
+
+/** After a multi-apply Naukri lands on /myapply/saveApply?…&multiApplyResp={"<jobId>":200,…}. */
+export function multiApplyResult(href: string): Record<string, number> | null {
+  try {
+    const raw = new URL(href).searchParams.get('multiApplyResp');
+    return raw ? (JSON.parse(raw) as Record<string, number>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Same job listed twice (different links): company + title is the key. */
+export const jobKey = (j: Pick<SiteJob, 'company' | 'title'>) => `${clean(j.company).toLowerCase()}|${clean(j.title).toLowerCase()}`;

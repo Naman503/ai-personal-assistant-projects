@@ -237,6 +237,12 @@ export default defineBackground({
           return testTracker(msg.url ?? settings.tracker.url);
         case 'tracker-lookup':
           return lookupInTracker(settings.tracker.url, { url: msg.url, company: msg.company, role: msg.role });
+        case 'autopilot-rec-picked':
+          await autopilot.onRecPicked(msg.picked, sender.tab?.id);
+          return null;
+        case 'autopilot-rec-done':
+          await autopilot.onRecDone(msg.result, sender.tab?.id);
+          return null;
         case 'autopilot-job-done':
           await autopilot.onJobDone(msg.result, sender.tab?.id);
           return null;

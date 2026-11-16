@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Recommended Jobs | Naukri.com</title>
+<style>.chatbot_Drawer{position:fixed;top:0;right:0;height:100vh;width:470px;background:#fff;z-index:1001}.botMsg{background:#f5f5f7;padding:10px;margin:6px 0}.textArea{border:1px solid #275df5;min-height:22px;padding:8px}.sendMsg{margin-top:8px;padding:8px;background:#275df5;color:#fff;cursor:pointer}.chatbot_Chip{display:inline-block;border:1px solid #275df5;border-radius:14px;padding:4px 10px;margin:4px;cursor:pointer}.tab{display:inline-block;margin:6px;cursor:pointer}</style></head>
+<body>
+<!-- Naukri "Recommended jobs" as read live on 2026-11-16 (classes kept): tabs, checkbox cards,
+     one multi-apply button. Applying opens the recruiter chatbot, then goes to the confirmation
+     page /myapply/saveApply?…&multiApplyResp={…}. -->
+<h1>Recommended jobs for you</h1>
+<p>You can select upto 5 jobs to apply<button type="button" class="multi-apply-button typ-16Bold opaque-button" disabled>Apply</button></p>
+<div role="tablist"><div role="tab" class="tab">Applies (3)</div><div role="tab" class="tab">Handpicked for you (1)</div></div>
+<div id="list"></div>
+<script>
+const SETS = {
+  applies: [
+    { id: '11', t: 'Angular Developer', c: 'Infosys', e: '3-8 Yrs' },
+    { id: '12', t: 'React Native Developer', c: 'Acme Apps', e: '2-5 Yrs' },
+    { id: '13', t: 'Senior React Native Engineer', c: 'BigCo', e: '9-12 Yrs' },
+  ],
+  handpicked: [{ id: '14', t: 'Mobile Engineer (React Native)', c: 'Zeta', e: '3-6 Yrs' }],
+};
+const list = document.getElementById('list'), apply = document.querySelector('.multi-apply-button');
+const render = (k) => {
+  list.innerHTML = SETS[k].map((j, i) => `<article class="jobTuple bgWhite z-depth-1 " data-job-id="${j.id}"><label class="dspIB saveJobContainer tuple-check-box" for="c${j.id}"><input type="checkbox" id="c${j.id}" class="tuple-check-input" aria-label="Select ${j.t} for apply"></label><div><p class="title typ-16Bold" title="${j.t}"><a class="jt-title-link ellipsis" href="/naukri-job.html?id=${j.id}" data-tuple-title="true">${j.t}</a></p><div class="companyInfo"><button type="button" class="subTitle" title="${j.c}">${j.c}</button></div><ul class="job-desc"><li class="experience"><span title="${j.e}">${j.e}</span></li><li class="location"><span>Bengaluru</span></li></ul></div></article>`).join('');
+  list.querySelectorAll('input').forEach((b) => b.addEventListener('change', sync));
+};
+const checked = () => [...document.querySelectorAll('.tuple-check-input:checked')].map((b) => b.closest('article').dataset.jobId);
+const picked = new Set();
+function sync(e) { if (e.target.checked) picked.add(e.target.closest('article').dataset.jobId); else picked.delete(e.target.closest('article').dataset.jobId); apply.disabled = picked.size === 0; }
+document.querySelectorAll('[role=tab]').forEach((t, i) => (t.onclick = () => render(i ? 'handpicked' : 'applies')));
+render('applies');
+window.__answers = [];
+apply.onclick = () => {
+  const ids = [...picked];
+  window.__applied = ids;
+  const c = document.createElement('div');
+  c.innerHTML = `<div class="chatbot_Drawer chatbot_right"><div class="chatbot_DrawerContentWrapper"><ul class="list"><li class="botItem chatbot_ListItem"><div class="botMsg msg"><div><span>Hi Alex, thank you for showing interest. Kindly answer all the recruiter's questions to successfully apply for the job.</span></div></div></li></ul><div class="chatbot_InputContainer"><div class="textArea" contenteditable="true"></div></div><div class="sendMsg">Save</div></div></div>`;
+  document.body.appendChild(c);
+  const ul = c.querySelector('.list'), input = c.querySelector('.textArea');
+  setTimeout(() => { const li = document.createElement('li'); li.className = 'botItem chatbot_ListItem'; li.innerHTML = '<div class="botMsg msg"><div><span>What is your notice period?</span></div></div>'; ul.appendChild(li); }, 700);
+  c.querySelector('.sendMsg').onclick = () => {
+    const v = input.textContent.trim(); if (!v) return;
+    window.__answers.push(v);
+    const resp = Object.fromEntries(ids.map((id) => [id, 200]));
+    setTimeout(() => (location.href = `/myapply/saveApply.html?strJobsarr=[${ids}]&applytype=multiple&multiApplyResp=${encodeURIComponent(JSON.stringify(resp))}`), 600);
+  };
+};
+</script>
+</body></html>
