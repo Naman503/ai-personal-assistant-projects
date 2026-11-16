@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MousePointerClick, Globe, TextCursorInput, Plus, X, Briefcase } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Slider, Switch } from '@/components/ui';
 import { rpc } from '@/lib/messages';
@@ -215,7 +215,39 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
       <Row label="Apply queue: skip job titles containing" description="Comma separated, e.g. Engineering Manager, Director, iOS, .NET" stacked>
         <Input placeholder="Engineering Manager, Director, iOS" value={t.queueSkipTitles} onChange={(e) => set('queueSkipTitles', e.target.value)} />
       </Row>
+      <Row label="LinkedIn outreach" description="For jobs you applied to, FormPilot opens the job in a quiet window of its own, reads “Meet the hiring team”, sends each person a connection request with a note written for them, and messages them once they accept. The tracker decides who, how many a day, sending hours and dry run (its Autopilot page); this switch lets FormPilot do the clicking. Needs you signed in to LinkedIn in this browser.">
+        <Switch checked={t.outreach} disabled={!t.enabled} onCheckedChange={(v) => set('outreach', v)} />
+      </Row>
+      {t.outreach && <OutreachStatus />}
     </Card>
   );
 }
 
+
+/** Live line under the outreach switch: what it did last and when it checks next. */
+function OutreachStatus() {
+  const [st, setSt] = useState<{ message: string; nextAt?: number; history: { t: number; msg: string }[] } | null>(null);
+  useEffect(() => {
+    const load = () => void rpc<typeof st>({ type: 'outreach', action: 'status' }).then(setSt).catch(() => {});
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, []);
+  if (!st) return null;
+  const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="px-4 pb-4 text-xs text-muted-foreground space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="text-foreground">{st.message}</span>
+        <Button size="sm" variant="ghost" onClick={() => void rpc({ type: 'outreach', action: 'run-now' }).then(() => setTimeout(() => void rpc<typeof st>({ type: 'outreach', action: 'status' }).then(setSt), 800))}>
+          Check now
+        </Button>
+      </div>
+      {st.history.slice(-5).reverse().map((h) => (
+        <div key={h.t}>
+          {time(h.t)} · {h.msg}
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.17.0] - 2026-11-16
+
+### Added
+- **LinkedIn outreach** (Settings → Behavior → Job tracker → LinkedIn outreach, off by default). For jobs you applied to, FormPilot asks the job tracker for one task at a time and does it in a quiet window of its own: reads "Meet the hiring team" on the job page, sends each person a connection request with a note written for them (or without a note when LinkedIn has no personalised invites left), checks every couple of days whether they accepted, and then sends a message. The tracker holds the daily limits, sending hours and dry run, and writes each note only right before it is sent. LinkedIn's weekly-limit or security pages pause outreach for 6 hours.
+
 ## [1.12.1] - 2026-11-16
 
 ### Fixed
