@@ -4,12 +4,14 @@ import { App, type Actions } from './ui/App';
 import { createStore, visibleItems, type Store, type UIState } from './store';
 import css from './ui/styles.css?inline';
 import { createLogger } from '@/lib/logger';
+import { focusIsOurs, quietFocus } from '@/lib/automation';
+import { dateBlocks, MONTH_NAMES, orgKey, plan, WORK_KEY, type Remembered, type WorkSpan } from '@/lib/fields/workdates';
 import type { Settings } from '@/lib/settings';
 import { activeProvidersCount } from './providers';
 import { SUGGEST_PORT, rpc, track, type FillTrigger, type InsertMethod, type LearnTrigger, type PortEvent, type PortRequest } from '@/lib/messages';
 import type { FieldContext, OpenTrigger, Suggestion, SuggestOptions } from '@/lib/types';
 import { overlayRoot, conversationQuestion, conversationQuestionInfo, conversationDiagnostics, questionReady, lowestCommonAncestor, describeAncestors } from '@/lib/fields/context';
-import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, resolveLabel, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike } from '@/lib/fields/context';
+import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, resolveLabel, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike, formOf } from '@/lib/fields/context';
 import { checkEligibility, siteAllowed } from '@/lib/fields/eligibility';
 import { fillElement, fillRadioGroup, flash, restoreElement } from '@/lib/fields/fill';
 import { classifyField, isSensitive } from '@/lib/fields/classify';
@@ -354,7 +356,7 @@ export class Controller {
   // ---------------- Field lifecycle ----------------
 
   onFocus(target: HTMLElement) {
-    if (this.dead || this.inserting || this.store.get().filling) return;
+    if (this.dead || this.inserting || this.store.get().filling || focusIsOurs()) return;
     const s = this.settings();
     const el = fieldKind(target) === 'contenteditable' ? editableRoot(target) : target;
     if (el === this.field) {
@@ -814,7 +816,9 @@ export class Controller {
     if (!contextAlive()) return (this.handleDeadContext(), none);
     this.ensureUI(anchor);
     const s = this.settings();
-    const els = siblingFields(anchor === document.body ? document.body : anchor);
+    // Employment dates (Month ▾ Year ▾): by rule from the resume and remembered months, not AI.
+    const dateHandled = await this.fillWorkDates(anchor).catch((e) => (log.warn('work dates failed', e), new Set<Element>()));
+    const els = siblingFields(anchor === document.body ? document.body : anchor).filter((el) => !dateHandled.has(el));
 
     // Group radios by name into one pseudo-select; skip sensitive / disabled / filled.
     const entries: { id: string; field: FieldContext; el: HTMLElement; radios?: HTMLInputElement[] }[] = [];
@@ -937,6 +941,86 @@ export class Controller {
     }
     if (!opts.quiet) this.afterFill?.(anchor, outcome, trigger);
     return outcome;
+  }
+
+  /**
+   * Fill "From / To · Month ▾ Year ▾" employment dates in the form around `anchor`. Returns the
+   * dropdowns it took care of (filled, or left for you with a note), so they aren't sent to the AI.
+   */
+  private async fillWorkDates(anchor: HTMLElement): Promise<Set<Element>> {
+    const handled = new Set<Element>();
+    const root = formOf(anchor);
+    const blocks = dateBlocks(root);
+    if (!blocks.length) return handled;
+    const spans = await rpc<WorkSpan[]>({ type: 'work-history' }).catch(() => [] as WorkSpan[]);
+    const remembered = ((await chrome.storage.local.get(WORK_KEY))[WORK_KEY] ?? {}) as Remembered;
+    const sel = (el: HTMLSelectElement, text: string, what: string) => {
+      this.inserting = true;
+      const r = fillElement(el, text, 'replace', what);
+      this.inserting = false;
+      fieldLog.info(`${r.ok ? '✓' : '✗'} "${what}" ← ${JSON.stringify(r.value)}`, { source: 'work history (no AI)' });
+    };
+    for (const b of blocks) {
+      for (const g of b.groups) {
+        handled.add(g.year);
+        if (g.month) handled.add(g.month);
+      }
+      const p = plan(b, spans, remembered);
+      fieldLog.info(`employment dates for "${b.company || '?'}"`, { from: p.from, to: p.to, matched: p.matched, current: b.current?.checked ?? null });
+      const label = b.company || 'this job';
+      if (p.to === 'present' && b.current && !b.current.checked) {
+        quietFocus();
+        this.inserting = true;
+        b.current.click();
+        this.inserting = false;
+        fieldLog.info(`✓ "I currently work here" ticked for "${label}" (resume says Present)`);
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      for (const g of b.groups) {
+        if (!g.year.isConnected || g.year.disabled) continue; // "To" goes away once "currently work here" is ticked
+        const v = g.role === 'from' ? p.from : p.to;
+        const which = g.role === 'from' ? 'Start' : 'End';
+        if (!v || v === 'present') {
+          if (!v) g.year.setAttribute('data-formpilot-need', `${which} year at ${label}`);
+          continue;
+        }
+        if (g.year.selectedIndex <= 0) sel(g.year, String(v.y), `${which} year at ${label}`);
+        if (g.month && g.month.selectedIndex <= 0) {
+          if (v.m) sel(g.month, MONTH_NAMES[v.m - 1], `${which} month at ${label}`);
+          else {
+            // Not in the resume and not picked before: leave it, never guess. Remembered once you pick it.
+            g.month.setAttribute('data-formpilot-need', `${which} month at ${label} (pick it once, FormPilot remembers)`);
+            fieldLog.info(`– "${which} month at ${label}" left for you: not in the resume or remembered yet`);
+          }
+        }
+      }
+    }
+    return handled;
+  }
+
+  /** FormPilot is writing a value right now (its own change events aren't your choices). */
+  get writing() {
+    return this.inserting;
+  }
+
+  /** You picked an employment month/year (or ticked "currently work here"): remember it per company. */
+  async rememberWorkDate(target: Element) {
+    if (!(target instanceof HTMLSelectElement || (target instanceof HTMLInputElement && target.type === 'checkbox'))) return;
+    const blocks = dateBlocks(formOf(target));
+    const b = blocks.find((x) => x.groups.some((g) => g.year === target || g.month === target) || x.current === target);
+    if (!b?.company) return;
+    const key = orgKey(b.company);
+    const all = ((await chrome.storage.local.get(WORK_KEY))[WORK_KEY] ?? {}) as Remembered;
+    const entry = { ...(all[key] ?? {}) };
+    for (const g of b.groups) {
+      const y = Number(g.year.value);
+      const m = g.month && g.month.selectedIndex > 0 ? g.month.selectedIndex : undefined;
+      if (y > 1900) entry[g.role] = { y, m };
+    }
+    if (b.current?.checked) entry.to = 'present';
+    all[key] = entry;
+    await chrome.storage.local.set({ [WORK_KEY]: all });
+    fieldLog.info(`remembered dates for "${b.company}"`, entry);
   }
 
   /** The accent colour in use (for highlights drawn outside our UI). */

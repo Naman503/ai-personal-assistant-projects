@@ -5,6 +5,7 @@
  */
 import { decideStep, fieldErrors, firstEmptyField, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
 import { createLogger } from '@/lib/logger';
+import { quietFocus } from '@/lib/automation';
 import { fillElement } from '@/lib/fields/fill';
 import { repairValue, specOf } from '@/lib/fields/adapt';
 import { readValue, type FillableElement } from '@/lib/fields/context';
@@ -62,6 +63,7 @@ export class ApplyWalker {
         repaired = false;
         if (d.kind === 'blocked') {
           log.info(`walk stopped: ${d.reason}`);
+          quietFocus();
           d.field?.focus?.({ preventScroll: false });
           d.field?.scrollIntoView?.({ block: 'center' });
           toast(`${d.reason}. Fix it, then press Next yourself.`, 'info', undefined, 8000);
@@ -83,6 +85,7 @@ export class ApplyWalker {
         this.deps.collect(scope);
         const before = stepFingerprint(scope);
         log.info(`walk: pressing "${d.button.textContent?.trim()}" (step ${step + 1})`);
+        quietFocus(4500); // LinkedIn focuses the next step's first field itself
         d.button.click();
         await settled(scope.getRootNode(), 450, 4000);
         if (!scope.isConnected) scope = stepScope(anchor.isConnected ? anchor : document.body);
@@ -132,6 +135,7 @@ export class ApplyWalker {
         log.info(`repair: no better value for "${e.label}" (${JSON.stringify(now)}, "${e.msg}")`);
         continue;
       }
+      quietFocus();
       const r = fillElement(el, fix, 'replace', e.label, { exact: true });
       el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
       log.info(`repair: "${e.label}" ${JSON.stringify(now)} → ${JSON.stringify(r.value)} after "${e.msg}" (try ${attempt + 1})`);

@@ -82,7 +82,16 @@ export class MemoryIndex {
 
   private async rebuild(v: number) {
     const end = log.time('rebuild index');
-    const docs = (await db().docs.toArray()).filter((d) => d.enabled);
+    // The same file added twice (e.g. the resume uploaded again) would be sent to the model
+    // twice on every request: keep only the newest copy of identical text.
+    const seen = new Map<string, MemoryDoc>();
+    for (const d of (await db().docs.toArray()).filter((x) => x.enabled).sort((a, b) => b.updatedAt - a.updatedAt)) {
+      const key = d.text.replace(/\s+/g, ' ').trim();
+      if (!seen.has(key)) seen.set(key, d);
+    }
+    const docs = [...seen.values()];
+    const dupes = (await db().docs.count()) - docs.length;
+    if (dupes > 0) log.info(`skipping ${dupes} duplicate or disabled document(s)`);
     const ids = new Set(docs.map((d) => d.id));
     const chunks = (await db().chunks.toArray()).filter((c) => ids.has(c.docId));
     this.docs = new Map(docs.map((d) => [d.id, d]));

@@ -752,6 +752,37 @@ test('LinkedIn salary step: plain numbers, lakhs when asked, fixes "Invalid inpu
   expect(all.some((m) => m.startsWith('walk: 1 field error(s) on this step'))).toBe(true);
 });
 
+test('LinkedIn Edit experience: fills employment Month/Year without AI, leaves unknown months to you and remembers your pick', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: false, walkToSubmit: true }, behavior: { enabled: false } });
+  // Metafic's months were picked on an earlier form; Eazeebox is "Present" with no month known.
+  await sw.evaluate(() => chrome.storage.local.set({ fpWorkHistory: { metafic: { from: { y: 2023, m: 6 }, to: { y: 2025, m: 3 } }, eazeebox: { from: { y: 2025 }, to: 'present' } } }));
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-experience.html');
+  await page.click('#easy');
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-experience.html' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
+  });
+  const val = (id: string) => page.locator(id).inputValue();
+  await expect.poll(() => val('#m-fy'), { timeout: 20_000 }).toBe('2023');
+  expect([await val('#m-fm'), await val('#m-tm'), await val('#m-ty')]).toEqual(['6', '3', '2025']);
+  expect(await page.locator('#e-cur').isChecked()).toBe(true);
+  await expect.poll(() => val('#e-fy'), { timeout: 10_000 }).toBe('2025');
+  // The Eazeebox start month isn't known: left empty, and the walk stops on it by name.
+  expect(await val('#e-fm')).toBe('');
+  await expect.poll(() => page.locator('#e-fm').evaluate((el) => document.activeElement === el), { timeout: 15_000 }).toBe(true);
+  expect(await page.locator('#s2').isHidden()).toBe(true);
+  // You pick it: FormPilot remembers it for Eazeebox.
+  await page.selectOption('#e-fm', '4');
+  await expect.poll(() => sw.evaluate(async () => ((await chrome.storage.local.get('fpWorkHistory')).fpWorkHistory as Record<string, { from?: { m?: number } }>).eazeebox?.from?.m), { timeout: 10_000 }).toBe(4);
+  // The dates never went to the AI: the mock was not asked about Month / Year.
+  const msgs = () => sw.evaluate(async () => (((await chrome.storage.session.get('fpLogs')).fpLogs ?? []) as { msg: string }[]).map((e) => e.msg));
+  await expect.poll(async () => (await msgs()).join('\n'), { timeout: 10_000 }).toContain('walk stopped: "Start month at Eazeebox');
+  expect(await msgs()).toContain('✓ "Start month at Metafic" ← "June"');
+  expect((await msgs()).some((m) => m.startsWith('walk stopped: "Start month at Eazeebox'))).toBe(true);
+  expect((await msgs()).some((m) => /fill-form: \d+ fields?, .*to the model/.test(m) && /Month|Year/.test(m))).toBe(false);
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {

@@ -155,6 +155,16 @@ export default defineContentScript({
     const mq = matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', onScheme);
 
+    // Employment dates you pick yourself are remembered per company for the next form.
+    document.addEventListener(
+      'change',
+      (e) => {
+        const t = (e.composedPath?.()[0] ?? e.target) as Element | null;
+        if (!controller.writing && t && (t.tagName === 'SELECT' || (t as HTMLInputElement).type === 'checkbox')) void controller.rememberWorkDate(t).catch(() => {});
+      },
+      true,
+    );
+
     // The field may already be focused when we load (autofocus).
     const active = document.activeElement;
     if (isField(active)) controller.onFocus(active);

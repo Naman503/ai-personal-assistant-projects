@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply to The Future University | LinkedIn</title>
+<style>body{font:14px system-ui;margin:20px} .err{color:rgb(203,17,45)} select{margin:4px}</style></head>
+<body>
+<!-- Mirrors LinkedIn's Easy Apply "Edit experience" step (Nov 2026): unlabeled Month / Year
+     dropdowns under "From" and "To", an "I currently work here" box that hides "To", and
+     "This field is required" in red under each empty dropdown after Next. -->
+<button id="easy" type="button">Easy Apply</button>
+<script>
+const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const mo = '<option value="">Month</option>' + months.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+const yo = '<option value="">Year</option>' + Array.from({ length: 60 }, (_, i) => `<option value="${2036 - i}">${2036 - i}</option>`).join('');
+const block = (k, company) => `<div class="exp" id="b-${k}"><div>Edit experience</div>
+  <div><label for="${k}-t">Your title*</label><input type="text" id="${k}-t" value="Software Engineer"></div>
+  <div><label for="${k}-c">Company</label><input type="text" id="${k}-c" value="${company}"></div>
+  <div><div>Dates of employment</div>
+    <div><div>From</div><div><div><select id="${k}-fm">${mo}</select><p class="err"></p></div><div><select id="${k}-fy">${yo}</select><p class="err"></p></div></div></div>
+    <div><input type="checkbox" id="${k}-cur"><label for="${k}-cur">I currently work here</label></div>
+    <div id="${k}-to"><div>To</div><div><div><select id="${k}-tm">${mo}</select><p class="err"></p></div><div><select id="${k}-ty">${yo}</select><p class="err"></p></div></div></div>
+  </div></div>`;
+document.getElementById('easy').onclick = () => {
+  const d = document.createElement('dialog');
+  d.setAttribute('data-testid', 'dialog');
+  d.innerHTML = `<h2>Apply to The Future University</h2><div id="s1">${block('m', 'Metafic')}${block('e', 'Eazeebox')}<button id="next" type="button">Next</button></div>
+    <div id="s2" hidden><button id="send" type="button">Submit application</button></div>`;
+  document.body.appendChild(d);
+  d.show();
+  for (const k of ['m', 'e']) {
+    d.querySelector(`#${k}-cur`).addEventListener('change', (e) => { d.querySelector(`#${k}-to`).style.display = e.target.checked ? 'none' : ''; d.querySelectorAll(`#${k}-to select`).forEach((s) => (s.disabled = e.target.checked)); });
+  }
+  d.querySelector('#next').onclick = () => {
+    let bad = 0;
+    for (const s of d.querySelectorAll('#s1 select')) {
+      const need = !s.disabled && !s.value;
+      s.nextElementSibling.textContent = need ? 'This field is required' : '';
+      if (need) bad++;
+    }
+    if (!bad) { d.querySelector('#s1').hidden = true; d.querySelector('#s2').hidden = false; }
+  };
+  d.querySelector('#send').onclick = () => { window.__submitted = true; };
+};
+</script>
+</body>
+</html>

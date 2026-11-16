@@ -114,7 +114,7 @@ export function fieldErrors(scope: Element): FieldError[] {
       seen.add(input.name);
     }
     const e = errorNear(el);
-    if (e) out.push({ field: el, label: (resolveLabel(el as FillableElement) || el.getAttribute('aria-label') || input.name || '').slice(0, 120), ...e });
+    if (e) out.push({ field: el, label: (el.getAttribute('data-formpilot-need') || resolveLabel(el as FillableElement) || el.getAttribute('aria-label') || input.name || '').slice(0, 120), ...e });
   }
   return out;
 }
