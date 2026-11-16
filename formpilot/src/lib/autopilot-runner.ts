@@ -27,6 +27,8 @@ export interface ApState {
   current?: { title: string; index: number; batch: number; startedAt: number; tries: number };
   nextAt?: number;
   message: string;
+  /** What the batch is doing right now (from the autopilot window), while one runs. */
+  progress?: { text: string; at: number };
   history: { t: number; msg: string }[];
 }
 
@@ -98,6 +100,7 @@ export class Autopilot {
     st.running = false;
     st.phase = 'stopped';
     st.current = undefined;
+    st.progress = undefined;
     st.nextAt = undefined;
     await save(st, reason);
     if (alert) {
@@ -125,7 +128,11 @@ export class Autopilot {
   async runNow() {
     const st = await loadState();
     if (!st.running) return this.start();
-    if (st.current) return;
+    if (st.current) {
+      // A batch is on: skip the pause between jobs instead.
+      if (st.tabId !== undefined) await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'apply-queue-skip-pause' }, { frameId: 0 }).catch(() => {});
+      return;
+    }
     await this.tick(true);
   }
 
@@ -203,7 +210,17 @@ export class Autopilot {
     const st = await loadState();
     if (!st.running || !st.current || st.tabId === undefined) return;
     const reply = (await chrome.tabs
-      .sendMessage(st.tabId, { type: 'command', name: 'apply-queue', via: 'autopilot', opts: { batch: st.current.batch, dryRun: ap.dryRun, unattended: true, autoSubmit: !ap.dryRun, cap: ap.dailyCap, relevant: relevantWords(titlesOf(ap)) } }, { frameId: 0 })
+      .sendMessage(st.tabId, { type: 'command', name: 'apply-queue', via: 'autopilot', opts: {
+          batch: st.current.batch,
+          dryRun: ap.dryRun,
+          unattended: true,
+          autoSubmit: !ap.dryRun,
+          cap: ap.dailyCap,
+          relevant: ap.mustWords.trim() ? relevantWords(ap.mustWords.split(/[,\n]+/)) : relevantWords(titlesOf(ap)),
+          skipTitles: ap.skipWords,
+          pauseSec: [ap.pauseMinSec, Math.max(ap.pauseMinSec, ap.pauseMaxSec)],
+        },
+      }, { frameId: 0 })
       .catch(() => null)) as { ok?: boolean; list?: boolean } | null;
     if (!reply?.list) {
       if (++st.current.tries < 2) {
@@ -215,6 +232,14 @@ export class Autopilot {
     }
     st.phase = 'batch';
     await save(st, `Applying: "${st.current.title}"`);
+  }
+
+  /** Live progress from the autopilot window ("Reading …", "Filling …", "Next job in 52 s"). */
+  async onProgress(text: string, tabId?: number) {
+    const st = await loadState();
+    if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
+    st.progress = { text, at: Date.now() };
+    await chrome.storage.local.set({ [AP_KEY]: st });
   }
 
   /** The content script finished a batch. */
@@ -231,6 +256,7 @@ export class Autopilot {
     if (result.sent + result.dry === 0 && /done with this list|no job list/i.test(result.reason)) st.day.exhausted = [...st.day.exhausted, title];
     st.lastTitle = index;
     st.current = undefined;
+    st.progress = undefined;
     await chrome.alarms.clear(WATCHDOG);
     const summary = `"${title}": ${result.sent} sent, ${result.dry} would apply, ${result.skipped} skipped. Today ${st.day.sent + st.day.dry}/${ap.dailyCap}`;
     if (result.pushback) {

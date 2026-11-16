@@ -38,7 +38,7 @@ import { AUTHOR } from '@/lib/about';
 import { vaultStatus } from '@/lib/vault';
 import type { JobInfo } from '@/lib/job';
 import type { TrackerLookup, TrackerSummary } from '@/lib/tracker';
-import type { ApState } from '@/lib/autopilot-runner';
+import { describe as describeAutopilot, useAutopilot } from '@/hooks/useAutopilot';
 
 function openOptions(section?: string) {
   const action = (section ?? 'settings').split('?')[0];
@@ -96,11 +96,8 @@ export function Popup() {
   const [trackerErr, setTrackerErr] = useState('');
   const [busy, setBusy] = useState<'' | 'save-job' | 'mark-applied'>('');
   const [copied, setCopied] = useState(false);
-  const [ap, setAp] = useState<ApState | null>(null);
-  const apCall = (action: 'start' | 'stop' | 'status' | 'run-now') => rpc<ApState>({ type: 'autopilot', action }).then(setAp).catch(() => {});
-  useEffect(() => {
-    void apCall('status');
-  }, []);
+  const { st: ap, call: apCall } = useAutopilot(1500);
+  const apNow = describeAutopilot(ap);
 
   useEffect(() => {
     vaultStatus().then((v) => setLocked(v.exists && v.mode === 'strict' && !v.usable)).catch(() => {});
@@ -360,19 +357,21 @@ export function Popup() {
             <div className="flex items-center gap-3">
               <Bot className={`size-5 ${ap?.running ? 'text-emerald-500' : 'text-zinc-400'}`} />
               <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-semibold">
-                  Autopilot {ap?.running ? '· on' : '· off'}
-                  {settings.autopilot.dryRun ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">dry run</span> : null}
+                <div className="flex items-center gap-1 text-[13.5px] font-semibold">
+                  <span className="truncate">Autopilot · {ap?.running ? apNow.title : 'off'}</span>
+                  {settings.autopilot.dryRun ? <span className="shrink-0 rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">dry run</span> : null}
                 </div>
-                <div className="truncate text-[11px] text-zinc-500" title={ap?.message}>
-                  {ap ? `${ap.day.sent + ap.day.dry}/${settings.autopilot.dailyCap} today · ${ap.message}` : 'Applies in its own window, in small batches'}
+                <div className="line-clamp-2 text-[11px] text-zinc-500" title={apNow.detail}>
+                  {ap ? `${ap.day.sent} sent · ${ap.day.dry} would apply · ${ap.day.skipped} skipped today · ${apNow.detail}` : 'Applies in its own window, in small batches'}
                 </div>
               </div>
               {ap?.running ? (
                 <>
-                  <button className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Run a batch now" onClick={() => void apCall('run-now')}>
-                    <Play className="size-4" />
-                  </button>
+                  {apNow.canSkip ? (
+                    <button className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Skip this break" onClick={() => void apCall('run-now')}>
+                      <Play className="size-4" />
+                    </button>
+                  ) : null}
                   <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" title="Stop" onClick={() => void apCall('stop')}>
                     <Square className="size-4" />
                   </button>
@@ -383,6 +382,9 @@ export function Popup() {
                 </button>
               )}
             </div>
+            <button className="mt-1.5 text-[11px] font-medium text-brand hover:underline" onClick={() => void chrome.tabs.create({ url: chrome.runtime.getURL('options.html#autopilot') }).then(() => window.close())}>
+              Details and settings →
+            </button>
           </div>
         ) : null}
 

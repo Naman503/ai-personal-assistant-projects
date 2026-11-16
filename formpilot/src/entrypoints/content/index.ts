@@ -175,6 +175,12 @@ export default defineContentScript({
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       if (msg?.type !== 'command') return;
       // Apply queue (LinkedIn job lists): top frame only, no focus needed (the popup has it).
+      if (msg.name === 'apply-queue-skip-pause') {
+        if (window !== window.top) return;
+        queue.skipPause();
+        reply({ ok: true });
+        return;
+      }
       if (msg.name === 'apply-queue' || msg.name === 'apply-queue-stop' || msg.name === 'apply-queue-status') {
         if (window !== window.top) return;
         const onList = isLinkedInJobList(location.href) || jobCards().length > 0;
