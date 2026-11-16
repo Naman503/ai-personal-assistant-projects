@@ -584,6 +584,39 @@ export function radioGroups(el: Element): Map<string, HTMLInputElement[]> {
   return groups;
 }
 
+/**
+ * "Select all that apply" lists: two or more visible checkboxes under one question (same name,
+ * or the nearest container holding several). A lone checkbox (consent, "I currently work
+ * here") is not a group and stays yours to tick.
+ */
+export function checkboxGroups(el: Element): HTMLInputElement[][] {
+  const boxes = [...formOf(el).querySelectorAll<HTMLInputElement>('input[type=checkbox]')].filter((c) => !c.disabled && isVisibleControl(c));
+  const seen = new Set<HTMLInputElement>();
+  const out: HTMLInputElement[][] = [];
+  for (const c of boxes) {
+    if (seen.has(c)) continue;
+    let group: HTMLInputElement[] = [];
+    if (c.name) group = boxes.filter((b) => b.name === c.name);
+    if (group.length < 2) {
+      group = [];
+      let p = c.parentElement;
+      for (let i = 0; i < 7 && p; i++, p = p.parentElement) {
+        const inside = boxes.filter((b) => p!.contains(b));
+        if (inside.length >= 2) {
+          // Stop before swallowing other questions' fields (text boxes, radios, selects).
+          if (p.querySelector('input:not([type=checkbox]):not([type=hidden]), select, textarea')) break;
+          group = inside;
+          if (p.matches('fieldset, [role=group]')) break;
+        }
+      }
+    }
+    if (group.length < 2) continue;
+    group.forEach((b) => seen.add(b));
+    out.push(group);
+  }
+  return out;
+}
+
 /** All fillable fields in the same form (or the whole document if not in a form). */
 export function siblingFields(el: Element): FillableElement[] {
   const form = formOf(el);

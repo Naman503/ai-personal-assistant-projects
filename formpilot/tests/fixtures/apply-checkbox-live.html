@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply to Wing Assistant | LinkedIn</title>
+<style>body{font:14px system-ui;margin:20px} .err{color:rgb(203,17,45)} [role=listbox]{border:1px solid #999} [role=option]{padding:4px;cursor:pointer}</style></head>
+<body>
+<!-- LinkedIn Easy Apply "Additional Questions" (Wing Assistant, Nov 2026): a "Select all that
+     apply" checkbox list under a <p> question, a City typeahead that only accepts a value picked
+     from its suggestions, an "earliest start date" text box and a Yes/No question. -->
+<button id="easy" type="button">Easy Apply</button>
+<script>
+const IND = ['Administrative/ Executive Assistance', 'Construction', 'Customer Service', 'Digital Marketing', 'E-Commerce', 'Accounting/Bookkeeping', 'Healthcare/Medical', 'IT/Tech', 'Legal', 'Real Estate', 'Recruitment/HR', 'Sales/Lead Generation', 'Social Media Management', 'Travel'];
+const CITIES = ['Indore, Madhya Pradesh, India', 'Indore Cantonment, Madhya Pradesh, India', 'Bengaluru, Karnataka, India'];
+document.getElementById('easy').onclick = () => {
+  const d = document.createElement('dialog');
+  d.setAttribute('data-testid', 'dialog');
+  d.innerHTML = `<h2>Apply to Wing Assistant</h2><div id="s1"><h3>Additional Questions</h3>
+    <div><p>Which industries have you worked in? (Select all that apply.)*</p><div id="ind">${IND.map((t, i) =>
+      `<div><div><div><input id="ind-${i}" type="checkbox" aria-label="${t}"><label for="ind-${i}"></label></div><div><p>${t}</p></div></div></div>`).join('')}</div><p class="err" id="ind-err"></p></div>
+    <div><label for="city">City*</label><input id="city" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="city-lb"><div id="city-lb" role="listbox" hidden></div><p class="err" id="city-err"></p></div>
+    <div><label for="start">What is your earliest start date?</label><input id="start" type="text"></div>
+    <div><p>Have you worked for Wing Assistant before?*</p><fieldset role="radiogroup">
+      <div><input type="radio" id="wb-y" name="wb" aria-label="Have you worked for Wing Assistant before?"><label for="wb-y"></label><p>Yes</p></div>
+      <div><input type="radio" id="wb-n" name="wb" aria-label="Have you worked for Wing Assistant before?"><label for="wb-n"></label><p>No</p></div></fieldset></div>
+    <button id="review" type="button">Review</button></div>
+    <div id="s2" hidden><button id="send" type="button">Submit application</button></div>`;
+  document.body.appendChild(d);
+  d.show();
+  const city = d.querySelector('#city'), lb = d.querySelector('#city-lb');
+  city.addEventListener('input', () => {
+    city.dataset.picked = '';
+    const v = city.value.toLowerCase();
+    // Suggestions arrive a moment later, like the real one.
+    setTimeout(() => {
+      const hits = CITIES.filter((c) => v && c.toLowerCase().includes(v));
+      lb.replaceChildren(...hits.map((c) => { const o = document.createElement('div'); o.setAttribute('role', 'option'); o.textContent = c; o.onclick = () => { city.value = c; city.dataset.picked = '1'; lb.hidden = true; }; return o; }));
+      lb.hidden = !hits.length;
+    }, 400);
+  });
+  d.querySelector('#review').onclick = () => {
+    const indOk = !!d.querySelector('#ind input:checked');
+    d.querySelector('#ind-err').textContent = indOk ? '' : 'This field is required';
+    const cityOk = city.dataset.picked === '1';
+    d.querySelector('#city-err').textContent = cityOk ? '' : 'Please enter a valid answer';
+    const wbOk = !!d.querySelector('input[name=wb]:checked');
+    if (indOk && cityOk && wbOk) { d.querySelector('#s1').hidden = true; d.querySelector('#s2').hidden = false; }
+  };
+};
+</script>
+</body>
+</html>

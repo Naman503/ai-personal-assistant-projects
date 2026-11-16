@@ -89,6 +89,7 @@ export function systemPrompt(s: Settings): string {
 
 function fieldTypeLabel(f: FieldContext): string {
   if (f.chat) return 'chat-style questionnaire reply box (answer the question directly and briefly, e.g. "3" or "3 years" for years of experience)';
+  if (f.kind === 'select' && f.inputType === 'checkbox') return 'multiple choice checkboxes (tick ALL that apply; return the exact texts of every option that applies, separated by " | "; pick at least one)';
   if (f.kind === 'select') return f.inputType === 'radio' ? 'single choice (radio buttons)' : 'dropdown (select one option)';
   if (f.kind === 'textarea') return 'multi-line text area';
   if (f.kind === 'contenteditable') return 'rich text editor (multi-line)';
@@ -177,6 +178,8 @@ export function buildBatchPrompt(fields: BatchField[], page: PageContext, facts:
     'Fill in ALL of the following form fields for the user in one go.',
     'For each field return one value. Use an empty string when memory does not contain the answer for a factual field.',
     'Keep answers consistent with each other (same name, same email, …).',
+    `Today is ${new Date().toISOString().slice(0, 10)}. Dates you give (start dates, availability) must not be in the past.`,
+    'For choice fields, answer with the exact text of the option(s). Answer screening questions about your experience honestly from memory.',
     '',
     '## FIELDS (JSON)',
     JSON.stringify(list, null, 1),

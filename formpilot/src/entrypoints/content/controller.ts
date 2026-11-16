@@ -13,9 +13,10 @@ import { activeProvidersCount } from './providers';
 import { SUGGEST_PORT, rpc, track, type FillTrigger, type InsertMethod, type LearnTrigger, type PortEvent, type PortRequest } from '@/lib/messages';
 import type { FieldContext, OpenTrigger, Suggestion, SuggestOptions } from '@/lib/types';
 import { overlayRoot, conversationQuestion, conversationQuestionInfo, conversationDiagnostics, questionReady, lowestCommonAncestor, describeAncestors } from '@/lib/fields/context';
-import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike, formOf } from '@/lib/fields/context';
+import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, checkboxGroups, radioGroups, readValue, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike, formOf } from '@/lib/fields/context';
 import { checkEligibility, siteAllowed } from '@/lib/fields/eligibility';
-import { fillElement, fillRadioGroup, flash, restoreElement } from '@/lib/fields/fill';
+import { fillCheckboxGroup, fillElement, fillRadioGroup, flash, restoreElement } from '@/lib/fields/fill';
+import { pickSuggestion } from '@/lib/fields/typeahead';
 import { classifyField, isSensitive } from '@/lib/fields/classify';
 import { normalizeText, truncate, uid } from '@/lib/util';
 import { clearPosition, loadPositions, positionKey, savePosition, watchPositions, type SavedPos } from '@/lib/panel-position';
@@ -833,7 +834,7 @@ export class Controller {
     const els = siblingFields(anchor === document.body ? document.body : anchor).filter((el) => !dateHandled.has(el));
 
     // Group radios by name into one pseudo-select; skip sensitive / disabled / filled.
-    const entries: { id: string; field: FieldContext; el: HTMLElement; radios?: HTMLInputElement[] }[] = [];
+    const entries: { id: string; field: FieldContext; el: HTMLElement; radios?: HTMLInputElement[]; boxes?: HTMLInputElement[] }[] = [];
     for (const el of els) {
       const h = el as HTMLInputElement;
       if (h.disabled || h.readOnly) continue;
@@ -879,7 +880,37 @@ export class Controller {
         },
       });
     }
-    const fillable = entries.filter((e) => (e.field.kind !== 'select' || e.field.options?.length) && e.el.getAttribute('type') !== 'checkbox');
+    // "Select all that apply" lists. A lone checkbox (consent) is left for you.
+    for (const boxes of checkboxGroups(anchor === document.body ? document.body : anchor)) {
+      if (boxes.some((b) => b.checked)) continue;
+      const first = boxes[0];
+      const groupLabel = radioGroupLabel(boxes);
+      const semantic = classifyField({ label: groupLabel, name: first.name });
+      if (isSensitive(semantic)) continue;
+      entries.push({
+        id: `f${entries.length + 1}`,
+        el: first,
+        boxes,
+        field: {
+          fid: first.getAttribute(FID_ATTR) ?? uid('f'),
+          kind: 'select',
+          inputType: 'checkbox',
+          label: groupLabel,
+          name: first.name,
+          htmlId: first.id,
+          placeholder: '',
+          autocomplete: '',
+          description: '',
+          section: '',
+          required: /\*\s*$/.test(groupLabel) || first.required,
+          options: boxes.map((b) => ({ value: radioOptionLabel(b, boxes), label: radioOptionLabel(b, boxes) })),
+          currentValue: '',
+          semantic,
+          longForm: false,
+        },
+      });
+    }
+    const fillable = entries.filter((e) => (e.field.kind !== 'select' || e.field.options?.length) && (e.boxes || e.el.getAttribute('type') !== 'checkbox'));
     if (!fillable.length) {
       if (!opts.quiet) this.showToast('No empty fields to fill in this form.', 'info');
       if (opts.quiet) return none;
@@ -898,10 +929,11 @@ export class Controller {
         page,
         trigger,
       });
-      const undo: { el: HTMLElement; previous: string; radios?: HTMLInputElement[] }[] = [];
+      const undo: { el: HTMLElement; previous: string; radios?: HTMLInputElement[]; boxes?: HTMLInputElement[]; ticked?: HTMLInputElement[] }[] = [];
       let n = 0;
       for (const e of fillable) {
         const v = res.values[e.id];
+        this.watchAnswer(e, '');
         if (!v?.trim()) {
           fieldLog.info(`– "${(e.field.label || e.field.name || '?').slice(0, 80)}" left empty (no answer)`, { source: res.sources?.[e.id] ?? '' });
           continue;
@@ -909,18 +941,22 @@ export class Controller {
         this.inserting = true;
         const r = e.radios
           ? fillRadioGroup(e.radios, v, (x) => radioOptionLabel(x, e.radios), e.field?.label)
-          : fillElement(e.el, v, 'replace', e.field.label || e.field.placeholder || undefined);
+          : e.boxes
+            ? fillCheckboxGroup(e.boxes, v, (x) => radioOptionLabel(x, e.boxes))
+            : fillElement(e.el, v, 'replace', e.field.label || e.field.placeholder || undefined);
+        if (r.ok && !e.radios && !e.boxes) await pickSuggestion(e.el, r.value);
         this.inserting = false;
         // One line per field in Options → Logs: question, answer, where it came from, what went in.
         fieldLog.info(`${r.ok ? '✓' : '✗'} "${(e.field.label || e.field.name || '?').slice(0, 80)}" ← ${JSON.stringify(r.value.slice(0, 60))}`, {
           answer: v.slice(0, 80),
           source: res.sources?.[e.id] ?? '',
-          kind: e.radios ? 'radio' : e.field.inputType || e.field.kind,
+          kind: e.radios ? 'radio' : e.boxes ? 'checkboxes' : e.field.inputType || e.field.kind,
           via: r.method,
         });
+        if (r.ok) this.watchAnswer(e, r.value);
         if (r.ok) {
           n++;
-          undo.push({ el: e.el, previous: r.previous, radios: e.radios });
+          undo.push({ el: e.el, previous: r.previous, radios: e.radios, boxes: e.boxes, ticked: e.boxes?.filter((b) => b.checked) });
           if (s.behavior.highlightOnFill) flash(e.radios ? (e.radios[0].parentElement ?? e.el) : e.el, getAccent(this.store.get().accent));
           // Fire blur so frameworks run validation / mark as touched.
           e.el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
@@ -939,7 +975,8 @@ export class Controller {
               run: () => {
                 this.track('undo_used', { what: 'form' });
                 for (const u of undo.reverse()) {
-                  if (u.radios) u.radios.forEach((r) => (r.checked = r.value === u.previous));
+                  if (u.boxes) u.ticked?.forEach((b) => b.checked && b.click());
+                  else if (u.radios) u.radios.forEach((r) => (r.checked = r.value === u.previous));
                   else restoreElement(u.el, u.previous);
                 }
                 this.showToast('Restored', 'info');
@@ -1016,6 +1053,46 @@ export class Controller {
   }
 
   /** FormPilot is writing a value right now (its own change events aren't your choices). */
+  /** Answers FormPilot put in (or left empty), per control, to notice when you change them. */
+  private answers = new WeakMap<Element, { field: FieldContext; el: HTMLElement; value: string; radios?: HTMLInputElement[]; boxes?: HTMLInputElement[] }>();
+
+  private watchAnswer(e: { field: FieldContext; el: HTMLElement; radios?: HTMLInputElement[]; boxes?: HTMLInputElement[] }, value: string) {
+    const w = { field: e.field, el: e.el, value: normalizeText(value), radios: e.radios, boxes: e.boxes };
+    for (const x of e.radios ?? e.boxes ?? [e.el]) this.answers.set(x, w);
+  }
+
+  /**
+   * You changed an answer FormPilot gave (or filled one it left empty) on an application form:
+   * save yours, so the next form with this question gets it without asking the AI.
+   */
+  answerChanged(target: Element) {
+    const w = this.answers.get(target);
+    if (!w || this.dead) return;
+    // Text boxes report on blur; choices right away. Wait a moment for the group to settle.
+    setTimeout(() => {
+      let value = '';
+      if (w.radios) {
+        const r = w.radios.find((x) => x.checked);
+        value = r ? radioOptionLabel(r, w.radios) : '';
+      } else if (w.boxes) value = w.boxes.filter((b) => b.checked).map((b) => radioOptionLabel(b, w.boxes)).join(' | ');
+      else value = readValue(w.el as HTMLInputElement).trim();
+      if (w.el instanceof HTMLSelectElement && w.el.selectedIndex <= 0) value = '';
+      const n = normalizeText(value);
+      if (!n || n === w.value || isSensitive(w.field.semantic)) return;
+      w.value = n;
+      if (this.settings().cache.learn === 'off') return;
+      // Choice answers are saved under the exact question, never as a general fact ("years of
+      // experience") that other questions would pick up.
+      const choice = !!(w.radios || w.boxes || w.field.options?.length);
+      const field: FieldContext = { ...w.field, currentValue: '', ...(choice ? { semantic: 'text' as const } : {}) };
+      const q = field.label || field.name || 'this question';
+      fieldLog.info(`you answered "${q.slice(0, 80)}" yourself: saving "${value.slice(0, 60)}" for next time`);
+      void rpc<{ savedAs: string[] }>({ type: 'learn', field, text: value, host: location.hostname, trigger: 'auto' })
+        .then(() => this.showToast(`Saved “${truncate(value, 40)}” for “${truncate(q, 50)}”. Used next time.`, 'success', undefined, 3000))
+        .catch(() => {});
+    }, 300);
+  }
+
   get writing() {
     return this.inserting;
   }
