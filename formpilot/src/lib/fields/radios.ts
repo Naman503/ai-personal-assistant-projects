@@ -25,7 +25,7 @@ export function radioGroupLabel(radios: HTMLInputElement[]): string {
   const first = radios[0];
   const lg = legend(first);
   if (lg) return lg;
-  const group = first.closest('fieldset, [role="radiogroup"]');
+  const group = first.closest('fieldset, [role="radiogroup"], [role="group"]');
   const byId = group?.getAttribute('aria-labelledby');
   if (byId) {
     const t = clean(byId.split(/\s+/).map((id) => (first.getRootNode() as Document).getElementById?.(id)?.textContent ?? '').join(' '));
@@ -35,8 +35,9 @@ export function radioGroupLabel(radios: HTMLInputElement[]): string {
   // Every radio has the same aria-label: that's the question.
   const aria = first.getAttribute('aria-label');
   if (aria && radios.length > 1 && radios.every((r) => r.getAttribute('aria-label') === aria)) return clean(aria);
-  // Text just before the group (a <p>/<span>/<label> heading).
-  let prev = group?.previousElementSibling;
+  // Text just before the group (a <p>/<span>/<label> heading); for a group without a container,
+  // the text before the common parent of its options.
+  let prev = group?.previousElementSibling ?? commonParent(radios)?.previousElementSibling;
   for (let i = 0; i < 3 && prev; i++, prev = prev.previousElementSibling) {
     if (prev.querySelector('input, select, textarea')) break;
     const t = textOf(prev);
@@ -58,9 +59,15 @@ export function radioOptionLabel(radio: HTMLInputElement, radios: HTMLInputEleme
   // Climb to the nearest ancestor that holds this radio only and has text: that's the option row.
   let p = radio.parentElement;
   for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
-    if (p.querySelectorAll('input[type="radio"]').length > 1) break;
+    if (p.querySelectorAll(`input[type="${radio.type}"]`).length > 1) break;
     const t = textOf(p);
     if (t) return t;
   }
   return radio.value && radio.value !== 'on' ? radio.value : clean(radio.getAttribute('aria-label'));
+}
+
+function commonParent(els: Element[]): Element | null {
+  let p = els[0]?.parentElement ?? null;
+  while (p && !els.every((e) => p!.contains(e))) p = p.parentElement;
+  return p;
 }

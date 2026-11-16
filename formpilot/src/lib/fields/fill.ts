@@ -19,7 +19,7 @@ import { createLogger } from '../logger';
 
 const log = createLogger('fill');
 
-export type FillMethod = 'execCommand' | 'setter' | 'paste' | 'textContent' | 'select' | 'radio' | 'checkbox' | 'none';
+export type FillMethod = 'execCommand' | 'setter' | 'paste' | 'textContent' | 'select' | 'radio' | 'checkbox' | 'checkbox-group' | 'none';
 
 export interface FillResult {
   ok: boolean;
@@ -217,6 +217,31 @@ export function fillRadioGroup(radios: HTMLInputElement[], text: string, labelOf
   if (!match) return { ok: false, method: 'radio', previous, value: previous };
   if (!match.r.checked) match.r.click();
   return { ok: match.r.checked, method: 'radio', previous, value: match.label };
+}
+
+/** Split a multi-choice answer ("IT/Tech | E-Commerce", "IT/Tech, E-Commerce", one per line). */
+export function splitChoices(text: string, labels: string[]): string[] {
+  const t = text.trim();
+  if (!t) return [];
+  // The whole answer is one option (option text may itself contain commas).
+  if (labels.some((l) => l.trim().toLowerCase() === t.toLowerCase())) return [t];
+  const parts = t.split(/\s*(?:\||\n|;)\s*/).filter(Boolean);
+  if (parts.length > 1) return parts;
+  return t.split(/\s*,\s*/).filter(Boolean);
+}
+
+/** Tick the options a multi-choice answer names (and untick none: your own ticks stay). */
+export function fillCheckboxGroup(boxes: HTMLInputElement[], text: string, labelOf: (b: HTMLInputElement) => string): FillResult {
+  const previous = boxes.filter((b) => b.checked).map(labelOf).join(' | ');
+  const opts = boxes.map((b) => ({ value: labelOf(b), label: labelOf(b), b }));
+  const picked = new Set<HTMLInputElement>();
+  for (const part of splitChoices(text, opts.map((o) => o.label))) {
+    const m = exactOption(part, opts) ?? bestOption(part, opts);
+    if (m) picked.add(m.b);
+  }
+  for (const b of picked) if (!b.checked) b.click();
+  const value = boxes.filter((b) => b.checked).map(labelOf).join(' | ');
+  return { ok: picked.size > 0 && [...picked].every((b) => b.checked), method: 'checkbox-group', previous, value };
 }
 
 export function fillCheckbox(el: HTMLInputElement, text: string): FillResult {

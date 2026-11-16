@@ -18,6 +18,7 @@ import { cacheGet, cacheSet } from './cache';
 import { BATCH_SCHEMA, FACTS_SCHEMA, FACTS_SYSTEM, SUGGESTION_SCHEMA, buildBatchPrompt, buildFactsPrompt, buildSuggestPrompt, systemPrompt } from './prompt';
 import { parseBatch, parseFacts, parseSuggestions, parseSuggestionsPartial } from './parse';
 import { redactSecrets } from './redact';
+import { answerFitsOptions, startDateAnswer } from '../fields/answers';
 import { activeProviders, adapterFor, generateWithFallback, resolveProvider } from '../llm/registry';
 import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
@@ -298,10 +299,20 @@ export class SuggestEngine {
     const sources: Record<string, string> = {};
     const remaining: { id: string; field: FieldContext }[] = [];
 
+    const notice = facts.find((x) => x.key === 'notice-period')?.value;
     for (const f of fields) {
       if (isSensitive(f.field.semantic)) continue;
+      // "Earliest start date": today + your notice period, never a date in the past.
+      const start = startDateAnswer(f.field, notice);
+      if (start) {
+        values[f.id] = start;
+        sources[f.id] = 'rule';
+        continue;
+      }
       const fm = matchFacts(f.field, facts, 1)[0];
-      if (fm && (fm.score ?? 0) >= 0.99 && !f.field.longForm) {
+      // A fact for a choice question only when it is one of the choices (your skills list is no
+      // answer to "Do you have all the relevant skills? Yes / No").
+      if (fm && (fm.score ?? 0) >= 0.99 && !f.field.longForm && answerFitsOptions(fm.text, f.field)) {
         values[f.id] = fm.text;
         sources[f.id] = 'fact';
       } else remaining.push(f);

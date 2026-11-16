@@ -161,6 +161,8 @@ export default defineContentScript({
       (e) => {
         const t = (e.composedPath?.()[0] ?? e.target) as Element | null;
         if (!controller.writing && t && (t.tagName === 'SELECT' || (t as HTMLInputElement).type === 'checkbox')) void controller.rememberWorkDate(t).catch(() => {});
+        // Your own answer on a form FormPilot filled: remember it for next time.
+        if (!controller.writing && t && e.isTrusted) controller.answerChanged(t);
       },
       true,
     );

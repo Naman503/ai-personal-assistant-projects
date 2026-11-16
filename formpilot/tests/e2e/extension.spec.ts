@@ -845,6 +845,37 @@ test('apply queue with "submit for me" on: counts down and presses Submit itself
   await expect.poll(async () => (await msgs()).filter((m) => m.startsWith('auto-submit: pressing "Submit application"')).length, { timeout: 10_000 }).toBe(2);
 });
 
+test('LinkedIn checkbox list, City typeahead, start date; and your own answer is remembered for next time', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: false, walkToSubmit: false }, behavior: { enabled: false }, cache: { learn: 'auto' } });
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-checkbox-live.html');
+  const fill = () => sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-checkbox-live.html' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
+  });
+  await page.click('#easy');
+  await fill();
+  const ticked = () => page.evaluate(() => [...document.querySelectorAll<HTMLInputElement>('#ind input')].filter((b) => b.checked).map((b) => b.getAttribute('aria-label')));
+  await expect.poll(ticked, { timeout: 20_000 }).toEqual(['E-Commerce', 'IT/Tech']);
+  // Typed "Indore", then picked from the suggestions (the site rejects a typed-only city).
+  await expect.poll(() => page.evaluate(() => (document.getElementById('city') as HTMLInputElement).dataset.picked), { timeout: 10_000 }).toBe('1');
+  expect(await page.locator('#city').inputValue()).toBe('Indore, Madhya Pradesh, India');
+  // The mock AI would say 2025-03-01; the rule gives today + 30 days instead.
+  const start = await page.locator('#start').inputValue();
+  expect(new Date(start).getTime()).toBeGreaterThan(Date.now());
+  // The AI had no answer to "worked for us before?": you pick No yourself, FormPilot remembers.
+  expect(await page.locator('#wb-n').isChecked()).toBe(false);
+  await page.locator('#wb-n').check();
+  const msgs = () => sw.evaluate(async () => (((await chrome.storage.session.get('fpLogs')).fpLogs ?? []) as { msg: string }[]).map((e) => e.msg));
+  await expect.poll(async () => (await msgs()).some((m) => m.startsWith('you answered "Have you worked for Wing Assistant before?" yourself')), { timeout: 10_000 }).toBe(true);
+  // Next application with the same question: answered from what you picked, no AI needed.
+  await page.reload();
+  await page.click('#easy');
+  await page.waitForTimeout(800);
+  await fill();
+  await expect.poll(() => page.locator('#wb-n').isChecked(), { timeout: 20_000 }).toBe(true);
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {
