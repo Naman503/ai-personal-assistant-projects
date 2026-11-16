@@ -903,11 +903,18 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   expect((await state()).day.sent).toBe(0);
   expect((await state()).phase).toBe('waiting');
   expect(await list.evaluate(() => (window as unknown as { __sent: string[] }).__sent)).toEqual([]);
-  // Stop: the badge clears and nothing more is scheduled.
+  // FormPilot restarts (an update, a Brave restart) and its alarms are gone: on start-up it
+  // picks up again by itself (the worker runs resume() when it starts).
+  await sw.evaluate(() => chrome.alarms.clearAll());
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'resume' }));
+  await expect.poll(() => sw.evaluate(async () => !!((await chrome.alarms.get('fp-ap-tick')) || (await chrome.alarms.get('fp-ap-go')))), { timeout: 15_000 }).toBe(true);
+  // Stop: nothing more is scheduled.
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
   await expect.poll(async () => (await state()).phase, { timeout: 5000 }).toBe('stopped');
   expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-tick'))).toBeFalsy();
+  expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-go'))).toBeFalsy();
 });
+
 
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
