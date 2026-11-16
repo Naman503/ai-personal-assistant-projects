@@ -759,6 +759,8 @@ test('LinkedIn Edit experience: fills employment Month/Year without AI, leaves u
   const page = await context.newPage();
   await page.goto('http://localhost:4173/apply-experience.html');
   await page.click('#easy');
+  // The cursor is in a LinkedIn chat box outside the application (what happened live).
+  await page.locator('#msg').click();
   await sw.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-experience.html' });
     await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
@@ -772,6 +774,9 @@ test('LinkedIn Edit experience: fills employment Month/Year without AI, leaves u
   expect(await val('#e-fm')).toBe('');
   await expect.poll(() => page.locator('#e-fm').evaluate((el) => document.activeElement === el), { timeout: 15_000 }).toBe(true);
   expect(await page.locator('#s2').isHidden()).toBe(true);
+  // The chat box was left alone, and "Save" in the experience block wasn't taken for Submit.
+  expect(await page.locator('#msg').innerText()).toBe('');
+  expect(await page.locator('#send').evaluate((b) => (b as HTMLElement).style.outline)).toBe('');
   // You pick it: FormPilot remembers it for Eazeebox.
   await page.selectOption('#e-fm', '4');
   await expect.poll(() => sw.evaluate(async () => ((await chrome.storage.local.get('fpWorkHistory')).fpWorkHistory as Record<string, { from?: { m?: number } }>).eazeebox?.from?.m), { timeout: 10_000 }).toBe(4);

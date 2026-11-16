@@ -86,7 +86,10 @@ export class MemoryIndex {
     // twice on every request: keep only the newest copy of identical text.
     const seen = new Map<string, MemoryDoc>();
     for (const d of (await db().docs.toArray()).filter((x) => x.enabled).sort((a, b) => b.updatedAt - a.updatedAt)) {
-      const key = d.text.replace(/\s+/g, ' ').trim();
+      // Same file name, or the same text: one copy (re-uploads differ by a few characters).
+      const key = d.name.trim().toLowerCase();
+      const body = d.text.replace(/\s+/g, ' ').trim().slice(0, 3000);
+      if ([...seen.values()].some((x) => x.text.replace(/\s+/g, ' ').trim().slice(0, 3000) === body)) continue;
       if (!seen.has(key)) seen.set(key, d);
     }
     const docs = [...seen.values()];
