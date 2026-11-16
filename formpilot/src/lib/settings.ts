@@ -171,6 +171,8 @@ const TrackerSchema = z.object({
   queueSkipTitles: z.string().catch(''),
   /** Apply queue: press Submit for you once a form is filled to the end with nothing left for you. */
   queueAutoSubmit: z.boolean().catch(false),
+  /** LinkedIn outreach: ask the tracker for tasks (find the hiring team, connect, message) and do them. */
+  outreach: z.boolean().catch(false),
 });
 
 /** Autopilot: applies on its own in a separate window, in small batches, within limits. */
