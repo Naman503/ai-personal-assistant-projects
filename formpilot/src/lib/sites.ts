@@ -115,8 +115,10 @@ export function jobPageState(p: Platform, doc: Document = document): { apply: HT
     const external = !apply && !!buttonByText(/apply on company site/i, doc);
     return { apply: apply && /^apply$/i.test(label) ? apply : null, applied: /^applied$/i.test(label) || /you have (already )?applied/i.test(doc.body?.innerText ?? ''), external };
   }
-  const apply = buttonByText(/^(apply now|apply|apply for this job)$/i, doc);
-  return { apply, applied: !apply && !!buttonByText(/^applied$/i, doc), external: false };
+  // Cutshort's job page says "Apply to this job". Its "Apply now" buttons belong to the similar
+  // jobs listed further down: never press those (found on the first live dry run).
+  const apply = buttonByText(/^(apply to this job|apply for this job|apply)$/i, doc);
+  return { apply, applied: !apply && !!buttonByText(/^(applied|application sent)$/i, doc), external: false };
 }
 
 /** The site says the application went through. */

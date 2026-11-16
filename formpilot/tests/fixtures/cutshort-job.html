@@ -1,11 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Junior React Native Developer at Quixta | Cutshort</title></head>
 <body>
-<!-- A Cutshort job page (modelled, not yet captured live): "Apply now" opens a form in a dialog. -->
+<!-- A Cutshort job page: "Apply to this job" (read live 2026-11-16) opens a form (the form itself is modelled). -->
 <h1>Junior React Native Developer</h1><p>at <a href="/company/jobs-at-quixta">Quixta</a></p>
-<button type="button" id="open">Apply now</button>
+<button type="button" id="open">Apply to this job</button>
+<!-- Similar jobs further down have their own "Apply now": never to be pressed. -->
+<section><h3><a href="/cutshort-job.html?id=99">Other React Native role</a></h3><button type="button" id="other">Apply now</button></section>
 <script>
 window.__applied = false;
+window.__other = false;
+document.getElementById('other').onclick = () => (window.__other = true);
 document.getElementById('open').onclick = () => {
   const d = document.createElement('div');
   d.setAttribute('role', 'dialog');

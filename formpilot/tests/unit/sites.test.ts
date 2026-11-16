@@ -52,6 +52,13 @@ describe('Naukri and Cutshort pages', () => {
     expect(sentNotice('naukri', document, 'https://www.naukri.com/myapply/saveApply?x=1')).toBe(true);
   });
 
+  it('on Cutshort job pages, presses "Apply to this job", never a similar job\'s "Apply now"', () => {
+    document.body.innerHTML = '<button>Apply to this job</button><section><button>Apply now</button></section>';
+    expect(jobPageState('cutshort', document).apply?.textContent).toBe('Apply to this job');
+    document.body.innerHTML = '<section><button>Apply now</button></section>';
+    expect(jobPageState('cutshort', document).apply).toBeNull();
+  });
+
   it('stops on sign-in and limits', () => {
     document.body.innerHTML = '<p>Jobs</p>';
     expect(sitePushback('naukri', document, 'https://www.naukri.com/nlogin/login')).toMatch(/sign in/);

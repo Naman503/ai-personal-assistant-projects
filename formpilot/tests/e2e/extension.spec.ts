@@ -967,6 +967,7 @@ test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form f
   await expect.poll(async () => (await state()).day.byPlatform.cutshort.dry, { timeout: 150_000 }).toBe(1);
   const cs = context.pages().find((p) => p.url().includes('cutshort-job.html'))!;
   expect(await cs.evaluate(() => (window as unknown as { __applied: boolean }).__applied)).toBe(false);
+  expect(await cs.evaluate(() => (window as unknown as { __other: boolean }).__other)).toBe(false); // the similar job's "Apply now" was never pressed
   expect(await cs.locator('[role=dialog]').count()).toBe(0);
   const hist = (await state()).history.map((h) => h.msg).join('\n');
   expect(hist).toContain('Naukri · Applied: React Native Developer - Wissen');
