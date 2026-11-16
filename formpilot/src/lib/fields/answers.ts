@@ -33,7 +33,7 @@ export const DEFAULT_YEARS = 3;
  * Fix an experience answer: blank, 0, "none", "N/A" or "less than a year" becomes 3 years.
  * Numbers the AI took from your resume (1+) stay as they are.
  */
-export function experienceAnswer(f: Pick<FieldContext, 'label' | 'options' | 'kind'>, answer: string | undefined): string | null {
+export function experienceAnswer(f: Pick<FieldContext, 'label' | 'options'>, answer: string | undefined): string | null {
   if (!YEARS_Q.test(f.label ?? '')) return null;
   const a = (answer ?? '').trim();
   const n = parseFloat(a.replace(/,/g, ''));
