@@ -311,10 +311,11 @@ export class Autopilot {
         reply.jobs.map((j) => `${fresh.includes(j) ? '+' : '-'} ${j.title} · ${j.company}${j.expMin !== undefined ? ` · ${j.expMin}+ yrs` : ''}${j.applied ? ' · applied' : ''}`),
       );
       if (!fresh.length) return this.finishBatch(st, 'nothing new in this search', true);
-      cur.jobs = fresh.slice(0, cur.batch);
+      // Some will be skipped (company-site apply, already applied): keep spares so the batch still fills up.
+      cur.jobs = fresh.slice(0, cur.batch * 3);
       cur.i = 0;
       st.phase = 'batch';
-      await save(st, `${PLATFORM_NAME[p]}: ${cur.jobs.length} job(s) to try for "${cur.title}"`);
+      await save(st, `${PLATFORM_NAME[p]}: ${Math.min(cur.batch, cur.jobs.length)} to apply for "${cur.title}" (${cur.jobs.length} candidates)`);
       return this.openJob(st);
     }
     if (cur.stage === 'job') {
