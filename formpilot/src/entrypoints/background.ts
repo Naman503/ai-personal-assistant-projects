@@ -1,3 +1,4 @@
+import { Autopilot } from '@/lib/autopilot-runner';
 import { parseWorkHistory } from '@/lib/fields/workdates';
 import { addLogSink, configureLogger, createLogger, LogRing , type LogEntry } from '@/lib/logger';
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, patchSettings, type Settings } from '@/lib/settings';
@@ -43,6 +44,7 @@ export default defineBackground({
     const log = createLogger('bg');
 
     let settings: Settings = DEFAULT_SETTINGS;
+    const autopilot = new Autopilot(() => settings);
     const usage = new UsageReporter(() => settings);
     const engine = new SuggestEngine(() => settings, usage);
     /** Once a day: provider mix, memory size and a settings snapshot (enums, booleans, buckets only). */
@@ -106,7 +108,9 @@ export default defineBackground({
     chrome.alarms?.create('usage', { delayInMinutes: 10, periodInMinutes: 360 });
     chrome.alarms?.onAlarm.addListener((a) => {
       if (a.name === 'usage') void ready.then(flushUsage);
+      if (a.name.startsWith('fp-ap-')) void ready.then(() => autopilot.onAlarm(a.name));
     });
+    chrome.windows?.onRemoved.addListener((id) => void ready.then(() => autopilot.onWindowRemoved(id)));
     self.addEventListener('error', (e) => void usage.error((e as ErrorEvent).error, true));
     self.addEventListener('unhandledrejection', (e) => {
       if (!isAbort((e as PromiseRejectionEvent).reason)) void usage.error((e as PromiseRejectionEvent).reason);
@@ -218,7 +222,7 @@ export default defineBackground({
           }
           return null;
         case 'tracker-record': {
-          const out = await recordInTracker(settings, msg.kind, msg.job, msg.answers ?? []);
+          const out = await recordInTracker(settings, msg.kind, msg.job, msg.answers ?? [], msg.recordedBy);
           log.info(`job tracker: ${msg.kind} "${msg.job.role}" at ${msg.job.company} (${out.created ? 'new' : 'updated'})`);
           return out;
         }
@@ -226,6 +230,14 @@ export default defineBackground({
           return testTracker(msg.url ?? settings.tracker.url);
         case 'tracker-lookup':
           return lookupInTracker(settings.tracker.url, { url: msg.url, company: msg.company, role: msg.role });
+        case 'autopilot-batch-done':
+          await autopilot.onBatchDone(msg.result, sender.tab?.id);
+          return null;
+        case 'autopilot':
+          if (msg.action === 'start') await autopilot.start();
+          else if (msg.action === 'stop') await autopilot.stop();
+          else if (msg.action === 'run-now') await autopilot.runNow();
+          return autopilot.status();
         case 'tracker-summary':
           return trackerSummary(settings.tracker.url);
         case 'get-logs':

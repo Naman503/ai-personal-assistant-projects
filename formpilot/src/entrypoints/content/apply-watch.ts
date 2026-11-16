@@ -154,6 +154,23 @@ export class ApplyWatcher {
     return this.record(this.job ?? extractJob(), 'applied', 'manual');
   }
 
+  /**
+   * Autopilot dry run: the form is filled to Submit but not sent. Save the job to the tracker as
+   * "would apply" and put every answer in the log, so you can check them before going live.
+   */
+  async recordDryRun(dialog: Element | null) {
+    if (dialog) this.collect(dialog);
+    const job = extractJob();
+    const answers = [...this.answers].map(([q, a]) => ({ q, a }));
+    log.info(`dry run: would apply to ${job.role} at ${job.company}`, answers.map((x) => `${x.q} → ${x.a}`));
+    this.answers.clear();
+    try {
+      await rpc({ type: 'tracker-record', kind: 'saved', job, answers, recordedBy: 'Autopilot dry run' });
+    } catch (e) {
+      log.warn('dry run: could not save to the job tracker', e);
+    }
+  }
+
   private async record(job: JobInfo, kind: 'applied' | 'saved', how: string) {
     const key = `${kind}:${job.url}`;
     if (this.recorded.has(key)) return;

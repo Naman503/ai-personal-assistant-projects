@@ -51,7 +51,7 @@ async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
   return body;
 }
 
-export async function recordInTracker(s: Settings, kind: 'applied' | 'saved', job: JobInfo, answers: GivenAnswer[]) {
+export async function recordInTracker(s: Settings, kind: 'applied' | 'saved', job: JobInfo, answers: GivenAnswer[], recordedBy = 'FormPilot') {
   if (!s.tracker.enabled) throw new TrackerError('The job tracker is turned off in FormPilot settings.');
   const payload = {
     kind,
@@ -64,7 +64,7 @@ export async function recordInTracker(s: Settings, kind: 'applied' | 'saved', jo
     description: String(job.description || '').slice(0, 15000),
     logoUrl: String(job.logoUrl || '').slice(0, 2000),
     answers: (s.tracker.includeAnswers ? answers : []).slice(0, 60).map((x) => ({ q: String(x.q).slice(0, 200), a: String(x.a).slice(0, 600) })),
-    recordedBy: 'FormPilot',
+    recordedBy: recordedBy.slice(0, 40),
   };
   return call<{ ok: boolean; id: string; created: boolean; status: string }>(baseUrl(s.tracker.url) + '/api/record-application', { method: 'POST', body: JSON.stringify(payload) });
 }

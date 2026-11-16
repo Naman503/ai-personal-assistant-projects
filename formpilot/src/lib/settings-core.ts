@@ -204,6 +204,22 @@ export const DEFAULTS: Settings = {
     tabAccepts: false,
   },
   tracker: { enabled: false, url: '', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 30, queueDelaySec: 6, queueSkipTitles: '', queueAutoSubmit: false },
+  autopilot: {
+    titles: 'React Native Developer, React Native Engineer, Mobile Engineer, Full Stack Engineer, Software Engineer',
+    location: 'india',
+    postedDays: 1,
+    dailyCap: 25,
+    perTitleCap: 10,
+    batchMin: 3,
+    batchMax: 5,
+    gapMinMin: 20,
+    gapMaxMin: 40,
+    startTime: '10:00',
+    endTime: '19:30',
+    days: [1, 2, 3, 4, 5, 6],
+    dryRun: true,
+    searchUrl: '',
+  },
   debug: { logLevel: 'info', console: true },
 };
 

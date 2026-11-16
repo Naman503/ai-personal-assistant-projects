@@ -173,6 +173,31 @@ const TrackerSchema = z.object({
   queueAutoSubmit: z.boolean().catch(false),
 });
 
+/** Autopilot: applies on its own in a separate window, in small batches, within limits. */
+const AutopilotSchema = z.object({
+  /** Job titles to search, one per line or comma separated. */
+  titles: z.string().catch('React Native Developer, React Native Engineer, Mobile Engineer, Full Stack Engineer, Software Engineer'),
+  /** "india" = all of India (on-site, hybrid and remote), "india-remote" = remote jobs in India only. */
+  location: z.enum(['india', 'india-remote']).catch('india'),
+  /** Only jobs posted in the last N days (1, 7, 30). */
+  postedDays: z.number().int().min(1).max(30).catch(1),
+  dailyCap: z.number().int().min(1).max(100).catch(25),
+  perTitleCap: z.number().int().min(1).max(100).catch(10),
+  batchMin: z.number().int().min(1).max(20).catch(3),
+  batchMax: z.number().int().min(1).max(20).catch(5),
+  gapMinMin: z.number().min(1).max(240).catch(20),
+  gapMaxMin: z.number().min(1).max(240).catch(40),
+  /** Active hours, India time, "HH:MM". */
+  startTime: z.string().catch('10:00'),
+  endTime: z.string().catch('19:30'),
+  /** Days it runs: 0 = Sunday … 6 = Saturday. */
+  days: z.array(z.number().int().min(0).max(6)).catch([1, 2, 3, 4, 5, 6]),
+  /** Fill to Submit and record "would apply", without sending. */
+  dryRun: z.boolean().catch(true),
+  /** Advanced/tests: a search page to use instead of LinkedIn's ("{title}" is replaced). */
+  searchUrl: z.string().catch(''),
+});
+
 const DebugSchema = z.object({
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).catch('info'),
   console: z.boolean().catch(true),
@@ -190,6 +215,7 @@ export const SettingsSchema = z.object({
   appearance: AppearanceSchema.prefault(EMPTY),
   panel: PanelSchema.prefault(EMPTY),
   tracker: TrackerSchema.prefault(EMPTY),
+  autopilot: AutopilotSchema.prefault(EMPTY),
   debug: DebugSchema.prefault(EMPTY),
 });
 

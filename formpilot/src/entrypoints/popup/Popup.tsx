@@ -24,6 +24,8 @@ import {
   ListChecks,
   Square,
   RefreshCw,
+  Bot,
+  Play,
 } from 'lucide-react';
 import { Switch } from '@/components/ui';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
@@ -36,6 +38,7 @@ import { AUTHOR } from '@/lib/about';
 import { vaultStatus } from '@/lib/vault';
 import type { JobInfo } from '@/lib/job';
 import type { TrackerLookup, TrackerSummary } from '@/lib/tracker';
+import type { ApState } from '@/lib/autopilot-runner';
 
 function openOptions(section?: string) {
   const action = (section ?? 'settings').split('?')[0];
@@ -93,6 +96,11 @@ export function Popup() {
   const [trackerErr, setTrackerErr] = useState('');
   const [busy, setBusy] = useState<'' | 'save-job' | 'mark-applied'>('');
   const [copied, setCopied] = useState(false);
+  const [ap, setAp] = useState<ApState | null>(null);
+  const apCall = (action: 'start' | 'stop' | 'status' | 'run-now') => rpc<ApState>({ type: 'autopilot', action }).then(setAp).catch(() => {});
+  useEffect(() => {
+    void apCall('status');
+  }, []);
 
   useEffect(() => {
     vaultStatus().then((v) => setLocked(v.exists && v.mode === 'strict' && !v.usable)).catch(() => {});
@@ -344,6 +352,38 @@ export function Popup() {
               </div>
             </div>
           </button>
+        ) : null}
+
+        {/* Autopilot: applies on its own in a separate window */}
+        {settings.tracker.enabled ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex items-center gap-3">
+              <Bot className={`size-5 ${ap?.running ? 'text-emerald-500' : 'text-zinc-400'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-semibold">
+                  Autopilot {ap?.running ? '· on' : '· off'}
+                  {settings.autopilot.dryRun ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">dry run</span> : null}
+                </div>
+                <div className="truncate text-[11px] text-zinc-500" title={ap?.message}>
+                  {ap ? `${ap.day.sent + ap.day.dry}/${settings.autopilot.dailyCap} today · ${ap.message}` : 'Applies in its own window, in small batches'}
+                </div>
+              </div>
+              {ap?.running ? (
+                <>
+                  <button className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Run a batch now" onClick={() => void apCall('run-now')}>
+                    <Play className="size-4" />
+                  </button>
+                  <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" title="Stop" onClick={() => void apCall('stop')}>
+                    <Square className="size-4" />
+                  </button>
+                </>
+              ) : (
+                <button className="rounded-lg bg-brand px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110" onClick={() => void apCall('start')}>
+                  Start
+                </button>
+              )}
+            </div>
+          </div>
         ) : null}
 
         {/* Fill */}

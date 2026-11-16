@@ -39,7 +39,9 @@ export type RpcRequest =
   | { type: 'open-options'; section?: string }
   | { type: 'site-toggle'; host: string; enabled: boolean }
   /** Job tracker: record a job as applied (or just saved), with the answers given on the form. */
-  | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[] }
+  | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[]; recordedBy?: string }
+  | { type: 'autopilot-batch-done'; result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string } }
+  | { type: 'autopilot'; action: 'start' | 'stop' | 'status' | 'run-now' }
   | { type: 'tracker-test'; url?: string }
   /** Popup: is this job already in the tracker? */
   | { type: 'tracker-lookup'; url: string; company?: string; role?: string }
@@ -90,7 +92,7 @@ export async function rpc<T = unknown>(req: RpcRequest): Promise<T> {
 
 // ---- Background → content (tabs.sendMessage) ----
 export type CommandName = 'open-suggestions' | 'fill-form' | 'remember' | 'save-job' | 'mark-applied' | 'get-job' | 'apply-queue' | 'apply-queue-stop' | 'apply-queue-status';
-export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' } | { type: 'settings-ping' };
+export type TabCommand = { type: 'command'; name: CommandName; via?: 'shortcut' | 'context_menu' | 'toolbar' | 'autopilot'; opts?: { batch?: number; dryRun?: boolean; unattended?: boolean; autoSubmit?: boolean; cap?: number } } | { type: 'settings-ping' };
 
 export interface Stats {
   docs: number;
