@@ -72,6 +72,11 @@ describe('walking a multi-step form', () => {
     expect(decideStep(scope, { ignoreErrors: true }).kind).toBe('next');
   });
 
+  it('prefers Next over a Save / Send button on the same step (LinkedIn Edit experience)', () => {
+    const scope = page(`<div role="dialog"><input value="x"><button type="button">Save</button><button type="button">Send</button><button type="button">Next</button></div>`);
+    expect(decideStep(scope).kind).toBe('next');
+  });
+
   it('ignores disabled buttons and empty error containers', () => {
     const scope = page(`<div role="dialog"><input value="x"><div class="error-container"></div><button type="button" disabled>Next</button></div>`);
     expect(decideStep(scope).kind).toBe('none');

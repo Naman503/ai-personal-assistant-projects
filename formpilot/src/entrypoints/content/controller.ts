@@ -5,6 +5,7 @@ import { createStore, visibleItems, type Store, type UIState } from './store';
 import css from './ui/styles.css?inline';
 import { createLogger } from '@/lib/logger';
 import { focusIsOurs, quietFocus } from '@/lib/automation';
+import { applyDialog } from '@/lib/queue';
 import { dateBlocks, MONTH_NAMES, orgKey, plan, WORK_KEY, type Remembered, type WorkSpan } from '@/lib/fields/workdates';
 import type { Settings } from '@/lib/settings';
 import { activeProvidersCount } from './providers';
@@ -812,6 +813,16 @@ export class Controller {
     // Nothing fillable focused (toolbar button, a step with only radio buttons, LinkedIn's
     // closed shadow-root dialog): start from the open application dialog instead.
     if (!isFieldLike(anchor)) anchor = dialogAnchor() ?? anchor ?? document.body;
+    // An application dialog is open but the cursor is somewhere else (a LinkedIn chat box, the
+    // search bar): fill the application, never the other box.
+    const app = applyDialog();
+    if (app && anchor && !deepContains(app, anchor)) {
+      const inside = dialogAnchor();
+      if (inside && deepContains(app, inside)) {
+        log.info('fill-form: the cursor is outside the open application; filling the application instead');
+        anchor = inside;
+      }
+    }
     if (!anchor || this.store.get().filling) return none;
     if (!contextAlive()) return (this.handleDeadContext(), none);
     this.ensureUI(anchor);
@@ -1143,4 +1154,15 @@ function legendText(radio: HTMLInputElement): string {
   const half = t.length / 2;
   if (Number.isInteger(half) && t.slice(0, half) === t.slice(half)) t = t.slice(0, half).trim();
   return t;
+}
+
+/** `inner` is inside `outer`, across shadow-root boundaries. */
+function deepContains(outer: Element, inner: Element): boolean {
+  let cur: Node | null = inner;
+  while (cur) {
+    if (cur === outer || outer.contains(cur)) return true;
+    const root: Node = cur.getRootNode();
+    cur = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
 }

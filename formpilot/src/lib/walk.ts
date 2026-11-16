@@ -132,8 +132,12 @@ export function decideStep(scope: Element, opts: { ignoreErrors?: boolean } = {}
   }
   const missing = emptyRequired(scope);
   if (missing.length) return { kind: 'blocked', reason: `${missing.length} required field${missing.length > 1 ? 's' : ''} need${missing.length > 1 ? '' : 's'} you`, field: missing[0] };
-  if (submit) return { kind: 'submit', button: submit };
+  // A step with Next is never the last one, even if it also has a "Save" / "Send"-looking button
+  // (LinkedIn's Edit experience "Save", a chat "Send"): go on rather than stop there.
+  const strong = submit && /\b(submit|send application|apply)\b/i.test(buttonText(submit));
+  if (submit && strong) return { kind: 'submit', button: submit };
   if (next) return { kind: 'next', button: next };
+  if (submit) return { kind: 'submit', button: submit };
   return { kind: 'none' };
 }
 
