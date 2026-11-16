@@ -56,7 +56,9 @@ apply.onclick = () => {
     if (!v) return;
     window.__answers.push(v);
     const resp = Object.fromEntries(ids.map((id) => [id, 200]));
-    setTimeout(() => (location.href = `/myapply/saveApply.html?strJobsarr=[${ids}]&applytype=multiple&multiApplyResp=${encodeURIComponent(JSON.stringify(resp))}`), 600);
+    // Live Naukri (2026-11-16) signs off before moving to its confirmation page.
+    ask('Thank you for your responses.');
+    setTimeout(() => (location.href = `/myapply/saveApply.html?strJobsarr=[${ids}]&applytype=multiple&multiApplyResp=${encodeURIComponent(JSON.stringify(resp))}`), 4000);
   };
 };
 </script>
