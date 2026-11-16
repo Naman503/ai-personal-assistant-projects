@@ -33,8 +33,11 @@ export default defineContentScript({
     configureLogger({ level: settings.debug.logLevel, console: settings.debug.console });
 
     // Forward warnings/errors to the background log viewer (Options → Logs).
+    // Warnings and errors always reach Options → Logs; so do the form-filling steps (each field,
+    // each fix, each Next) so a run that went wrong can be read back afterwards.
+    const FORWARD_INFO = new Set(['fill', 'fill-form', 'content:walk']);
     addLogSink((e) => {
-      if ((e.level === 'warn' || e.level === 'error') && contextAlive()) {
+      if ((e.level === 'warn' || e.level === 'error' || (e.level === 'info' && FORWARD_INFO.has(e.ns))) && contextAlive()) {
         chrome.runtime.sendMessage({ type: 'log', entry: e }).catch(() => {});
       }
     });

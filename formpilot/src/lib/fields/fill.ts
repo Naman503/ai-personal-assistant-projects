@@ -74,12 +74,12 @@ export function coerceForInput(el: HTMLInputElement, text: string): string {
   return s;
 }
 
-function fillTextControl(el: HTMLInputElement | HTMLTextAreaElement, raw: string, mode: 'replace' | 'cursor', label: string): FillResult {
+function fillTextControl(el: HTMLInputElement | HTMLTextAreaElement, raw: string, mode: 'replace' | 'cursor', label: string, exact = false): FillResult {
   const previous = el.value;
   const isInput = el instanceof HTMLInputElement;
   // Fit the answer to this field first ("30 days" → "30" for a days-only box, "10,75,000" → "10.75" in lakhs).
-  const adapted = isInput ? adaptValue(raw, specOf(el, label)) || raw : raw;
-  if (adapted !== raw.trim()) log.debug('adapted answer to the field', { from: raw.slice(0, 40), to: adapted.slice(0, 40) });
+  const adapted = isInput && !exact ? adaptValue(raw, specOf(el, label)) || raw : raw.trim();
+  if (adapted !== raw.trim()) log.info(`fitted "${label.slice(0, 60)}": ${JSON.stringify(raw.slice(0, 40))} → ${JSON.stringify(adapted.slice(0, 40))}`);
   let text = isInput ? coerceForInput(el, adapted) : raw;
   if (el.maxLength > 0) text = clampToLength(text, el.maxLength);
 
@@ -217,11 +217,11 @@ export function fillCheckbox(el: HTMLInputElement, text: string): FillResult {
 }
 
 /** `label` is the question (pass it for chat boxes, where the field's own label is generic). */
-export function fillElement(el: Element, text: string, mode: 'replace' | 'cursor' = 'replace', label?: string): FillResult {
+export function fillElement(el: Element, text: string, mode: 'replace' | 'cursor' = 'replace', label?: string, opts: { exact?: boolean } = {}): FillResult {
   let res: FillResult;
   const q = () => label ?? (() => { try { return resolveLabel(el as FillableElement); } catch { return ''; } })();
   if (el instanceof HTMLInputElement && el.type === 'checkbox') res = fillCheckbox(el, text);
-  else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) res = fillTextControl(el, text, mode, q());
+  else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) res = fillTextControl(el, text, mode, q(), opts.exact);
   else if (el instanceof HTMLSelectElement) res = fillSelect(el, text, q());
   else if (el instanceof HTMLElement && el.isContentEditable) res = fillContentEditable(el, text, mode);
   else res = { ok: false, method: 'none', previous: '', value: '' };

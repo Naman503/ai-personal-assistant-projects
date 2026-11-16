@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply to Grip Invest | LinkedIn</title>
+<style>body{font:14px system-ui;margin:20px} .row{margin:10px 0} .help p.err{color:rgb(203,17,45)} .help p{margin:2px 0}</style></head>
+<body>
+<!-- Mirrors the live LinkedIn Easy Apply salary step (Nov 2026): plain type=text boxes with an
+     aria-label, a helper div (aria-describedby) holding a red message and a character counter.
+     Validation runs only when Review is pressed; a rejected box keeps its message until then. -->
+<button id="easy" type="button">Easy Apply</button>
+<script>
+const Q = [
+  { id: 'cur', q: "What's your Current CTC ?", ok: (v) => /^\d+(\.\d+)?$/.test(v), msg: 'Invalid input' },
+  { id: 'lpa', q: 'Expected CTC (in LPA) ?', ok: (v) => /^\d+(\.\d+)?$/.test(v) && +v > 0 && +v < 100, msg: 'Invalid input' },
+  { id: 'exp', q: 'Expected CTC ?', ok: (v) => /^\d+$/.test(v) && +v >= 0 && +v <= 99, msg: 'Enter a whole number between 0 and 99' },
+  { id: 'np', q: 'Notice Period ?', ok: (v) => /^\d+$/.test(v), msg: 'Invalid input' },
+];
+window.__reviewPresses = 0;
+document.getElementById('easy').onclick = () => {
+  const d = document.createElement('dialog');
+  d.setAttribute('data-testid', 'dialog');
+  d.innerHTML = `<h2>Apply to Grip Invest</h2><p>3/4 pages</p><div id="s1">` +
+    Q.map((x) => `<div class="row"><input type="text" required id="${x.id}" aria-label="${x.q}" aria-describedby="${x.id}-info" maxlength="20">
+      <div class="help" id="${x.id}-info" data-testid="text-input-helper-text"><p class="err"></p><div><p class="count">0/20</p></div></div></div>`).join('') +
+    `<button id="review" type="button">Review</button></div><div id="s2" hidden><button id="send" type="button">Submit application</button></div>`;
+  document.body.appendChild(d);
+  d.show();
+  for (const x of Q) {
+    const el = d.querySelector('#' + x.id);
+    el.addEventListener('input', () => { d.querySelector(`#${x.id}-info .count`).textContent = el.value.length + '/20'; });
+  }
+  d.querySelector('#review').onclick = () => {
+    window.__reviewPresses++;
+    let bad = 0;
+    for (const x of Q) {
+      const el = d.querySelector('#' + x.id);
+      const good = x.ok(el.value.trim());
+      d.querySelector(`#${x.id}-info .err`).textContent = good ? '' : x.msg;
+      if (!good) bad++;
+    }
+    if (!bad) { d.querySelector('#s1').hidden = true; d.querySelector('#s2').hidden = false; }
+  };
+  d.querySelector('#send').onclick = () => { window.__submitted = true; };
+};
+</script>
+</body>
+</html>
