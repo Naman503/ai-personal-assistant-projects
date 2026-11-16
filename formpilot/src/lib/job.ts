@@ -141,7 +141,9 @@ export function extractJob(doc: Document = document, href = location.href): JobI
     job.salary = q('[class*="salary"]') || job.salary;
     job.description = qLong('[class*="job-desc"]', '[class*="dang-inner-html"]') || job.description;
   }
-  if (!job.role) job.role = q('h1') || clean(doc.title.split(/\s[|\-–]\s/)[0]);
+  // The tab title is "Role | Company | Site". Split on "|" only: dashes belong to the role
+  // ("Senior Software Engineer – Expo / React Native"), and cutting them merged different jobs.
+  if (!job.role) job.role = q('h1') || clean(doc.title.replace(/^\(\d+\+?\)\s*/, '').split(/\s\|\s/)[0]);
   if (!job.company) job.company = clean((doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null)?.content);
   if (!job.description) job.description = qLong('main', 'article', '[class*="description"]');
   // Company logo: LinkedIn's company-logo image, a Wellfound/Ashby/Cutshort logo, else an <img> whose alt says "<company> logo".
