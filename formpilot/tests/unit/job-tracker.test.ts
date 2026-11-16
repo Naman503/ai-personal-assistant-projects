@@ -123,6 +123,32 @@ describe('company logo', () => {
     document.body.innerHTML = '<main><img src="https://media.licdn.com/dms/image/v2/X/company-logo_100_100/0/1?e=1" alt="Blend logo"><h1>Sr Mobile Developer</h1></main>';
     expect(extractJob(document, 'https://www.linkedin.com/jobs/view/4490348204/').logoUrl).toContain('company-logo');
   });
+  it("on a LinkedIn search page, takes this job's logo, not the first job in the list", () => {
+    document.head.innerHTML = '';
+    document.title = 'Software Engineer | Fareportal | LinkedIn';
+    const L = (n: string) => `https://media.licdn.com/dms/image/v2/X/company-logo_100_100/0/1/${n}_logo?e=1`;
+    document.body.innerHTML = `<ul class="jobs-search-results">
+        <li><img src="${L('phonepe')}" alt="PhonePe logo"><a>Software Engineer</a></li>
+        <li><img src="${L('fareportal')}" alt="Fareportal logo"><a>Software Engineer</a></li>
+      </ul>
+      <div class="job-details-jobs-unified-top-card__container--two-pane">
+        <div class="job-details-jobs-unified-top-card__company-name"><a>Fareportal</a></div>
+        <div class="job-details-jobs-unified-top-card__job-title"><h1>Software Engineer</h1></div>
+      </div>`;
+    expect(extractJob(document, 'https://www.linkedin.com/jobs/search/?currentJobId=4490000001').logoUrl).toBe(L('fareportal'));
+  });
+  it("uses the logo in the job's header when no image names the company", () => {
+    const L = (n: string) => `https://media.licdn.com/dms/image/v2/X/company-logo_100_100/0/1/${n}?e=1`;
+    document.body.innerHTML = `<ul><li><img src="${L('other')}" alt=""></li></ul>
+      <div class="jobs-unified-top-card"><img class="EntityPhoto" src="${L('mine')}" alt=""><h1>Engineer</h1><a class="jobs-unified-top-card__company-name">Mine Co</a></div>`;
+    expect(extractJob(document, 'https://www.linkedin.com/jobs/view/1/').logoUrl).toBe(L('mine'));
+  });
+  it('leaves the logo empty when several companies show and none is clearly this one', () => {
+    const L = (n: string) => `https://media.licdn.com/dms/image/v2/X/company-logo_100_100/0/1/${n}?e=1`;
+    document.title = 'Engineer | Mystery Co | LinkedIn';
+    document.body.innerHTML = `<ul><li><img src="${L('a')}" alt=""></li><li><img src="${L('b')}" alt=""></li></ul><main><h1>Engineer</h1></main>`;
+    expect(extractJob(document, 'https://www.linkedin.com/jobs/view/2/').logoUrl).toBe('');
+  });
   it('ignores non-https or missing logos', () => {
     document.body.innerHTML = '<main><h1>Engineer</h1><img src="data:image/png;base64,AA" alt="Acme logo"></main>';
     expect(extractJob(document, 'https://acme.example/jobs/1').logoUrl).toBe('');
