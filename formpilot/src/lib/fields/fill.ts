@@ -167,6 +167,14 @@ export function optionScore(answer: string, label: string, value: string): numbe
   return (overlap / Math.max(lt.length, at.size)) * 0.6;
 }
 
+/** The option whose text IS the answer (the AI copied it): wins over number/range guessing. */
+export function exactOption<T extends { label: string; value: string }>(answer: string, options: T[]): T | null {
+  const n = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const a = n(answer);
+  if (!a) return null;
+  return options.find((o) => n(o.label) === a || n(o.value) === a) ?? null;
+}
+
 export function bestOption<T extends { label: string; value: string }>(answer: string, options: T[]): T | null {
   let best: T | null = null;
   let bestScore = 0;
@@ -186,8 +194,9 @@ function fillSelect(el: HTMLSelectElement, text: string, label: string): FillRes
     .filter((o) => !o.disabled && o.value !== '')
     .map((o) => ({ value: o.value, label: collapseWs(o.label || o.text), o }));
   // Numbers and ranges first ("30 days" → "1 month", "3+ years" → "3-5 years"), then text similarity.
-  const ri = rangeOption(text, opts.map((o) => o.label), label);
-  const match = ri >= 0 ? opts[ri] : bestOption(text, opts);
+  const exact = exactOption(text, opts);
+  const ri = exact ? -1 : rangeOption(text, opts.map((o) => o.label), label);
+  const match = exact ?? (ri >= 0 ? opts[ri] : bestOption(text, opts));
   if (!match) return { ok: false, method: 'select', previous, value: el.value };
   el.focus({ preventScroll: true });
   const set = nativeSetter(el);
@@ -202,8 +211,9 @@ function fillSelect(el: HTMLSelectElement, text: string, label: string): FillRes
 export function fillRadioGroup(radios: HTMLInputElement[], text: string, labelOf: (r: HTMLInputElement) => string, question = ''): FillResult {
   const previous = radios.find((r) => r.checked)?.value ?? '';
   const opts = radios.map((r) => ({ value: r.value, label: labelOf(r), r }));
-  const ri = rangeOption(text, opts.map((o) => o.label), question);
-  const match = ri >= 0 ? opts[ri] : bestOption(text, opts);
+  const exact = exactOption(text, opts);
+  const ri = exact ? -1 : rangeOption(text, opts.map((o) => o.label), question);
+  const match = exact ?? (ri >= 0 ? opts[ri] : bestOption(text, opts));
   if (!match) return { ok: false, method: 'radio', previous, value: previous };
   if (!match.r.checked) match.r.click();
   return { ok: match.r.checked, method: 'radio', previous, value: match.label };
