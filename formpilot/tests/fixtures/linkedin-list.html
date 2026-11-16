@@ -95,7 +95,7 @@ function wire(j, r, body, native) {
     q('#s1').remove(); q('#s2').hidden = false;
   };
   q('#send').onclick = (e) => {
-    if (!e.isTrusted) { window.__untrustedSubmit = true; return; }
+    if (!e.isTrusted && !window.__allowScripted) { window.__untrustedSubmit = true; return; }
     setTimeout(() => {
       window.__sent.push(j.title); j.applied = true; renderList();
       dlg.innerHTML = `<h2>Application sent</h2><p>Your application was sent to ${j.company}!</p><button type="button">Done</button>`;

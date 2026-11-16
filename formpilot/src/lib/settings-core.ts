@@ -203,7 +203,7 @@ export const DEFAULTS: Settings = {
     numberShortcuts: true,
     tabAccepts: false,
   },
-  tracker: { enabled: false, url: '', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 30, queueDelaySec: 6, queueSkipTitles: '' },
+  tracker: { enabled: false, url: '', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 30, queueDelaySec: 6, queueSkipTitles: '', queueAutoSubmit: false },
   debug: { logLevel: 'info', console: true },
 };
 

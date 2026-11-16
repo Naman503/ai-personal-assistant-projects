@@ -2,7 +2,8 @@
  * Apply queue (LinkedIn): go down the job list, open each Easy Apply job you haven't applied
  * to, fill it and press Next to the Submit button, then wait for YOU to press Submit. After the
  * application is sent, close LinkedIn's confirmation, pause a few seconds and open the next.
- * It never presses Submit. A step that needs you (a blank required field, an error) waits;
+ * It presses Submit only with "Apply queue: submit for me" on (off by default), after a
+ * cancellable countdown, and only when no step was left for you. A step that needs you (a blank required field, an error) waits;
  * once you move past it, the queue takes over again.
  */
 import {
@@ -58,6 +59,8 @@ export interface QueuePrefs {
   cap: number;
   delaySec: number;
   skipTitles: string;
+  /** Press Submit after a short countdown once the walk reaches it with nothing left for you. */
+  autoSubmit?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -128,7 +131,7 @@ export class ApplyQueue {
 
   private async loop() {
     const prefs = this.deps.prefs();
-    trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles });
+    trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles, autoSubmit: !!prefs.autoSubmit });
     for (let page = 0; page < 10 && !this.stopRequested; page++) {
       await this.loadWholeList();
       let list = candidates(jobCards(), prefs.skipTitles, this.tried);
@@ -301,6 +304,7 @@ export class ApplyQueue {
       else this.status(`${n} of ${prefs.cap} today · ${label} — Finish this one by hand, or Skip.`);
     };
     await step();
+    if (outcome === 'submit' && prefs.autoSubmit) await this.autoSubmit(label, n, prefs);
     // Wait for the user. Up to 15 minutes per job.
     const end = Date.now() + 15 * 60_000;
     while (Date.now() < end && !this.stopRequested) {
@@ -340,6 +344,28 @@ export class ApplyQueue {
       await this.discard(applyDialog());
     }
     return false;
+  }
+
+  /**
+   * Auto-submit (opt-in): a short countdown you can cancel with Skip or Stop, then press the
+   * Submit button the walk reached. Only when the walk ended on Submit, so no step was left
+   * with an empty required field or an error.
+   */
+  private async autoSubmit(label: string, n: number, prefs: QueuePrefs) {
+    const secs = Math.round(between(5, 9) / 1000); // between() is in ms
+    const before = this.stepFingerprint();
+    for (let s = secs; s > 0; s--) {
+      if (this.stopRequested || this.skipRequested) return trace(`auto-submit cancelled: ${label}`);
+      if (this.stepFingerprint() !== before) return trace(`auto-submit cancelled (the form changed): ${label}`);
+      this.status(`${n} of ${prefs.cap} today · ${label} — Submitting in ${s} s. Press Skip or Stop to cancel.`, 'success');
+      await sleep(1000);
+    }
+    if (this.stopRequested || this.skipRequested) return trace(`auto-submit cancelled: ${label}`);
+    const d = applyDialog();
+    const step = d ? decideStep(d) : null;
+    if (!d || step?.kind !== 'submit' || !/\b(submit|send application|apply)\b/i.test(step.button.textContent ?? '')) return trace(`auto-submit: no Submit button any more on ${label}`);
+    trace(`auto-submit: pressing "${(step.button.textContent ?? '').trim()}" for ${label}`);
+    humanClick(step.button);
   }
 
   /** Close the dialog without sending; LinkedIn asks to save or discard, we discard. */

@@ -808,6 +808,43 @@ test('LinkedIn Edit experience that opens on a later step (live markup): the wal
   await expect.poll(async () => (await msgs()).includes('✓ "Start month at Metafic" ← "April"'), { timeout: 10_000 }).toBe(true);
 });
 
+test('LinkedIn radio questions without a legend (live markup): the question reaches the AI and the right range is picked', async ({ context, sw }) => {
+  await configure(sw, { tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: false, walkToSubmit: true }, behavior: { enabled: false } });
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/apply-radios-live.html');
+  await page.click('#easy');
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/apply-radios-live.html' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'fill-form', via: 'toolbar' });
+  });
+  // The mock answers "3+ years" to experience questions → "Less than 5 years".
+  await expect.poll(() => page.evaluate(() => !(document.getElementById('s2') as HTMLElement).hidden), { timeout: 30_000 }).toBe(true);
+  expect(await page.evaluate(() => ['g1', 'g2'].map((g) => [...document.querySelectorAll<HTMLInputElement>(`input[name="radio-group-${g}"]`)].findIndex((r) => r.checked)))).toEqual([0, 0]);
+  const prompts = (await requests()).map((r) => r.prompt).join('\n');
+  expect(prompts).toContain('How many years of hands-on experience do you have developing and maintaining production applications using React Native?');
+  expect(prompts).toContain('5–7 years — I have solid experience');
+  expect(prompts).not.toContain('radio-group-g1');
+});
+
+test('apply queue with "submit for me" on: counts down and presses Submit itself', async ({ context, sw }) => {
+  test.setTimeout(150_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: true, queueDailyCap: 10, queueDelaySec: 0, queueSkipTitles: 'Engineering Manager', queueAutoSubmit: true },
+    behavior: { enabled: false },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove('fpQueueDay'));
+  const page = await context.newPage();
+  await page.goto('http://localhost:4173/linkedin-list.html');
+  await page.evaluate(() => ((window as unknown as { __allowScripted: boolean }).__allowScripted = true)); // the fixture's Submit accepts a scripted click
+  await sw.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'http://localhost:4173/linkedin-list.html*' });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'command', name: 'apply-queue', via: 'toolbar' }, { frameId: 0 });
+  });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __sent: string[] }).__sent), { timeout: 120_000 }).toEqual(['Mobile Engineer', 'SDE 2 - React Native']);
+  const msgs = () => sw.evaluate(async () => (((await chrome.storage.session.get('fpLogs')).fpLogs ?? []) as { msg: string }[]).map((e) => e.msg));
+  await expect.poll(async () => (await msgs()).filter((m) => m.startsWith('auto-submit: pressing "Submit application"')).length, { timeout: 10_000 }).toBe(2);
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {

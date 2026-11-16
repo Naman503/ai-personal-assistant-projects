@@ -169,6 +169,8 @@ const TrackerSchema = z.object({
   queueDailyCap: z.number().int().min(1).max(200).catch(30),
   queueDelaySec: z.number().min(0).max(120).catch(6),
   queueSkipTitles: z.string().catch(''),
+  /** Apply queue: press Submit for you once a form is filled to the end with nothing left for you. */
+  queueAutoSubmit: z.boolean().catch(false),
 });
 
 const DebugSchema = z.object({

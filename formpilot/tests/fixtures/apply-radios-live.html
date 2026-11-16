@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply to Smart Working | LinkedIn</title>
+<style>body{font:14px system-ui;margin:20px} .err{color:rgb(203,17,45)}
+input[type=radio]{position:absolute;opacity:0;width:1px;height:1px} label{display:inline-block;width:20px;height:20px;border:1px solid #333;border-radius:50%}</style></head>
+<body>
+<!-- LinkedIn Easy Apply "Additional Questions" as captured live on 2026-11-16 (Smart Working):
+     the question is a <p> above a legend-less fieldset; each radio's aria-label is the QUESTION;
+     the <label for> is empty; the option text is a <p> next to it; radios have no value. -->
+<button id="easy" type="button">Easy Apply</button>
+<script>
+const qs = [
+  ['g1', 'Please respond truthfully. How many years of hands-on experience do you have developing and maintaining production applications using React Native?', ['Less than 5 years — I have limited hands-on experience developing production React Native applications.', '5–7 years — I have solid experience developing and maintaining production React Native applications.', 'More than 7 years — I have extensive experience building, enhancing and maintaining production React Native applications.']],
+  ['g2', 'Please respond truthfully. How many years of professional experience do you have with TypeScript and React, including hooks, component design, navigation and state management?', ['Less than 5 years — I have limited professional experience using TypeScript and React.', '5–7 years — I have solid experience using TypeScript and React.', 'More than 7 years — I have extensive experience developing production applications with TypeScript and React.']],
+];
+const group = ([g, q, opts]) => `<div><p>${q}*</p><fieldset aria-describedby="error-${g}" role="radiogroup"><div>${opts.map((o, i) =>
+  `<div><div><div><input id="${g}-${i}" aria-label="${q}" tabindex="0" type="radio" name="radio-group-${g}"><label for="${g}-${i}"></label></div><div><p>${o}</p></div></div></div>`).join('')}</div></fieldset><p class="err" id="error-${g}"></p></div>`;
+document.getElementById('easy').onclick = () => {
+  const d = document.createElement('dialog');
+  d.setAttribute('data-testid', 'dialog');
+  d.innerHTML = `<h2>Apply to Smart Working</h2><div id="s1"><h3>Additional Questions</h3>${qs.map(group).join('')}<button id="review" type="button">Review</button></div>
+    <div id="s2" hidden><button id="send" type="button">Submit application</button></div>`;
+  document.body.appendChild(d);
+  d.show();
+  d.querySelector('#review').onclick = () => {
+    let bad = 0;
+    for (const [g] of qs) {
+      const ok = !!d.querySelector(`input[name="radio-group-${g}"]:checked`);
+      d.querySelector(`#error-${g}`).textContent = ok ? '' : 'This field is required';
+      if (!ok) bad++;
+    }
+    if (!bad) { d.querySelector('#s1').hidden = true; d.querySelector('#s2').hidden = false; }
+  };
+};
+</script>
+</body>
+</html>

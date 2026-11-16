@@ -364,7 +364,8 @@ export function rangeOption(answer: string, labels: string[], question = ''): nu
     let bestKey = Infinity;
     ranges.forEach((r, i) => {
       if (!r || v < r.lo || v > r.hi) return;
-      const key = r.hi - r.lo + (v === r.hi && r.hi !== r.lo ? 0.5 : 0);
+      // Open-ended ranges ("More than 7 years") rank after closed ones but still count.
+      const key = Number.isFinite(r.hi) ? r.hi - r.lo + (v === r.hi && r.hi !== r.lo ? 0.5 : 0) : 1e12;
       if (key < bestKey) {
         best = i;
         bestKey = key;

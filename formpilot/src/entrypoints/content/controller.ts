@@ -6,13 +6,14 @@ import css from './ui/styles.css?inline';
 import { createLogger } from '@/lib/logger';
 import { focusIsOurs, quietFocus } from '@/lib/automation';
 import { applyDialog } from '@/lib/queue';
+import { radioGroupLabel, radioOptionLabel } from '@/lib/fields/radios';
 import { dateBlocks, MONTH_NAMES, orgKey, plan, WORK_KEY, type Remembered, type WorkSpan } from '@/lib/fields/workdates';
 import type { Settings } from '@/lib/settings';
 import { activeProvidersCount } from './providers';
 import { SUGGEST_PORT, rpc, track, type FillTrigger, type InsertMethod, type LearnTrigger, type PortEvent, type PortRequest } from '@/lib/messages';
 import type { FieldContext, OpenTrigger, Suggestion, SuggestOptions } from '@/lib/types';
 import { overlayRoot, conversationQuestion, conversationQuestionInfo, conversationDiagnostics, questionReady, lowestCommonAncestor, describeAncestors } from '@/lib/fields/context';
-import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, resolveLabel, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike, formOf } from '@/lib/fields/context';
+import { describeConstraints, editableRoot, extractField, extractPage, fieldKind, FID_ATTR, radioGroups, readValue, siblingFields, deepActiveElement as deepActive, dialogAnchor, isFieldLike, formOf } from '@/lib/fields/context';
 import { checkEligibility, siteAllowed } from '@/lib/fields/eligibility';
 import { fillElement, fillRadioGroup, flash, restoreElement } from '@/lib/fields/fill';
 import { classifyField, isSensitive } from '@/lib/fields/classify';
@@ -846,8 +847,13 @@ export class Controller {
     for (const [, radios] of radioGroups(anchor === document.body ? document.body : anchor)) {
       if (radios.some((r) => r.checked)) continue;
       const first = radios[0];
-      const groupLabel = legendText(first) || resolveLabel(first.parentElement as HTMLElement) || first.name;
-      const options = radios.map((r) => ({ value: r.value, label: resolveLabel(r) || r.value }));
+      const groupLabel = radioGroupLabel(radios);
+      // Values are often all "on" (LinkedIn): then the option text is the value too.
+      const sameValues = new Set(radios.map((r) => r.value)).size < radios.length;
+      const options = radios.map((r) => {
+        const label = radioOptionLabel(r, radios);
+        return { value: sameValues ? label : r.value, label };
+      });
       const semantic = classifyField({ label: groupLabel, name: first.name });
       if (isSensitive(semantic)) continue;
       entries.push({
@@ -902,7 +908,7 @@ export class Controller {
         }
         this.inserting = true;
         const r = e.radios
-          ? fillRadioGroup(e.radios, v, (x) => resolveLabel(x) || x.value, e.field?.label)
+          ? fillRadioGroup(e.radios, v, (x) => radioOptionLabel(x, e.radios), e.field?.label)
           : fillElement(e.el, v, 'replace', e.field.label || e.field.placeholder || undefined);
         this.inserting = false;
         // One line per field in Options → Logs: question, answer, where it came from, what went in.
@@ -1146,15 +1152,6 @@ function getAccent(name: string): string {
  * The question a radio group asks. LinkedIn writes it twice in the legend (a visible copy and
  * a screen-reader copy) plus a "*": keep one copy, drop the marker.
  */
-function legendText(radio: HTMLInputElement): string {
-  const legend = radio.closest('fieldset')?.querySelector('legend');
-  if (!legend) return '';
-  const visible = legend.querySelector('[aria-hidden="true"]')?.textContent;
-  let t = (visible || legend.textContent || '').replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').trim();
-  const half = t.length / 2;
-  if (Number.isInteger(half) && t.slice(0, half) === t.slice(half)) t = t.slice(0, half).trim();
-  return t;
-}
 
 /** `inner` is inside `outer`, across shadow-root boundaries. */
 function deepContains(outer: Element, inner: Element): boolean {

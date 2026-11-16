@@ -55,7 +55,7 @@ export default defineContentScript({
       accent: () => controller.accentColor(),
     });
     const queue = new ApplyQueue({
-      prefs: () => ({ cap: settings.tracker.queueDailyCap, delaySec: settings.tracker.queueDelaySec, skipTitles: settings.tracker.queueSkipTitles }),
+      prefs: () => ({ cap: settings.tracker.queueDailyCap, delaySec: settings.tracker.queueDelaySec, skipTitles: settings.tracker.queueSkipTitles, autoSubmit: settings.tracker.queueAutoSubmit }),
       fill: (anchor) => controller.fillForm('toolbar', { anchor, quiet: true }),
       walk: (anchor) => walker.run(anchor, { silent: true }),
       blockedReason: () => walker.lastReason || 'This step needs you',

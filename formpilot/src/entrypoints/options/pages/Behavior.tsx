@@ -209,6 +209,9 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
       <Row label="Apply queue: pause between jobs (seconds)" description="Randomised by ±50% so the clicks don't come at a fixed rhythm.">
         <Input type="number" min={0} max={120} className="w-24" value={String(t.queueDelaySec)} onChange={(e) => set('queueDelaySec', Math.max(0, Math.min(120, Number(e.target.value) || 0)))} />
       </Row>
+      <Row label="Apply queue: submit for me" description="Off: the queue stops at Submit and waits for you. On: when a form is filled to the end with nothing left for you, it counts down 5 to 9 seconds and presses Submit itself (Skip or Stop cancels). Applications go out with the AI's answers unchecked, so read a few in the tracker first. Steps that need you still stop and wait.">
+        <Switch checked={t.queueAutoSubmit} onCheckedChange={(v) => set('queueAutoSubmit', v)} />
+      </Row>
       <Row label="Apply queue: skip job titles containing" description="Comma separated, e.g. Engineering Manager, Director, iOS, .NET" stacked>
         <Input placeholder="Engineering Manager, Director, iOS" value={t.queueSkipTitles} onChange={(e) => set('queueSkipTitles', e.target.value)} />
       </Row>
