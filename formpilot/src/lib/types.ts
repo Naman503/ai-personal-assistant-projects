@@ -74,6 +74,8 @@ export interface ErrorInfo {
     | 'no-provider'
     | 'auth'
     | 'rate-limit'
+    /** The provider's daily allowance is used up (Gemini free tier: resets at midnight Pacific). */
+    | 'quota'
     | 'network'
     | 'timeout'
     | 'bad-response'

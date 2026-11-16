@@ -45,6 +45,14 @@ export async function httpError(res: Response, provider: string): Promise<LLMErr
       hint: 'Pick a model from the list in settings (use "Fetch models").',
     });
   }
+  // Gemini says which limit: per minute (wait a little) or per day (wait for the reset).
+  if (s === 429 && /per ?day|PerDay|daily|per_day/i.test(`${msg} ${body}`)) {
+    return new LLMError('quota', `Daily quota used up: ${msg}`, {
+      status: s,
+      provider,
+      hint: "The free daily allowance is used up. Gemini's resets at midnight Pacific time (13:30 India time); add a second provider to keep going.",
+    });
+  }
   if (s === 429) {
     return new LLMError('rate-limit', `Rate limited: ${msg}`, {
       status: s,

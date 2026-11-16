@@ -809,8 +809,8 @@ export class Controller {
   /** Called after every whole-form fill (the walker hooks in here). */
   afterFill?: (anchor: HTMLElement, result: { filled: number; total: number }, trigger: FillTrigger) => void;
 
-  async fillForm(trigger: FillTrigger = 'popup_menu', opts: { anchor?: HTMLElement; quiet?: boolean } = {}): Promise<{ filled: number; total: number }> {
-    const none = { filled: 0, total: 0 };
+  async fillForm(trigger: FillTrigger = 'popup_menu', opts: { anchor?: HTMLElement; quiet?: boolean } = {}): Promise<{ filled: number; total: number; error?: string }> {
+    const none: { filled: number; total: number; error?: string } = { filled: 0, total: 0 };
     let anchor = opts.anchor ?? this.field ?? deepActiveElement();
     // Nothing fillable focused (toolbar button, a step with only radio buttons, LinkedIn's
     // closed shadow-root dialog): start from the open application dialog instead.
@@ -989,7 +989,10 @@ export class Controller {
       const msg = (e as Error).message;
       log.error('fill-form failed', e);
       this.showToast(`Fill failed: ${msg}`, 'error', { label: 'Settings', run: () => this.actions.openSettings('providers') }, 8000);
-      return none;
+      // The autopilot needs to know why (a rate limit or a used-up quota means: wait, don't skip).
+      const code = (e as { info?: { code?: string } }).info?.code ?? 'unknown';
+      this.fillError = { code, at: Date.now() };
+      return { ...none, error: code };
     } finally {
       this.store.set({ filling: false });
     }
@@ -1091,6 +1094,16 @@ export class Controller {
         .then(() => this.showToast(`Saved “${truncate(value, 40)}” for “${truncate(q, 50)}”. Used next time.`, 'success', undefined, 3000))
         .catch(() => {});
     }, 300);
+  }
+
+  /** The last fill that failed because of the AI (rate limit, quota…), for the autopilot. */
+  private fillError: { code: string; at: number } | null = null;
+
+  /** Take (and clear) an AI error from a fill in the last `withinMs`. */
+  takeFillError(withinMs = 10 * 60_000): string | null {
+    const e = this.fillError;
+    this.fillError = null;
+    return e && Date.now() - e.at < withinMs ? e.code : null;
   }
 
   get writing() {

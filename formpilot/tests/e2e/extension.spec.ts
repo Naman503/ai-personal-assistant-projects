@@ -974,6 +974,31 @@ test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form f
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
 });
 
+test('autopilot: when the AI\'s daily quota is used up, it waits for the reset instead of skipping jobs', async ({ context, sw, extId }) => {
+  test.setTimeout(180_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: false, walkToSubmit: false, queueSkipTitles: 'Engineering Manager' },
+    behavior: { enabled: false },
+    autopilot: { titles: 'Mobile Engineer', dryRun: true, batchMin: 2, batchMax: 2, pauseMinSec: 1, pauseMaxSec: 2, skipWords: '', startTime: '00:00', endTime: '24:00', days: [0, 1, 2, 3, 4, 5, 6], searchUrl: 'http://localhost:4173/linkedin-list.html?q={title}' },
+  });
+  await fetch(`${LLM}/quota-used-up`);
+  await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot', 'fpQueueDay']));
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  type St = { phase: string; nextAt?: number; message: string; day: { skipped: number; dry: number } };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  await expect.poll(async () => (await state()).phase, { timeout: 120_000 }).toBe('ai-wait');
+  const st = await state();
+  expect(st.message).toMatch(/daily quota is used up/);
+  // Waits until after the next midnight in California, and skipped nothing.
+  expect(st.nextAt! - Date.now()).toBeGreaterThan(60 * 60_000);
+  expect(st.day.skipped).toBe(0);
+  expect(st.day.dry).toBe(0);
+  await fetch(`${LLM}/reset`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
+});
+
 test('apply queue works down a LinkedIn-style job list, stopping at Submit for the user each time', async ({ context, sw }) => {
   test.setTimeout(150_000);
   await configure(sw, {

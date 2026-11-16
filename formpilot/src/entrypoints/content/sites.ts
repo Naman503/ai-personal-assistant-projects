@@ -21,6 +21,7 @@ import { radioOptionLabel } from '@/lib/fields/radios';
 import { emptyRequired } from '@/lib/walk';
 import type { FieldContext } from '@/lib/types';
 import { extractJob } from '@/lib/job';
+import { AI_BLOCKING } from '@/lib/autopilot';
 
 const log = createLogger('autopilot:site');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -30,7 +31,16 @@ export interface JobResult {
   outcome: 'sent' | 'dry' | 'skip';
   reason: string;
   pushback?: string;
+  /** The AI couldn't answer (rate limit, quota…): not a skip, the job is tried again later. */
+  aiError?: string;
   answers?: { q: string; a: string }[];
+}
+
+/** An AI error worth waiting out (thrown by answerFor / reported by a fill). */
+class AiUnavailable extends Error {
+  constructor(public code: string) {
+    super(`the AI isn't answering (${code})`);
+  }
 }
 
 async function until(cond: () => boolean, ms: number, every = 400) {
@@ -63,7 +73,14 @@ async function answerFor(question: string, kind: 'text' | 'radio' | 'checkbox' |
     chat: !options.length,
   };
   const page = extractPage(document.body, { pageChars: 1500, otherFields: false, sendUrl: false });
-  const r = await rpc<{ values: Record<string, string>; sources: Record<string, string> }>({ type: 'fill-form', fields: [{ id: 'q', field }], page, trigger: 'toolbar' });
+  let r: { values: Record<string, string>; sources: Record<string, string> };
+  try {
+    r = await rpc({ type: 'fill-form', fields: [{ id: 'q', field }], page, trigger: 'toolbar' });
+  } catch (e) {
+    const code = (e as { info?: { code?: string } }).info?.code ?? 'unknown';
+    if (AI_BLOCKING.has(code)) throw new AiUnavailable(code);
+    throw e;
+  }
   log.info(`chatbot: "${question.slice(0, 90)}" → "${(r.values.q ?? '').slice(0, 60)}"`, { source: r.sources?.q ?? '', options });
   return r.values.q ?? '';
 }
@@ -132,7 +149,7 @@ async function applyNaukri(dryRun: boolean): Promise<JobResult> {
   let stuck = 0;
   const end = Date.now() + 5 * 60_000;
   while (Date.now() < end) {
-    await sleep(1200);
+    await sleep(between(0.9, 1.8));
     const push = sitePushback('naukri');
     if (push) return { outcome: 'skip', reason: push, pushback: push, answers };
     if (sentNotice('naukri')) return { outcome: 'sent', reason: 'Naukri confirmed', answers };
@@ -174,7 +191,7 @@ async function closeDialog(d: HTMLElement) {
   await until(() => !openDialog(), 4000);
 }
 
-async function applyCutshort(dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number }>): Promise<JobResult> {
+async function applyCutshort(dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>): Promise<JobResult> {
   const st = jobPageState('cutshort');
   if (st.applied) return { outcome: 'skip', reason: 'already applied' };
   if (!st.apply) return { outcome: 'skip', reason: 'no Apply button' };
@@ -193,7 +210,13 @@ async function applyCutshort(dryRun: boolean, fill: (anchor: HTMLElement) => Pro
   const d = openDialog()!;
   await sleep(between(1, 2));
   const first = d.querySelector<HTMLElement>('input:not([type=hidden]), textarea, select, [contenteditable=true]');
-  if (first) await fill(first);
+  if (first) {
+    const f = await fill(first);
+    if (f.error && AI_BLOCKING.has(f.error)) {
+      await closeDialog(d);
+      return { outcome: 'skip', reason: `the AI isn't answering (${f.error})`, aiError: f.error };
+    }
+  }
   await sleep(between(0.8, 1.6));
   const info = describeDialog(d);
   log.info('cutshort: application form', info);
@@ -217,7 +240,7 @@ async function applyCutshort(dryRun: boolean, fill: (anchor: HTMLElement) => Pro
 }
 
 /** Apply to the job on this page; reports back to the autopilot. */
-export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number }>): Promise<JobResult> {
+export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>): Promise<JobResult> {
   await until(() => !!jobPageState(p).apply || jobPageState(p).applied || jobPageState(p).external || !!sitePushback(p), 15_000);
   const push = sitePushback(p);
   if (push) return { outcome: 'skip', reason: push, pushback: push };
@@ -225,7 +248,14 @@ export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTM
   await sleep(between(3, 7));
   const job = extractJob();
   log.info(`${p}: ${dryRun ? 'dry run on' : 'applying to'} ${job.role} at ${job.company}`);
-  const r = p === 'naukri' ? await applyNaukri(dryRun) : await applyCutshort(dryRun, fill);
+  let r: JobResult;
+  try {
+    r = p === 'naukri' ? await applyNaukri(dryRun) : await applyCutshort(dryRun, fill);
+  } catch (e) {
+    if (!(e instanceof AiUnavailable)) throw e;
+    // Mid-chatbot on Naukri: the half-done application stays as it is; Naukri keeps it for later.
+    r = { outcome: 'skip', reason: e.message, aiError: e.code };
+  }
   log.info(`${p}: ${r.outcome} · ${job.role} at ${job.company} · ${r.reason}`, r.answers?.map((x) => `${x.q} → ${x.a}`));
   if (r.outcome === 'sent' || r.outcome === 'dry') {
     await rpc({ type: 'tracker-record', kind: r.outcome === 'sent' ? 'applied' : 'saved', job, answers: r.answers ?? [], recordedBy: r.outcome === 'sent' ? `Autopilot ${p}` : 'Autopilot dry run' }).catch(() => {});

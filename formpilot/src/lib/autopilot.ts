@@ -117,3 +117,15 @@ export function gapMinutes(ap: Pick<AP, 'gapMinMin' | 'gapMaxMin'>, rand = Math.
   const hi = Math.max(ap.gapMinMin, ap.gapMaxMin);
   return lo + rand * (hi - lo);
 }
+
+/** Next midnight in California (when Gemini's free daily quota resets), as an instant. */
+export function nextPacificMidnight(now = new Date()): Date {
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const p = Object.fromEntries(fmt.formatToParts(now).map((x) => [x.type, x.value]));
+  const laAsUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+  const offset = laAsUtc - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(+p.year, +p.month - 1, +p.day + 1, 0, 0, 0) - offset);
+}
+
+/** AI errors that mean "wait" (or "fix the settings"), not "this job can't be done". */
+export const AI_BLOCKING = new Set(['rate-limit', 'quota', 'auth', 'no-provider', 'locked', 'unavailable']);
