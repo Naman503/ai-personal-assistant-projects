@@ -101,18 +101,27 @@ function lastQuestion(d: HTMLElement): string {
 
 const visible = (el: Element) => (el as HTMLElement).getBoundingClientRect().width > 0;
 
+/** Naukri hides its real radios/checkboxes and shows a <label for> next to them. */
+const shown = (r: HTMLInputElement) => visible(r) || [...(r.labels ?? [])].some(visible) || (!!r.closest('label') && visible(r.closest('label')!));
+/** A box you can type in, not inside a hidden ("d-none") input bar. */
+const typeable = (d: HTMLElement) =>
+  [...d.querySelectorAll<HTMLElement>('[contenteditable="true"], textarea, input[type=text]')].find((t) => visible(t) && !t.closest('.d-none, [hidden]')) ?? null;
+/** "Which of these locations are you willing to relocate to / work from?": all of them keeps you in. */
+const EVERY_OPTION = /\b(willing to (relocate|work|move)|open to (relocat|work)|preferred (work )?locations?|locations? (are you|would you))/i;
+
 async function answerChatbot(d: HTMLElement, q: string, answers: { q: string; a: string }[]): Promise<boolean> {
-  const radios = [...d.querySelectorAll<HTMLInputElement>('input[type=radio]')].filter((r) => !r.disabled && (visible(r) || visible(r.closest('label') ?? r)));
-  const boxes = [...d.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].filter((r) => !r.disabled && (visible(r) || visible(r.closest('label') ?? r)));
+  const radios = [...d.querySelectorAll<HTMLInputElement>('input[type=radio]')].filter((r) => !r.disabled && shown(r));
+  const boxes = [...d.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].filter((r) => !r.disabled && shown(r) && !r.closest('.chatbot_Uploader'));
   const chips = [...d.querySelectorAll<HTMLElement>('[class*="chip" i]:not([class*="chipMsg"])')].filter((c) => visible(c) && clean(c.textContent).length > 0 && clean(c.textContent).length < 80 && !c.closest('.botMsg, .userMsg, [class*="botLogo"]'));
-  const text = d.querySelector<HTMLElement>('[contenteditable="true"], textarea, input[type=text]');
+  const text = typeable(d);
   let ok = false;
   let a = '';
   if (radios.length) {
     a = await answerFor(q, 'radio', radios.map((r) => radioOptionLabel(r, radios)));
     ok = fillRadioGroup(radios, a, (x) => radioOptionLabel(x, radios), q).ok;
   } else if (boxes.length) {
-    a = await answerFor(q, 'checkbox', boxes.map((b) => radioOptionLabel(b, boxes)));
+    const labels = boxes.map((b) => radioOptionLabel(b, boxes));
+    a = EVERY_OPTION.test(q) ? labels.join(' | ') : await answerFor(q, 'checkbox', labels);
     ok = fillCheckboxGroup(boxes, a, (x) => radioOptionLabel(x, boxes)).ok;
   } else if (chips.length) {
     const opts = chips.map((c) => ({ value: clean(c.textContent), label: clean(c.textContent), c }));
