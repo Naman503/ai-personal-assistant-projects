@@ -144,27 +144,60 @@ export function extractJob(doc: Document = document, href = location.href): JobI
   if (!job.role) job.role = q('h1') || clean(doc.title.split(/\s[|\-–]\s/)[0]);
   if (!job.company) job.company = clean((doc.querySelector('meta[property="og:site_name"]') as HTMLMetaElement | null)?.content);
   if (!job.description) job.description = qLong('main', 'article', '[class*="description"]');
-  // Company logo: LinkedIn's company-logo image, a Wellfound/Ashby/Cutshort logo, else an <img> whose alt says "<company> logo".
-  const img = (sel: string) => {
-    try {
-      const el = doc.querySelector<HTMLImageElement>(sel);
-      return el?.currentSrc || el?.src || '';
-    } catch {
-      return '';
-    }
-  };
-  const og = (doc.querySelector('meta[property="og:image"]') as HTMLMetaElement | null)?.content ?? '';
-  job.logoUrl =
-    img('img[src*="company-logo"]') ||
-    (/photos\.wellfound\.com\/startups/.test(og) ? og : '') ||
-    img('img[alt$=" logo" i], img[alt*="company logo" i], img[class*="company-logo" i], img[class*="CompanyLogo"]') ||
-    '';
+  job.logoUrl = pickLogo(doc, job.company);
   if (!/^https:\/\//.test(job.logoUrl)) job.logoUrl = '';
   job.description = job.description.slice(0, 15000);
   job.role = job.role.slice(0, 200);
   job.company = job.company.replace(/\s*\|.*$/, '').slice(0, 120);
   job.location = job.location.slice(0, 120);
   return job;
+}
+
+/**
+ * The logo of the company this job belongs to. Job sites list other jobs (with their own
+ * logos) on the same page, so the first logo on the page is often the wrong one: prefer an
+ * image whose alt names this company, then one inside the job's own header, and only take
+ * a page-wide logo when there's just one company's logo on the page.
+ */
+export function pickLogo(doc: Document, company: string): string {
+  const norm = (s: string | null | undefined) => String(s ?? '').toLowerCase().replace(/\s+logo$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const src = (el: Element | null | undefined) => {
+    const i = el as HTMLImageElement | null;
+    return i ? i.currentSrc || i.src || i.getAttribute('data-delayed-url') || '' : '';
+  };
+  const all = (sel: string) => {
+    try {
+      return [...doc.querySelectorAll<HTMLImageElement>(sel)];
+    } catch {
+      return [];
+    }
+  };
+  const ok = (u: string) => /^https:\/\//.test(u);
+  const name = norm(company);
+  // 1. An image whose alt is this company ("Acme", "Acme logo").
+  if (name) {
+    const byAlt = all('img[alt]').find((i) => norm(i.alt) === name && ok(src(i)));
+    if (byAlt) return src(byAlt);
+  }
+  // 2. Inside the job's own header (LinkedIn's top card, the Easy Apply dialog, a job-details panel).
+  const header = all(
+    [
+      '.job-details-jobs-unified-top-card__container--two-pane img',
+      '.job-details-jobs-unified-top-card__company-logo img',
+      '.jobs-unified-top-card img',
+      '.jobs-details__main-content img',
+      '.top-card-layout img',
+      '.jobs-easy-apply-modal img',
+      '[class*="jd-header"] img',
+    ].join(', '),
+  ).find((i) => ok(src(i)) && /logo/i.test(src(i) + ' ' + i.className + ' ' + i.alt));
+  if (header) return src(header);
+  // 3. Wellfound puts the startup's logo in og:image.
+  const og = (doc.querySelector('meta[property="og:image"]') as HTMLMetaElement | null)?.content ?? '';
+  if (/photos\.wellfound\.com\/startups/.test(og)) return og;
+  // 4. A page-wide logo, only when the page shows a single company's logo (no list of other jobs).
+  const logos = [...new Set(all('img[src*="company-logo"], img[alt$=" logo" i], img[alt*="company logo" i], img[class*="company-logo" i], img[class*="CompanyLogo"]').map(src).filter(ok))];
+  return logos.length === 1 ? logos[0] : '';
 }
 
 /** Messages sites show once an application has gone through. */

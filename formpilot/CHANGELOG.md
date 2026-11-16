@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.12.1] - 2026-11-16
+
+### Fixed
+- **Wrong company logo in the job tracker.** On LinkedIn's search page FormPilot took the first logo on the page, which belongs to another job in the list. It now takes the image named after this company, then the logo in the job's own header, and sends none rather than a guess when several companies show.
+
 ## [1.7.1] - 2026-11-15
 
 ### Fixed
