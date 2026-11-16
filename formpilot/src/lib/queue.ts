@@ -17,12 +17,30 @@ export interface JobCard {
 }
 
 const DISMISS = 'button[aria-label^="Dismiss "][aria-label$=" job"]';
-/** The card's text lines: rendered lines plus the text of each innermost element (the same, where innerText isn't laid out). */
-const lines = (el: HTMLElement) => {
-  const rendered = (el.innerText || '').split('\n');
-  const leaves = [...el.querySelectorAll('*')].filter((e) => !e.children.length).map((e) => e.textContent || '');
-  return [...rendered, ...leaves].map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * The card's text lines, in order. Real pages are laid out, so innerText has them; where it
+ * isn't (tests), fall back to the text of each innermost element. Never both: mixing them
+ * repeats the title and the company is then misread.
+ */
+export const cardLines = (el: HTMLElement): string[] => {
+  const rendered = (el.innerText || '').split('\n').map(clean).filter(Boolean);
+  if (rendered.length >= 3) return rendered;
+  return [...el.querySelectorAll('*')].filter((e) => !e.children.length).map((e) => clean(e.textContent || '')).filter(Boolean);
 };
+
+/** The company: the first line after the title that isn't the title again ("Title (Verified job)", "Title"). */
+export function companyFrom(lines: string[], title: string): string {
+  const t = title.toLowerCase();
+  const i = lines.findIndex((l) => l.toLowerCase().startsWith(t));
+  for (const l of lines.slice(i + 1)) {
+    const x = l.toLowerCase();
+    if (x.startsWith(t) || x === 'verified job' || x === '·') continue;
+    return l;
+  }
+  return '';
+}
 
 /** Job cards in the list on the left, top to bottom. */
 export function jobCards(doc: Document = document): JobCard[] {
@@ -32,15 +50,93 @@ export function jobCards(doc: Document = document): JobCard[] {
     let card = btn.parentElement;
     while (card && !(card.getAttribute('role') === 'button' && card.querySelectorAll(DISMISS).length === 1)) card = card.parentElement;
     if (!card || card.querySelectorAll(DISMISS).length !== 1) continue;
-    const title = (btn.getAttribute('aria-label') || '').replace(/^Dismiss /, '').replace(/ job$/, '').trim();
-    const ls = lines(card);
-    // Lines go: title (Verified job), title, company, location, …, Applied?, ·, Easy Apply
-    const ti = ls.findIndex((l, i) => i > 0 && l === title && ls[i - 1] !== title);
-    const company = ti >= 0 ? (ls[ti + 1] ?? '') : (ls[2] ?? '');
-    out.push({ el: card, title, company, applied: ls.includes('Applied'), easyApply: ls.includes('Easy Apply') });
+    const title = clean((btn.getAttribute('aria-label') || '').replace(/^Dismiss /, '').replace(/ job$/, ''));
+    const ls = cardLines(card);
+    // Badges: any innermost element or rendered line saying exactly "Applied" / "Easy Apply".
+    const tags = new Set([...ls, ...[...card.querySelectorAll('*')].filter((e) => !e.children.length).map((e) => clean(e.textContent || ''))]);
+    out.push({ el: card, title, company: companyFrom(ls, title), applied: tags.has('Applied'), easyApply: tags.has('Easy Apply') });
   }
   return out;
 }
+
+/** The element that scrolls the job list (LinkedIn loads more cards as it scrolls). */
+export function listScroller(from: Element | undefined): HTMLElement | null {
+  let p = from?.parentElement ?? null;
+  while (p && p !== document.body) {
+    const oy = getComputedStyle(p).overflowY;
+    if (/(auto|scroll)/.test(oy) && p.scrollHeight > p.clientHeight + 20) return p;
+    p = p.parentElement;
+  }
+  return null;
+}
+
+/** "Softnotions Technologies Private Limited" → "softnotions" core words, for loose matching. */
+const SUFFIX = /\b(pvt|private|ltd|limited|inc|llp|llc|corp|corporation|co|company|technologies|technology|tech|solutions|services|software|india|group|labs?|the)\b/g;
+export const companyKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(SUFFIX, ' ').replace(/\s+/g, ' ').trim();
+export function sameCompany(a: string, b: string): boolean {
+  const x = companyKey(a), y = companyKey(b);
+  if (!x || !y) return true; // unknown on one side: nothing to contradict
+  return x === y || x.includes(y) || y.includes(x) || x.split(' ')[0] === y.split(' ')[0];
+}
+
+/** The company the job pane (or the address LinkedIn sets after Easy Apply) is about. */
+export function paneCompany(doc: Document = document, href = location.href): string {
+  try {
+    const c = new URL(href).searchParams.get('companyName');
+    if (c) return clean(c);
+  } catch {
+    /* ignore */
+  }
+  const a = [...doc.querySelectorAll<HTMLElement>('a[href*="/company/"]')].find((e) => !e.closest('[role="button"][componentkey]') && clean(e.innerText || e.textContent || ''));
+  return a ? clean((a.innerText || a.textContent || '').split('\n')[0]) : '';
+}
+
+/** "Apply to <Company>" from the Easy Apply dialog's heading. */
+export function dialogCompany(d: Element | null): string {
+  if (!d) return '';
+  const h = [...d.querySelectorAll('h1,h2,h3,[id*="header"],span,div')].find((e) => /^apply to /i.test(clean(e.textContent || '')) && clean(e.textContent || '').length < 160);
+  return h ? clean(h.textContent || '').replace(/^apply to /i, '') : '';
+}
+
+/** The dialog has finished loading its step: a field or a Next / Review / Submit button. */
+export function dialogReady(d: Element | null): boolean {
+  if (!d) return false;
+  if (d.querySelector('input:not([type=hidden]),select,textarea')) return true;
+  return [...d.querySelectorAll('button')].some((b) => /^(next|continue|review|submit application|submit)$/i.test(clean(b.textContent || '')));
+}
+
+/** LinkedIn is pushing back: a limit notice, a security check or a sign-in wall. Stop for the day. */
+export function pushbackNotice(doc: Document = document, href = location.href): string {
+  if (/linkedin\.com\/(checkpoint|authwall|login|uas\/login)/.test(href)) return 'LinkedIn wants you to verify or sign in';
+  const t = (doc.body?.innerText || '').slice(0, 20000);
+  const m = t.match(/(reached (the|your) (daily )?(easy apply|application|apply) limit|you.ve reached the limit|too many (requests|applications)|unusual activity|let.s do a quick security check)/i);
+  return m ? `LinkedIn says: "${m[0]}"` : '';
+}
+
+/**
+ * Click like a person: the pointer moves onto the element, presses and releases near its
+ * middle (not dead centre), then the click. Synthetic events are never "trusted", so what
+ * really matters is pace and volume; this just avoids a bare .click() with no pointer events.
+ */
+export function humanClick(el: HTMLElement) {
+  const r = el.getBoundingClientRect();
+  const x = r.left + r.width * (0.35 + Math.random() * 0.3);
+  const y = r.top + r.height * (0.35 + Math.random() * 0.3);
+  const o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, view: window };
+  const p = { ...o, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+  el.dispatchEvent(new PointerEvent('pointerover', p));
+  el.dispatchEvent(new MouseEvent('mouseover', o));
+  el.dispatchEvent(new PointerEvent('pointermove', p));
+  el.dispatchEvent(new MouseEvent('mousemove', o));
+  el.dispatchEvent(new PointerEvent('pointerdown', { ...p, button: 0, buttons: 1 }));
+  el.dispatchEvent(new MouseEvent('mousedown', { ...o, button: 0, buttons: 1 }));
+  el.dispatchEvent(new PointerEvent('pointerup', { ...p, button: 0 }));
+  el.dispatchEvent(new MouseEvent('mouseup', { ...o, button: 0 }));
+  el.click();
+}
+
+/** A random whole number of milliseconds between a and b seconds. */
+export const between = (a: number, b: number) => Math.round((a + Math.random() * (b - a)) * 1000);
 
 /** "Engineering Manager, Director" → true for titles containing any of them. */
 export function titleSkipped(title: string, skip: string): boolean {
