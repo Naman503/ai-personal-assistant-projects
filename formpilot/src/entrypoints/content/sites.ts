@@ -13,7 +13,8 @@
 import { createLogger } from '@/lib/logger';
 import { rpc } from '@/lib/messages';
 import { humanClick, between } from '@/lib/queue';
-import { buttonByText, jobPageState, sentNotice, sitePushback, type Platform } from '@/lib/sites';
+import { buttonByText, jobKey, jobPageState, multiApplyResult, NAUKRI_REC_TABS, naukriMultiApply, naukriRecJobs, sentNotice, sitePushback, type Platform, type RecJob } from '@/lib/sites';
+import { titleRelevant, titleSkipped } from '@/lib/queue';
 import { classifyField } from '@/lib/fields/classify';
 import { extractPage } from '@/lib/fields/context';
 import { fillCheckboxGroup, fillElement, fillRadioGroup, bestOption, exactOption } from '@/lib/fields/fill';
@@ -75,14 +76,14 @@ async function answerFor(question: string, kind: 'text' | 'radio' | 'checkbox' |
   const page = extractPage(document.body, { pageChars: 1500, otherFields: false, sendUrl: false });
   let r: { values: Record<string, string>; sources: Record<string, string> };
   try {
-    r = await rpc({ type: 'fill-form', fields: [{ id: 'q', field }], page, trigger: 'toolbar' });
+    r = await rpc({ type: 'fill-form', fields: [{ id: 'f1', field }], page, trigger: 'toolbar' });
   } catch (e) {
     const code = (e as { info?: { code?: string } }).info?.code ?? 'unknown';
     if (AI_BLOCKING.has(code)) throw new AiUnavailable(code);
     throw e;
   }
-  log.info(`chatbot: "${question.slice(0, 90)}" → "${(r.values.q ?? '').slice(0, 60)}"`, { source: r.sources?.q ?? '', options });
-  return r.values.q ?? '';
+  log.info(`chatbot: "${question.slice(0, 90)}" → "${(r.values.f1 ?? '').slice(0, 60)}"`, { source: r.sources?.f1 ?? '', options });
+  return r.values.f1 ?? '';
 }
 
 // ------------------------------------------------------------------ Naukri chatbot
@@ -144,10 +145,15 @@ async function applyNaukri(dryRun: boolean): Promise<JobResult> {
   // Naukri sends at once when the recruiter asked no questions, so a dry run stops here.
   if (dryRun) return { outcome: 'dry', reason: 'would press Apply' };
   humanClick(st.apply);
+  return runChatbot(5 * 60_000, 20);
+}
+
+/** Answer Naukri's recruiter chatbot until Naukri confirms (or gives up). */
+async function runChatbot(ms: number, maxQuestions: number): Promise<JobResult> {
   const answers: { q: string; a: string }[] = [];
   let asked = '';
   let stuck = 0;
-  const end = Date.now() + 5 * 60_000;
+  const end = Date.now() + ms;
   while (Date.now() < end) {
     await sleep(between(0.9, 1.8));
     const push = sitePushback('naukri');
@@ -162,11 +168,99 @@ async function applyNaukri(dryRun: boolean): Promise<JobResult> {
     }
     stuck = 0;
     asked = q;
-    if (answers.length >= 20) return { outcome: 'skip', reason: 'more than 20 chatbot questions', answers };
+    if (answers.length >= maxQuestions) return { outcome: 'skip', reason: `more than ${maxQuestions} chatbot questions`, answers };
     const ok = await answerChatbot(d, q, answers);
     if (!ok) return { outcome: 'skip', reason: `no answer for "${q.slice(0, 60)}"`, answers };
   }
-  return { outcome: 'skip', reason: 'Naukri gave no confirmation within 5 minutes', answers };
+  return { outcome: 'skip', reason: `Naukri gave no confirmation within ${Math.round(ms / 60_000)} minutes`, answers };
+}
+
+// ------------------------------------------------------------------ Naukri "Recommended jobs"
+
+export interface RecPick {
+  id: string;
+  title: string;
+  company: string;
+  url: string;
+}
+
+export interface RecResult {
+  picked: RecPick[];
+  outcome: 'sent' | 'dry' | 'skip' | 'none';
+  reason: string;
+  /** Per job, from Naukri's multiApplyResp (200 = applied). */
+  status?: Record<string, number>;
+  pushback?: string;
+  aiError?: string;
+  answers?: { q: string; a: string }[];
+}
+
+/**
+ * On the Recommended jobs page: go through the tabs, tick up to `max` jobs that fit (your
+ * phrases, skip words, years asked, not tried today), press Apply once, answer the chatbot.
+ * Dry run: says which it would tick, ticks nothing.
+ */
+export async function applyNaukriRecommended(opts: { max: number; dryRun: boolean; relevant: string[]; skipWords: string; maxExpMin: number; seen: string[] }): Promise<RecResult> {
+  await until(() => naukriRecJobs().length > 0 || !!sitePushback('naukri'), 20_000);
+  const push = sitePushback('naukri');
+  if (push) return { picked: [], outcome: 'skip', reason: push, pushback: push };
+  const seen = new Set(opts.seen);
+  const picked: RecJob[] = [];
+  const fits = (j: RecJob) =>
+    !seen.has(`naukri:${j.id}`) && !seen.has(jobKey(j)) && titleRelevant(j.title, opts.relevant) && !titleSkipped(j.title, opts.skipWords) && (j.expMin === undefined || j.expMin <= opts.maxExpMin) && !picked.some((p) => p.id === j.id || jobKey(p) === jobKey(j));
+  const tabs = [...document.querySelectorAll<HTMLElement>('[role=tab], [class*="tab" i]')];
+  for (const re of NAUKRI_REC_TABS) {
+    if (picked.length >= opts.max) break;
+    const tab = tabs.find((t) => re.test(clean(t.innerText || t.textContent)) && visible(t));
+    if (tab) {
+      humanClick(tab);
+      await sleep(between(1.5, 3));
+      await until(() => naukriRecJobs().length > 0, 8000);
+    }
+    const all = naukriRecJobs();
+    const fresh = all.filter(fits);
+    log.info(`naukri recommended "${clean(tab?.innerText) || 'current'}": ${all.length} jobs, ${fresh.length} fit`, all.map((j) => `${fresh.includes(j) ? '+' : '-'} ${j.title} · ${j.company}${j.expMin !== undefined ? ` · ${j.expMin}+ yrs` : ''}`));
+    // One tab per batch: switching tabs redraws the list and drops what was ticked.
+    if (fresh.length) {
+      picked.push(...fresh.slice(0, opts.max));
+      break;
+    }
+  }
+  const out = picked.map((j) => ({ id: j.id, title: j.title, company: j.company, url: j.url }));
+  if (!picked.length) return { picked: [], outcome: 'none', reason: 'no recommended job fits' };
+  if (opts.dryRun) return { picked: out, outcome: 'dry', reason: `would tick ${picked.length} and press Apply` };
+  // Tick them, as a person would, one by one.
+  for (const j of picked) {
+    if (!j.box.isConnected) continue;
+    j.box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    await sleep(between(0.6, 1.4));
+    if (!j.box.checked) humanClick((j.box.closest('label') as HTMLElement | null) ?? j.box);
+    await sleep(between(0.4, 1));
+  }
+  const ticked = picked.filter((j) => j.box.checked);
+  const apply = naukriMultiApply();
+  if (!ticked.length || !apply || apply.disabled) return { picked: out, outcome: 'skip', reason: "couldn't tick the jobs or the Apply button stayed off" };
+  await sleep(between(1, 2.5));
+  // Naukri may move to its confirmation page when done, ending this script: tell the autopilot
+  // first which jobs were ticked (the confirmation page reports the result).
+  await chrome.runtime.sendMessage({ type: 'autopilot-rec-picked', picked: out.filter((p) => ticked.some((t) => t.id === p.id)) }).catch(() => {});
+  humanClick(apply);
+  let r: JobResult;
+  try {
+    r = await runChatbot(Math.max(5, picked.length * 3) * 60_000, 15 * picked.length);
+  } catch (e) {
+    if (!(e instanceof AiUnavailable)) throw e;
+    r = { outcome: 'skip', reason: e.message, aiError: e.code };
+  }
+  const status = multiApplyResult(location.href) ?? undefined;
+  const res: RecResult = { picked: out, outcome: r.outcome === 'sent' ? 'sent' : 'skip', reason: r.reason, status, pushback: r.pushback, aiError: r.aiError, answers: r.answers };
+  // Record what went through in the job tracker.
+  for (const p of out) {
+    const ok = status ? status[p.id] === 200 : res.outcome === 'sent';
+    if (!ok) continue;
+    await rpc({ type: 'tracker-record', kind: 'applied', job: { url: p.url, role: p.title, company: p.company, location: '', source: 'Naukri', salary: '', description: '' }, answers: r.answers ?? [], recordedBy: 'Autopilot naukri' }).catch(() => {});
+  }
+  return res;
 }
 
 // ------------------------------------------------------------------ Cutshort form

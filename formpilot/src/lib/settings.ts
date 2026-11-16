@@ -207,7 +207,16 @@ const AutopilotSchema = z.object({
   linkedinEnabled: z.boolean().catch(true),
   /** Naukri: Apply + recruiter chatbot. Off until you turn it on; dry run first. */
   naukri: z
-    .object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(20), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) })
+    .object({
+      enabled: z.boolean().catch(false),
+      dailyCap: z.number().int().min(1).max(100).catch(20),
+      dryRun: z.boolean().catch(true),
+      maxExpMin: z.number().min(0).max(30).catch(5),
+      /** "recommended": tick up to 5 on Naukri's Recommended jobs page (only Naukri-apply jobs), search when those run out. "search": job title searches only. */
+      mode: z.enum(['recommended', 'search']).catch('recommended'),
+      /** Tests: a page to use instead of naukri.com/mnjuser/recommendedjobs. */
+      recUrl: z.string().catch(''),
+    })
     .prefault(EMPTY),
   /** Cutshort: Apply now + its application form. Off until you turn it on; dry run first. */
   cutshort: z

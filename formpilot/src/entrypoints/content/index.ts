@@ -1,6 +1,6 @@
-import { applyHere } from './sites';
+import { applyHere, applyNaukriRecommended } from './sites';
 import { runOutreach } from './linkedin-outreach';
-import { siteJobs, sitePushback } from '@/lib/sites';
+import { multiApplyResult, siteJobs, sitePushback } from '@/lib/sites';
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
 import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-core';
 import type { Settings } from '@/lib/settings';
@@ -38,7 +38,7 @@ export default defineContentScript({
     // Forward warnings/errors to the background log viewer (Options → Logs).
     // Warnings and errors always reach Options → Logs; so do the form-filling steps (each field,
     // each fix, each Next) so a run that went wrong can be read back afterwards.
-    const FORWARD_INFO = new Set(['fill', 'fill-form', 'content:walk']);
+    const FORWARD_INFO = new Set(['fill', 'fill-form', 'content:walk', 'autopilot:site']);
     addLogSink((e) => {
       if ((e.level === 'warn' || e.level === 'error' || (e.level === 'info' && FORWARD_INFO.has(e.ns))) && contextAlive()) {
         chrome.runtime.sendMessage({ type: 'log', entry: e }).catch(() => {});
@@ -177,6 +177,14 @@ export default defineContentScript({
     const active = document.activeElement;
     if (isField(active)) controller.onFocus(active);
 
+    // Naukri's confirmation page after a multi-apply: report Naukri's per-job result to the
+    // autopilot (the page that pressed Apply was replaced by this one).
+    if (window === window.top && /\/myapply\/saveApply/i.test(location.href)) {
+      setTimeout(() => {
+        const status = multiApplyResult(location.href) ?? undefined;
+        void chrome.runtime.sendMessage({ type: 'autopilot-rec-done', result: { picked: [], outcome: 'sent', reason: 'Naukri confirmed', status } }).catch(() => {});
+      }, 1500);
+    }
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       // LinkedIn outreach: one task on this page, then report back (top frame only).
       if (msg?.type === 'outreach-run') {
@@ -188,6 +196,15 @@ export default defineContentScript({
       if (msg?.type !== 'command') return;
       // Apply queue (LinkedIn job lists): top frame only, no focus needed (the popup has it).
       // Autopilot on Naukri / Cutshort: read the job list, or apply to the job on this page.
+      if (msg.name === 'naukri-rec') {
+        if (window !== window.top) return;
+        reply({ ok: true });
+        const o = msg.opts ?? {};
+        void applyNaukriRecommended({ max: Math.min(5, o.max ?? 3), dryRun: !!o.dryRun, relevant: o.relevant ?? [], skipWords: o.skipTitles ?? '', maxExpMin: o.maxExpMin ?? 99, seen: o.seen ?? [] })
+          .catch((e) => ({ picked: [], outcome: 'skip' as const, reason: `error: ${(e as Error).message}` }))
+          .then((result) => chrome.runtime.sendMessage({ type: 'autopilot-rec-done', result }).catch(() => {}));
+        return;
+      }
       if (msg.name === 'site-list' || msg.name === 'site-apply') {
         if (window !== window.top || !msg.platform) return;
         const push = sitePushback(msg.platform);
