@@ -111,6 +111,8 @@ export class ApplyQueue {
       toast: Toast;
       /** Dry run: record "would apply" with the answers on the open form. */
       dryRecord?: (dialog: Element | null) => Promise<void>;
+      /** Sent (LinkedIn closed the dialog after Submit): record it in the tracker. */
+      recordSent?: () => Promise<void>;
     },
   ) {}
 
@@ -384,7 +386,8 @@ export class ApplyQueue {
       await this.discard(applyDialog());
       return false;
     }
-    if (outcome === 'submit' && prefs.autoSubmit) await this.autoSubmit(label, n, prefs);
+    let pressed = false;
+    if (outcome === 'submit' && prefs.autoSubmit) pressed = await this.autoSubmit(label, n, prefs);
     // Wait for the user. Up to 15 minutes per job (1 minute when nobody is watching).
     const end = Date.now() + (prefs.unattended ? 60_000 : 15 * 60_000);
     while (Date.now() < end && !this.stopRequested) {
@@ -402,6 +405,19 @@ export class ApplyQueue {
         return true;
       }
       if (!d) {
+        // LinkedIn often closes the dialog straight after Submit instead of showing "Application
+        // sent". It was sent if Submit was pressed (by us, or by you on the Submit step) and the
+        // job now shows its application status.
+        const atSubmit = pressed || (outcome as WalkOutcome) === 'submit';
+        const applied = atSubmit && (pressed || (await this.until(() => paneShowsApplied(), 8000)));
+        if (applied) {
+          this.sent++;
+          const total = await this.countToday(1);
+          trace(`sent: ${label} (${total} today; LinkedIn closed the dialog after Submit)`);
+          await this.deps.recordSent?.().catch(() => {});
+          this.status(`Sent: ${label}. ${total} of ${prefs.cap} today.`, 'success', 8000);
+          return true;
+        }
         trace(`dialog closed without sending: ${label}`);
         return false; // the user closed or discarded it
       }
@@ -431,21 +447,22 @@ export class ApplyQueue {
    * Submit button the walk reached. Only when the walk ended on Submit, so no step was left
    * with an empty required field or an error.
    */
-  private async autoSubmit(label: string, n: number, prefs: QueuePrefs) {
+  private async autoSubmit(label: string, n: number, prefs: QueuePrefs): Promise<boolean> {
     const secs = Math.round(between(5, 9) / 1000); // between() is in ms
     const before = this.stepFingerprint();
     for (let s = secs; s > 0; s--) {
-      if (this.stopRequested || this.skipRequested) return trace(`auto-submit cancelled: ${label}`);
-      if (this.stepFingerprint() !== before) return trace(`auto-submit cancelled (the form changed): ${label}`);
+      if (this.stopRequested || this.skipRequested) return (trace(`auto-submit cancelled: ${label}`), false);
+      if (this.stepFingerprint() !== before) return (trace(`auto-submit cancelled (the form changed): ${label}`), false);
       this.status(`${n} of ${prefs.cap} today · ${label} — Submitting in ${s} s. Press Skip or Stop to cancel.`, 'success');
       await sleep(1000);
     }
-    if (this.stopRequested || this.skipRequested) return trace(`auto-submit cancelled: ${label}`);
+    if (this.stopRequested || this.skipRequested) return (trace(`auto-submit cancelled: ${label}`), false);
     const d = applyDialog();
     const step = d ? decideStep(d) : null;
-    if (!d || step?.kind !== 'submit' || !/\b(submit|send application|apply)\b/i.test(step.button.textContent ?? '')) return trace(`auto-submit: no Submit button any more on ${label}`);
+    if (!d || step?.kind !== 'submit' || !/\b(submit|send application|apply)\b/i.test(step.button.textContent ?? '')) return (trace(`auto-submit: no Submit button any more on ${label}`), false);
     trace(`auto-submit: pressing "${(step.button.textContent ?? '').trim()}" for ${label}`);
     humanClick(step.button);
+    return true;
   }
 
   /** Close the dialog without sending; LinkedIn asks to save or discard, we discard. */

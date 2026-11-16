@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { experienceAnswer, keepInAnswer } from '@/lib/fields/answers';
+import { experienceAnswer, keepInAnswer, screenOutAnswer } from '@/lib/fields/answers';
 import { relevantWords, titleRelevant } from '@/lib/queue';
 
 const yn = [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }];
@@ -25,13 +25,24 @@ describe('answers that keep you in the running', () => {
     expect(keepInAnswer({ label: 'Do you have a valid work visa?', options: yn })).toBeNull();
   });
 
+  it('questions where Yes screens you out: No', () => {
+    const ynu = [...yn, { value: 'Unsure', label: 'Unsure' }];
+    expect(screenOutAnswer({ label: 'Do you have a Non-Compete agreement with your current or former employer(s) that would prevent you from working with Onit?', options: ynu })).toBe('No');
+    expect(screenOutAnswer({ label: 'Will you now or in the future require visa sponsorship?', options: yn })).toBe('No');
+    expect(screenOutAnswer({ label: 'Have you worked with React Native?', options: yn })).toBeNull();
+  });
+
   it('skips jobs that are not your kind (Operations Manager on a React Native search)', () => {
     const rel = relevantWords(['React Native Developer', 'React Native Engineer', 'Mobile Engineer', 'Full Stack Engineer', 'Software Engineer']);
-    expect(rel).toEqual(['react', 'native', 'mobile', 'full', 'stack', 'software']);
+    expect(rel).toEqual(['react native', 'mobile', 'full stack', 'software']);
+    expect(titleRelevant('AI-Native Developer (Sandbox)', rel)).toBe(false);
+    expect(titleRelevant('Python Full-stack developer', rel)).toBe(true);
+    expect(titleRelevant('Fullstack Engineer', rel)).toBe(true);
     expect(titleRelevant('Operations Manager', rel)).toBe(false);
     expect(titleRelevant('Flutter/Dart Developer (Cross-Platform)', rel)).toBe(false);
     expect(titleRelevant('Software Engineer (React Native+AI)', rel)).toBe(true);
     expect(titleRelevant('Frontend Developer (React.js & React Native)', rel)).toBe(true);
+    expect(titleRelevant('Frontend Developer (React.JS + Node.JS)', rel)).toBe(false);
     expect(titleRelevant('Mobile Application Developer', rel)).toBe(true);
     expect(titleRelevant('Anything', [])).toBe(true);
   });

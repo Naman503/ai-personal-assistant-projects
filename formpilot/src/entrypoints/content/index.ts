@@ -61,6 +61,7 @@ export default defineContentScript({
       blockedReason: () => walker.lastReason || 'This step needs you',
       toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
       dryRecord: (dialog) => watcher.recordDryRun(dialog),
+      recordSent: () => watcher.markApplied(),
     });
     controller.afterFill = (anchor) => {
       if (settings.tracker.walkToSubmit) void walker.run(anchor);

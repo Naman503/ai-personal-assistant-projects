@@ -56,3 +56,17 @@ export function keepInAnswer(f: Pick<FieldContext, 'label' | 'options'>): string
   const yes = opts.find((o) => /^\s*yes\b/i.test(o.label || o.value));
   return yes ? yes.label || yes.value : null;
 }
+
+/**
+ * Questions where "Yes" screens you out and "No" is your situation: non-compete agreements,
+ * needing visa sponsorship (in India), criminal records. Answered No by rule.
+ */
+const SCREEN_OUT = /\b(non[- ]?compete|restrictive covenant|(require|need)s?\b[^?]*\bsponsorship|criminal (record|conviction|charge)|been convicted|pending (legal|disciplinary)|service bond with)/i;
+
+export function screenOutAnswer(f: Pick<FieldContext, 'label' | 'options'>): string | null {
+  if (!SCREEN_OUT.test(f.label ?? '')) return null;
+  const opts = f.options ?? [];
+  if (!opts.length) return 'No';
+  const no = opts.find((o) => /^\s*no\b/i.test(o.label || o.value));
+  return no ? no.label || no.value : null;
+}
