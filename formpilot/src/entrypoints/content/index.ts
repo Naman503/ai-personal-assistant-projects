@@ -1,4 +1,5 @@
 import { applyHere } from './sites';
+import { runOutreach } from './linkedin-outreach';
 import { siteJobs, sitePushback } from '@/lib/sites';
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
 import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-core';
@@ -177,6 +178,13 @@ export default defineContentScript({
     if (isField(active)) controller.onFocus(active);
 
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
+      // LinkedIn outreach: one task on this page, then report back (top frame only).
+      if (msg?.type === 'outreach-run') {
+        if (window !== window.top) return;
+        reply({ ok: true });
+        void runOutreach(msg.task).then((result) => chrome.runtime.sendMessage({ type: 'outreach-done', result }).catch(() => {}));
+        return;
+      }
       if (msg?.type !== 'command') return;
       // Apply queue (LinkedIn job lists): top frame only, no focus needed (the popup has it).
       // Autopilot on Naukri / Cutshort: read the job list, or apply to the job on this page.

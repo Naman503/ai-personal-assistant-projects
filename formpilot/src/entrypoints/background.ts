@@ -1,4 +1,5 @@
 import { Autopilot } from '@/lib/autopilot-runner';
+import { Outreach } from '@/lib/outreach-runner';
 import { parseWorkHistory } from '@/lib/fields/workdates';
 import { addLogSink, configureLogger, createLogger, LogRing , type LogEntry } from '@/lib/logger';
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, patchSettings, type Settings } from '@/lib/settings';
@@ -45,6 +46,7 @@ export default defineBackground({
 
     let settings: Settings = DEFAULT_SETTINGS;
     const autopilot = new Autopilot(() => settings);
+    const outreach = new Outreach(() => settings);
     const usage = new UsageReporter(() => settings);
     const engine = new SuggestEngine(() => settings, usage);
     /** Once a day: provider mix, memory size and a settings snapshot (enums, booleans, buckets only). */
@@ -98,7 +100,9 @@ export default defineBackground({
     watchSettings((s) => {
       log.debug('settings changed');
       const wasSharing = settings.privacy.shareUsage;
+      const outreachWas = settings.tracker.enabled && settings.tracker.outreach;
       applySettings(s);
+      if (outreachWas !== (s.tracker.enabled && s.tracker.outreach)) void outreach.sync();
       if (wasSharing && !s.privacy.shareUsage) void usage.turnedOff();
       else if (!wasSharing && s.privacy.shareUsage) void usage.turnedOn();
     });
@@ -109,9 +113,11 @@ export default defineBackground({
     chrome.alarms?.onAlarm.addListener((a) => {
       if (a.name === 'usage') void ready.then(flushUsage);
       if (a.name.startsWith('fp-ap-')) void ready.then(() => autopilot.onAlarm(a.name));
+      if (a.name.startsWith('fp-or-')) void ready.then(() => outreach.onAlarm(a.name));
     });
-    chrome.windows?.onRemoved.addListener((id) => void ready.then(() => autopilot.onWindowRemoved(id)));
+    chrome.windows?.onRemoved.addListener((id) => void ready.then(() => { void autopilot.onWindowRemoved(id); void outreach.onWindowRemoved(id); }));
     void ready.then(() => autopilot.resume()).catch(() => {});
+    void ready.then(() => outreach.sync()).catch(() => {});
     self.addEventListener('error', (e) => void usage.error((e as ErrorEvent).error, true));
     self.addEventListener('unhandledrejection', (e) => {
       if (!isAbort((e as PromiseRejectionEvent).reason)) void usage.error((e as PromiseRejectionEvent).reason);
@@ -246,6 +252,12 @@ export default defineBackground({
           else if (msg.action === 'run-now') await autopilot.runNow();
           else if (msg.action === 'resume') await autopilot.resume();
           return autopilot.status();
+        case 'outreach-done':
+          await outreach.done(msg.result, sender.tab?.id);
+          return null;
+        case 'outreach':
+          if (msg.action === 'run-now') await outreach.runNow();
+          return outreach.status();
         case 'tracker-summary':
           return trackerSummary(settings.tracker.url);
         case 'get-logs':

@@ -6,6 +6,7 @@
  *                                  source, salary, description, answers: [{q, a}], recordedBy}
  *        -> {ok, id, created, status}
  *   GET  /api/state                -> used by "Test connection"
+ *   GET  /api/outreach/next, POST /api/outreach/result  -> LinkedIn outreach tasks (when turned on)
  * Only what's listed above is sent, and only to the URL you set.
  */
 import type { Settings } from './settings';
@@ -109,6 +110,14 @@ export interface TrackerSummary {
 export async function trackerSummary(url: string): Promise<TrackerSummary> {
   const d = await call<Partial<TrackerSummary>>(baseUrl(url) + '/api/digest');
   return { toApply: d.toApply ?? 0, toSend: d.toSend ?? 0, due: d.due ?? [], interviews: d.interviews ?? [], waiting: d.waiting ?? 0, week: d.week ?? 0 };
+}
+
+/** LinkedIn outreach: the next task the tracker wants done (it writes any note right before answering). */
+export async function outreachNext(url: string) {
+  return call<import('@/entrypoints/content/linkedin-outreach').OutreachTask | { task: 'none'; reason?: string; retry?: boolean }>(baseUrl(url) + '/api/outreach/next');
+}
+export async function outreachResult(url: string, body: Record<string, unknown>) {
+  return call<{ ok: boolean }>(baseUrl(url) + '/api/outreach/result', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export async function testTracker(url: string): Promise<{ applications: number; people: number }> {
