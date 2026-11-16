@@ -32,6 +32,7 @@ import {
   type JobCard,
 } from '@/lib/queue';
 import { decideStep, settled } from '@/lib/walk';
+import { AI_BLOCKING } from '@/lib/autopilot';
 import { dialogAnchor } from '@/lib/fields/context';
 import { createLogger } from '@/lib/logger';
 import { quietFocus } from '@/lib/automation';
@@ -82,6 +83,8 @@ export interface QueueResult {
   reason: string;
   /** LinkedIn pushed back (limit, checkpoint, login): the autopilot stops. */
   pushback?: string;
+  /** The AI couldn't answer (rate limit, quota used up, key…): the autopilot waits, nothing was skipped. */
+  aiError?: string;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -100,12 +103,15 @@ export class ApplyQueue {
   private dry = 0;
   private skipped = 0;
   private overrides: Partial<QueuePrefs> = {};
+  private aiError: string | null = null;
   private result: QueueResult | null = null;
 
   constructor(
     private deps: {
       prefs: () => QueuePrefs;
-      fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number }>;
+      fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>;
+      /** An AI error from any fill during this job (the walker fills later steps too). */
+      aiError?: () => string | null;
       walk: (anchor: HTMLElement) => Promise<WalkOutcome>;
       blockedReason: () => string;
       toast: Toast;
@@ -141,6 +147,7 @@ export class ApplyQueue {
     }
     this.overrides = overrides;
     this.result = null;
+    this.aiError = null;
     this.dry = 0;
     this.skipped = 0;
     this.running = true;
@@ -203,7 +210,7 @@ export class ApplyQueue {
         this.tried.add(cardKey(card));
         const dryBefore = this.dry;
         const sent = await this.one(card, prefs);
-        if (!sent && this.dry === dryBefore) this.skipped++;
+        if (!sent && this.dry === dryBefore && !this.aiError) this.skipped++;
         if (this.stopRequested) break;
         if (sent && ++this.sinceBreak >= this.breakAfter) {
           await this.rest(between(60, 150));
@@ -235,6 +242,7 @@ export class ApplyQueue {
       await this.until(() => (jobCards()[0]?.title ?? '') !== firstBefore, 20_000);
       await this.pause(between(1.5, 3));
     }
+    if (this.aiError) return this.finish(`Paused: the AI isn't answering (${this.aiError}). ${this.sent} sent this run.`, 'error', undefined, this.aiError);
     this.finish(this.stopRequested ? `Apply queue stopped. ${this.sent} sent this run.` : `Done with this list. ${this.sent} sent this run.`);
   }
 
@@ -276,9 +284,9 @@ export class ApplyQueue {
     }
   }
 
-  private finish(msg: string, tone: 'success' | 'error' = 'success', pushback?: string) {
+  private finish(msg: string, tone: 'success' | 'error' = 'success', pushback?: string, aiError?: string) {
     trace(`queue finished: ${msg}`, { sent: this.sent, dry: this.dry, skipped: this.skipped });
-    this.result = { sent: this.sent, dry: this.dry, skipped: this.skipped, reason: msg, ...(pushback ? { pushback } : {}) };
+    this.result = { sent: this.sent, dry: this.dry, skipped: this.skipped, reason: msg, ...(pushback ? { pushback } : {}), ...(aiError ? { aiError } : {}) };
     this.running = false;
     this.deps.toast(msg, tone, undefined, tone === 'error' ? 60_000 : 12_000);
   }
@@ -371,7 +379,16 @@ export class ApplyQueue {
       else this.status(`${n} of ${prefs.cap} today · ${label} — Finish this one by hand, or Skip.`);
     };
     this.status(`${prefs.dryRun ? 'Dry run · ' : ''}Filling ${label}`);
+    this.deps.aiError?.(); // clear an old one
     await step();
+    const ai = this.deps.aiError?.();
+    if (ai && AI_BLOCKING.has(ai)) {
+      trace(`the AI couldn't answer (${ai}); leaving ${label} for later`);
+      await this.discard(applyDialog());
+      this.aiError = ai;
+      this.stopRequested = true;
+      return false;
+    }
     if (prefs.dryRun) {
       if (outcome === 'submit') {
         this.dry++;

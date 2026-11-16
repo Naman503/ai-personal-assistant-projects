@@ -11,7 +11,7 @@
  * state is in chrome.storage.local.
  */
 import type { Settings } from './settings';
-import { batchSize, freshDay, gapMinutes, inActiveHours, ist, linkedInSearchUrl, nextStart, normalizeDay, pickTitle, titleKey, titlesOf, type DayState } from './autopilot';
+import { AI_BLOCKING, nextPacificMidnight, batchSize, freshDay, gapMinutes, inActiveHours, ist, linkedInSearchUrl, nextStart, normalizeDay, pickTitle, titleKey, titlesOf, type DayState } from './autopilot';
 import { createLogger } from './logger';
 import { relevantWords, titleRelevant, titleSkipped } from './queue';
 import { cutshortSearchUrl, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
@@ -24,7 +24,7 @@ const WATCHDOG = 'fp-ap-watchdog';
 const NEXT = 'fp-ap-next';
 const ALL = [TICK, GO, WATCHDOG, NEXT];
 
-export type Phase = 'stopped' | 'loading' | 'batch' | 'waiting' | 'outside-hours' | 'done-today';
+export type Phase = 'stopped' | 'loading' | 'batch' | 'waiting' | 'outside-hours' | 'done-today' | 'ai-wait';
 
 export interface ApState {
   running: boolean;
@@ -80,6 +80,8 @@ async function save(st: ApState, msg?: string) {
 const at = (name: string, when: number) => chrome.alarms.create(name, { when: Math.max(Date.now() + 1000, when) });
 const fmt = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 const rand = (a: number, b: number) => a + Math.random() * Math.max(0, b - a);
+/** Time to let a page load before acting on it: 30–55 s, never the same twice (alarms can't fire sooner than 30 s). */
+const loadWait = () => Math.round(rand(30, 55) * 1000);
 
 function newDay(st: ApState) {
   const today = ist().date;
@@ -238,7 +240,7 @@ export class Autopilot {
     st.phase = 'loading';
     st.nextAt = undefined;
     st.progress = { text: `Opening the ${PLATFORM_NAME[c.platform]} search`, at: Date.now() };
-    await at(GO, Date.now() + 30_000);
+    await at(GO, Date.now() + loadWait());
     await at(WATCHDOG, Date.now() + 60 * 60_000);
     await save(st, `${PLATFORM_NAME[c.platform]}: searching "${c.title}" (batch of ${c.size}${c.dryRun ? ', dry run' : ''})`);
   }
@@ -321,7 +323,7 @@ export class Autopilot {
       const ok = await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'site-apply', platform: p, opts: { dryRun: pp.dryRun } }, { frameId: 0 }).catch(() => null);
       if (!ok) {
         if (++cur.tries < 2) {
-          await at(GO, Date.now() + 30_000);
+          await at(GO, Date.now() + loadWait());
           return save(st);
         }
         await save(st);
@@ -335,7 +337,7 @@ export class Autopilot {
   /** The page wasn't ready: try once more in 30 s, then `fallback` (or stop). */
   private async notReady(st: ApState, why: string, fallback?: () => Promise<void>) {
     if (st.current && ++st.current.tries < 2) {
-      await at(GO, Date.now() + 30_000);
+      await at(GO, Date.now() + loadWait());
       return save(st, `${why}; trying again in 30 s`);
     }
     if (fallback) return fallback();
@@ -350,12 +352,12 @@ export class Autopilot {
     st.day.seen = [...st.day.seen, job.url].slice(-800);
     st.progress = { text: `Opening ${job.title} · ${job.company}`, at: Date.now() };
     if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: job.url }).catch(() => {});
-    await at(GO, Date.now() + 30_000);
+    await at(GO, Date.now() + loadWait());
     await save(st);
   }
 
   /** A Naukri / Cutshort job page finished. */
-  async onJobDone(result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string }, tabId?: number) {
+  async onJobDone(result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string }, tabId?: number) {
     const ap = this.settings().autopilot;
     const st = await loadState();
     const cur = st.current;
@@ -364,6 +366,11 @@ export class Autopilot {
     const p = cur.platform as Platform;
     const job = cur.jobs[cur.i ?? 0];
     const counts = st.day.byPlatform[p];
+    if (result.aiError && AI_BLOCKING.has(result.aiError)) {
+      // Not this job's fault: forget we tried it, so a later batch picks it up again.
+      if (job) st.day.seen = st.day.seen.filter((u) => u !== job.url);
+      return this.aiPause(st, result.aiError);
+    }
     if (result.outcome === 'sent') {
       counts.sent++;
       st.day.sent++;
@@ -395,6 +402,31 @@ export class Autopilot {
     await save(st);
   }
 
+  /**
+   * The AI couldn't answer. A per-minute limit or a hiccup: wait 3–7 min. A used-up daily
+   * quota: wait for the reset (Gemini: midnight Pacific = 13:30 India time), tell you. A bad
+   * key or no provider: stop and tell you. The job it was on is not counted and is tried again.
+   */
+  private async aiPause(st: ApState, code: string) {
+    await Promise.all([GO, NEXT, WATCHDOG].map((a) => chrome.alarms.clear(a)));
+    if (code === 'auth' || code === 'no-provider' || code === 'locked') {
+      await save(st);
+      return this.stop(`The AI can't be used (${code === 'auth' ? 'the API key was refused' : code === 'locked' ? 'your memory vault is locked' : 'no AI provider is set up'}). Fix it in FormPilot settings → AI Providers, then start again.`, true);
+    }
+    st.current = undefined;
+    st.progress = undefined;
+    const next = code === 'quota' ? nextPacificMidnight().getTime() + rand(4, 15) * 60_000 : Date.now() + rand(3, 7) * 60_000;
+    st.phase = 'ai-wait';
+    st.nextAt = next;
+    await at(TICK, next);
+    const msg =
+      code === 'quota'
+        ? `Gemini's free daily quota is used up. Waiting for it to reset; next batch at ${fmt(next)}. (Add a second AI provider in settings to keep going.)`
+        : `The AI is busy (${code}). Waiting a few minutes; next batch at ${fmt(next)}`;
+    await save(st, msg);
+    if (code === 'quota') notify('FormPilot autopilot is waiting for the AI', msg);
+  }
+
   private async nextJob() {
     const st = await loadState();
     if (!st.running || !st.current?.jobs) return;
@@ -419,7 +451,7 @@ export class Autopilot {
   }
 
   /** LinkedIn's queue finished a batch. */
-  async onBatchDone(result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string }, tabId?: number) {
+  async onBatchDone(result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string; aiError?: string }, tabId?: number) {
     const ap = this.settings().autopilot;
     const st = await loadState();
     if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
@@ -443,6 +475,10 @@ export class Autopilot {
     if (result.pushback) {
       await save(st, summary);
       return this.stop(`LinkedIn pushed back: ${result.pushback}. Stopped so your account stays safe.`, true);
+    }
+    if (result.aiError && AI_BLOCKING.has(result.aiError)) {
+      await save(st, summary);
+      return this.aiPause(st, result.aiError);
     }
     const next = Date.now() + gapMinutes(ap) * 60_000;
     st.phase = 'waiting';

@@ -45,11 +45,18 @@ function answerFor(prompt) {
   return JSON.stringify({ suggestions: [{ title: 'Answer', text: `Answer for ${q}` }] });
 }
 
+let quotaUsedUp = false;
 createServer((req, res) => {
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
   if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
   if (req.url === '/requests') return res.writeHead(200, { 'content-type': 'application/json', ...cors }).end(JSON.stringify(requests));
+  // /quota-used-up: every model call answers 429 "per day" (like Gemini's free tier) until /reset.
+  if (req.url === '/quota-used-up') {
+    quotaUsedUp = true;
+    return res.writeHead(200, cors).end('ok');
+  }
   if (req.url === '/reset') {
+    quotaUsedUp = false;
     requests.length = 0;
     return res.writeHead(200, cors).end('ok');
   }
@@ -61,6 +68,11 @@ createServer((req, res) => {
     const body = JSON.parse(raw || '{}');
     const prompt = body.messages?.map((m) => m.content).join('\n') ?? '';
     requests.push({ url: req.url, auth: req.headers.authorization, prompt, stream: body.stream });
+    if (quotaUsedUp && !prompt.includes('Extract short key facts')) {
+      return res
+        .writeHead(429, { 'content-type': 'application/json', ...cors })
+        .end(JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: mock. quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier' } }));
+    }
     const content = answerFor(prompt);
     if (body.stream) {
       res.writeHead(200, { 'content-type': 'text/event-stream', ...cors });

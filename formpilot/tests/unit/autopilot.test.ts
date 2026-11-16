@@ -53,3 +53,13 @@ describe('autopilot schedule (India time)', () => {
     expect(new URL(linkedInSearchUrl('X', { location: 'india-remote', postedDays: 7 })).searchParams.get('f_WT')).toBe('2');
   });
 });
+
+import { nextPacificMidnight } from '@/lib/autopilot';
+describe('Gemini quota reset', () => {
+  it('is the next midnight in California (13:30 India time in winter)', () => {
+    // 16 Nov 2026 20:00 IST = 14:30 UTC = 06:30 PST → reset at 17 Nov 00:00 PST = 08:00 UTC = 13:30 IST.
+    expect(nextPacificMidnight(new Date('2026-11-16T14:30:00Z')).toISOString()).toBe('2026-11-17T08:00:00.000Z');
+    // Summer (PDT, UTC-7): 07:00 UTC.
+    expect(nextPacificMidnight(new Date('2026-07-01T12:00:00Z')).toISOString()).toBe('2026-07-02T07:00:00.000Z');
+  });
+});

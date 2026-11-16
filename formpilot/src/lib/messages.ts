@@ -40,9 +40,9 @@ export type RpcRequest =
   | { type: 'site-toggle'; host: string; enabled: boolean }
   /** Job tracker: record a job as applied (or just saved), with the answers given on the form. */
   | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[]; recordedBy?: string }
-  | { type: 'autopilot-batch-done'; result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string } }
+  | { type: 'autopilot-batch-done'; result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string; aiError?: string } }
   | { type: 'autopilot-progress'; text: string }
-  | { type: 'autopilot-job-done'; result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string } }
+  | { type: 'autopilot-job-done'; result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string } }
   | { type: 'autopilot'; action: 'start' | 'stop' | 'status' | 'run-now' | 'resume' }
   | { type: 'tracker-test'; url?: string }
   /** Popup: is this job already in the tracker? */

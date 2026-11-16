@@ -22,6 +22,8 @@ export function describe(st: ApState | null): { tone: 'green' | 'amber' | 'neutr
     }
     case 'waiting':
       return { tone: 'amber', title: 'Break between batches', detail: st.nextAt ? `Next batch at ${time(st.nextAt)} (in ${left(st.nextAt)})` : st.message, canSkip: true };
+    case 'ai-wait':
+      return { tone: 'amber', title: 'Waiting for the AI', detail: st.message, canSkip: true };
     case 'outside-hours':
       return { tone: 'neutral', title: 'Outside active hours', detail: st.nextAt ? `Starts again at ${time(st.nextAt)}` : st.message, canSkip: true };
     case 'done-today':

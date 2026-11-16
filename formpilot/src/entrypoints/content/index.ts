@@ -64,6 +64,7 @@ export default defineContentScript({
       toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
       dryRecord: (dialog) => watcher.recordDryRun(dialog),
       recordSent: () => watcher.markApplied(),
+      aiError: () => controller.takeFillError(),
     });
     controller.afterFill = (anchor) => {
       if (settings.tracker.walkToSubmit) void walker.run(anchor);
