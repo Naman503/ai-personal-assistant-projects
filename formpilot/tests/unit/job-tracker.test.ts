@@ -109,6 +109,14 @@ describe('LinkedIn company when its classes change', () => {
     expect(job.company).toBe('Collegedunia');
     expect(job.location).toBe('Gurugram, Haryana, India');
   });
+  it('keeps the dash part of the role from the tab title (two different jobs were merged)', () => {
+    document.head.innerHTML = '';
+    document.title = '(2) Senior Software Engineer – Expo / React Native | The Future University | LinkedIn';
+    document.body.innerHTML = '<main><div>no heading here</div></main>';
+    const job = extractJob(document, 'https://www.linkedin.com/jobs/view/4442642009/');
+    expect(job.role).toBe('Senior Software Engineer – Expo / React Native');
+    expect(job.company).toBe('The Future University');
+  });
   it('falls back to the company link', () => {
     document.title = 'Jobs';
     document.body.innerHTML = '<main><h1>Sr Mobile Developer</h1><a href="https://www.linkedin.com/company/blend/life/">Blend</a></main>';
