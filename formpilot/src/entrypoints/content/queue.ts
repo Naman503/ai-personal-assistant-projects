@@ -28,6 +28,7 @@ import {
   pushbackNotice,
   sameCompany,
   today,
+  titleRelevant,
   type JobCard,
 } from '@/lib/queue';
 import { decideStep, settled } from '@/lib/walk';
@@ -67,6 +68,8 @@ export interface QueuePrefs {
   dryRun?: boolean;
   /** Autopilot: nobody is watching, so a job that needs you is skipped instead of waited for. */
   unattended?: boolean;
+  /** Autopilot: only jobs whose title shares a distinctive word with these (react, native, mobile…). */
+  relevant?: string[];
 }
 
 /** What one queue run did (sent back to the autopilot). */
@@ -170,8 +173,12 @@ export class ApplyQueue {
     trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles, autoSubmit: !!prefs.autoSubmit, batch: prefs.batch ?? null, dryRun: !!prefs.dryRun, unattended: !!prefs.unattended });
     for (let page = 0; page < 10 && !this.stopRequested; page++) {
       await this.loadWholeList();
-      let list = candidates(jobCards(), prefs.skipTitles, this.tried);
+      let list = candidates(jobCards(), prefs.skipTitles, this.tried, prefs.relevant);
       const all = jobCards();
+      if (prefs.relevant?.length) {
+        const off = all.filter((c) => c.easyApply && !c.applied && !titleRelevant(c.title, prefs.relevant!)).map((c) => c.title);
+        if (off.length) trace(`not your kind of job, skipped: ${off.join('; ')}`);
+      }
       trace(`page ${page + 1}: ${all.length} cards, ${list.length} to open`, all.map((c) => `${c.applied ? 'A' : '-'}${c.easyApply ? 'E' : '-'} ${c.title} · ${c.company}`));
       if (!all.length && page === 0) return this.finish('No job list found on this page. Open a LinkedIn job search first.');
       while (list.length && !this.stopRequested) {
@@ -190,10 +197,10 @@ export class ApplyQueue {
           this.sinceBreak = 0;
           this.breakAfter = 6 + Math.floor(Math.random() * 5);
         } else await this.pause(sent ? jitter(Math.max(prefs.delaySec, 4)) : between(2, 4));
-        list = candidates(jobCards(), prefs.skipTitles, this.tried);
+        list = candidates(jobCards(), prefs.skipTitles, this.tried, prefs.relevant);
         if (!list.length) {
           await this.loadWholeList();
-          list = candidates(jobCards(), prefs.skipTitles, this.tried);
+          list = candidates(jobCards(), prefs.skipTitles, this.tried, prefs.relevant);
         }
       }
       if (this.stopRequested) break;

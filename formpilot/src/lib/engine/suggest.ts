@@ -18,7 +18,7 @@ import { cacheGet, cacheSet } from './cache';
 import { BATCH_SCHEMA, FACTS_SCHEMA, FACTS_SYSTEM, SUGGESTION_SCHEMA, buildBatchPrompt, buildFactsPrompt, buildSuggestPrompt, systemPrompt } from './prompt';
 import { parseBatch, parseFacts, parseSuggestions, parseSuggestionsPartial } from './parse';
 import { redactSecrets } from './redact';
-import { answerFitsOptions, startDateAnswer } from '../fields/answers';
+import { answerFitsOptions, experienceAnswer, keepInAnswer, startDateAnswer } from '../fields/answers';
 import { activeProviders, adapterFor, generateWithFallback, resolveProvider } from '../llm/registry';
 import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
@@ -311,11 +311,20 @@ export class SuggestEngine {
       }
       const fm = matchFacts(f.field, facts, 1)[0];
       // A fact for a choice question only when it is one of the choices (your skills list is no
-      // answer to "Do you have all the relevant skills? Yes / No").
+      // answer to "Do you have all the relevant skills? Yes / No"). Your own saved answer wins.
       if (fm && (fm.score ?? 0) >= 0.99 && !f.field.longForm && answerFitsOptions(fm.text, f.field)) {
         values[f.id] = fm.text;
         sources[f.id] = 'fact';
-      } else remaining.push(f);
+        continue;
+      }
+      // "Comfortable commuting / relocating / working on-site?": Yes, so you stay in the running.
+      const keep = keepInAnswer(f.field);
+      if (keep) {
+        values[f.id] = keep;
+        sources[f.id] = 'rule';
+        continue;
+      }
+      remaining.push(f);
     }
     log.info(`fill-form: ${fields.length} fields, ${Object.keys(values).length} from facts, ${remaining.length} to the model`);
 
@@ -340,6 +349,12 @@ export class SuggestEngine {
           // Not clamped here: the fill step first fits the answer to the field ("+91 62645 79927" → 10 digits), then applies maxlength.
           values[f.id] = fitLength(v, f.field.maxLength);
           sources[f.id] = 'ai';
+        }
+        // Years of experience the AI didn't know (blank or 0): 3 years.
+        const yrs = experienceAnswer(f.field, values[f.id]);
+        if (yrs) {
+          values[f.id] = yrs;
+          sources[f.id] = 'rule';
         }
       }
       log.info(`fill-form model answered ${Object.keys(parsed).length} fields via ${r.provider.label}`);

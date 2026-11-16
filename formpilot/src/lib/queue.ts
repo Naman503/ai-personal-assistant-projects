@@ -149,8 +149,24 @@ export function titleSkipped(title: string, skip: string): boolean {
 }
 
 /** Cards worth opening: Easy Apply, not applied, not skipped by title, not already tried. */
-export function candidates(cards: JobCard[], skipTitles: string, tried: Set<string>): JobCard[] {
-  return cards.filter((c) => c.easyApply && !c.applied && !titleSkipped(c.title, skipTitles) && !tried.has(cardKey(c)));
+export function candidates(cards: JobCard[], skipTitles: string, tried: Set<string>, relevant: string[] = []): JobCard[] {
+  return cards.filter((c) => c.easyApply && !c.applied && !titleSkipped(c.title, skipTitles) && !tried.has(cardKey(c)) && titleRelevant(c.title, relevant));
+}
+
+/** Words too common in job titles to say what the job is. */
+const GENERIC = new Set(['developer', 'engineer', 'engineering', 'senior', 'sr', 'junior', 'jr', 'lead', 'principal', 'staff', 'associate', 'ii', 'iii', 'i', 'and', 'or', 'the', 'of', 'for', 'with', 'remote', 'hybrid', 'onsite', 'manager', 'specialist', 'consultant', 'intern', 'trainee', 'executive']);
+const words = (s: string) => s.toLowerCase().replace(/react\.?js/g, 'react').split(/[^a-z0-9+#]+/).filter(Boolean);
+
+/** The distinctive words of your job titles ("React Native Developer, Full Stack Engineer" → react, native, full, stack). */
+export function relevantWords(titles: string[]): string[] {
+  return [...new Set(titles.flatMap(words).filter((w) => !GENERIC.has(w) && w.length > 1))];
+}
+
+/** A job title matches when it shares a distinctive word with your titles (no words: everything matches). */
+export function titleRelevant(title: string, relevant: string[]): boolean {
+  if (!relevant.length) return true;
+  const t = new Set(words(title));
+  return relevant.some((w) => t.has(w));
 }
 
 export const cardKey = (c: Pick<JobCard, 'title' | 'company'>) => `${c.company}|${c.title}`.toLowerCase();

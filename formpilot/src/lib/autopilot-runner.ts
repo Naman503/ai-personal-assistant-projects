@@ -7,6 +7,7 @@
 import type { Settings } from './settings';
 import { batchSize, freshDay, gapMinutes, inActiveHours, ist, linkedInSearchUrl, nextStart, pickTitle, titlesOf, type DayState } from './autopilot';
 import { createLogger } from './logger';
+import { relevantWords } from './queue';
 
 const log = createLogger('autopilot');
 export const AP_KEY = 'fpAutopilot';
@@ -188,7 +189,7 @@ export class Autopilot {
     const st = await loadState();
     if (!st.running || !st.current || st.tabId === undefined) return;
     const reply = (await chrome.tabs
-      .sendMessage(st.tabId, { type: 'command', name: 'apply-queue', via: 'autopilot', opts: { batch: st.current.batch, dryRun: ap.dryRun, unattended: true, autoSubmit: !ap.dryRun, cap: ap.dailyCap } }, { frameId: 0 })
+      .sendMessage(st.tabId, { type: 'command', name: 'apply-queue', via: 'autopilot', opts: { batch: st.current.batch, dryRun: ap.dryRun, unattended: true, autoSubmit: !ap.dryRun, cap: ap.dailyCap, relevant: relevantWords(titlesOf(ap)) } }, { frameId: 0 })
       .catch(() => null)) as { ok?: boolean; list?: boolean } | null;
     if (!reply?.list) {
       if (++st.current.tries < 2) {
