@@ -150,6 +150,16 @@ export async function companyCount(company: string, exceptId?: string): Promise<
   return done.filter((j) => j.id !== exceptId && (j.doneAt ?? 0) > since && companyKey(j.company) === k).length;
 }
 
+/** Why an earlier job at this company was left for you, if it was a CAPTCHA or a sign-in wall (last 7 days). */
+export async function companyWall(company: string, exceptId?: string): Promise<string | null> {
+  const k = companyKey(company);
+  if (!k) return null;
+  const since = Date.now() - 7 * 86400_000;
+  const left = await spDb().jobs.where('status').equals('needs-you').toArray();
+  const hit = left.find((j) => j.id !== exceptId && (j.doneAt ?? 0) > since && companyKey(j.company) === k && /captcha|sign in|account|password/i.test(j.reason ?? '') && !/^same company/.test(j.reason ?? ''));
+  return hit?.reason ?? null;
+}
+
 export async function addStep(id: string, what: string) {
   await spDb().jobs.where('id').equals(id).modify((j) => {
     j.steps = [...j.steps, { t: Date.now(), what }].slice(-120);

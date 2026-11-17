@@ -66,6 +66,9 @@ export const CONSENT_RE = /\b(privacy (policy|notice|statement)|terms (and|&) co
 /** Boxes never ticked for you: newsletters, marketing, talent communities, messages. */
 export const MARKETING_RE = /\b(newsletter|marketing|promotional|offers|updates? (about|on) (future|new|other)|future (job )?opportunities|talent (community|pool|network)|job alerts?|sms|whatsapp|text messages?|subscribe|keep me informed|contact me about)\b/i;
 
+/** Opt-in questions asked as Yes/No (stay up to date, job alerts): always No. */
+export const OPT_IN_RE = /\b(stay up to date|keep (me )?(informed|updated|in touch)|(job )?alerts?( for similar)?|newsletter|marketing (emails?|communications?)|future (job )?(opportunities|openings|roles)|talent (community|pool|network)|subscribe|contact me about other)\b/i;
+
 export function consentToTick(label: string, required: boolean): boolean {
   if (MARKETING_RE.test(label)) return false;
   return CONSENT_RE.test(label) && (required || /\*\s*$/.test(label.trim()) || /\b(required|mandatory)\b/i.test(label));
