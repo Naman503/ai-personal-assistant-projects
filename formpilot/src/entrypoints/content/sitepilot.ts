@@ -592,13 +592,32 @@ function closeCombo(input: HTMLElement) {
   if (input.tagName !== 'INPUT' && input.getAttribute('aria-expanded') === 'true') humanClick(input);
   input.blur();
 }
+/** Schooling lists (Greenhouse's School / Degree / Discipline) offer "Other" for names they don't know. */
+const SCHOOLING = /\b(school|university|college|institut\w*|degree|discipline|field of study|major|education)\b/i;
+const otherFallback = (input: HTMLElement, option: string) => {
+  if (/^other$/i.test(option.trim())) return false;
+  let label = '';
+  try {
+    label = resolveLabel(input as FillableElement);
+  } catch {
+    /* no label */
+  }
+  return SCHOOLING.test(label);
+};
+
 async function chooseCombo(input: HTMLElement, option: string): Promise<boolean> {
   let opts = await comboOptions(input);
   if (!opts.length && input.tagName !== 'INPUT') return false;
   if (!opts.length) {
-    // Async lists (location): type, then pick from what appears.
+    // Async lists (location, Greenhouse's school): type, then pick from what appears. 18 Nov:
+    // "Indore Institute of Science and Technology" isn't in Greenhouse's school list, so the
+    // required School stayed empty ("stuck: still missing School*"): pick "Other" then.
     fillElement(input, option, 'replace');
-    return pickSuggestion(input, option);
+    if (await pickSuggestion(input, option)) return true;
+    if (!otherFallback(input, option)) return false;
+    log.info(`"${option.slice(0, 40)}" isn't in the list; choosing "Other"`);
+    fillElement(input, 'Other', 'replace');
+    return pickSuggestion(input, 'Other');
   }
   let pick = bestOption(option, opts.map((el) => ({ el, label: textOf(el), value: textOf(el) })));
   if (!pick && input.tagName === 'INPUT') {
@@ -609,6 +628,7 @@ async function chooseCombo(input: HTMLElement, option: string): Promise<boolean>
   }
   if (!pick) {
     closeCombo(input);
+    if (otherFallback(input, option)) return chooseCombo(input, 'Other');
     return false;
   }
   humanClick(pick.el);

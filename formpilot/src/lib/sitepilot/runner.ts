@@ -524,6 +524,8 @@ export class SitePilot {
       return;
     }
     if (r.naukriApply) return this.finish('skipped', 'applies on Naukri itself (the Autopilot handles these)');
+    // Applied already (on Naukri, or here earlier): nothing for you to do.
+    if (r.reason && /already applied/i.test(r.reason)) return this.finish('skipped', r.reason);
     return this.finish('needs-you', r.reason || 'could not get the company link from Naukri');
   }
 
@@ -713,7 +715,10 @@ export class SitePilot {
     if (!cur) return;
     // Submitted, and the site emailed a code to confirm (Greenhouse does this): only you can read
     // it. The page stays open in Site Pilot's window, Site Pilot pauses, and Resume checks it.
-    if (outcome === 'needs-you' && cur.submitted && /\b(verification|security|confirmation) code\b|\bcode (was )?sent\b|\botp\b/i.test(reason)) {
+    // Only while you're at the Mac: overnight (nobody to type the code) it is filed under Needs you
+    // and Site Pilot goes on with the next job.
+    const someoneHere = (await chrome.idle?.queryState(600).catch(() => 'active')) === 'active';
+    if (outcome === 'needs-you' && cur.submitted && someoneHere && /\b(verification|security|confirmation) code\b|\bcode (was )?sent\b|\botp\b/i.test(reason)) {
       const job = await spDb().jobs.get(cur.jobId);
       await addStep(cur.jobId, 'the site emailed you a code: type it in Site Pilot\'s window and press Submit, then Resume');
       await Promise.all([LOAD, WATCH, TICK].map((a) => chrome.alarms.clear(a)));
