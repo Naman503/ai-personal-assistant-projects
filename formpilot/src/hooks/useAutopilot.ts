@@ -38,7 +38,7 @@ export function describe(st: ApState | null): { tone: 'green' | 'amber' | 'neutr
 
 export function useAutopilot(every = 2000) {
   const [st, setSt] = useState<ApState | null>(null);
-  const call = (action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now') => rpc<ApState>({ type: 'autopilot', action }).then(setSt).catch(() => {});
+  const call = (action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now' | 'unblock', platform?: import('@/lib/sites').Platform) => rpc<ApState>({ type: 'autopilot', action, platform }).then(setSt).catch(() => {});
   useEffect(() => {
     void call('status');
     const t = setInterval(() => void call('status'), every);

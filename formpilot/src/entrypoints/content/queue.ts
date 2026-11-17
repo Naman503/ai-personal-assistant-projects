@@ -112,6 +112,8 @@ export class ApplyQueue {
   /** "Skip the pause": end the current wait between jobs now. */
   private goNow = false;
   private tried = new Set<string>();
+  /** LinkedIn pushed back mid-batch (daily Easy Apply limit, security check). */
+  private pushback = '';
   private sent = 0;
   /** Sent since the last break; a longer pause comes after a handful, like a person would take. */
   private sinceBreak = 0;
@@ -169,6 +171,7 @@ export class ApplyQueue {
     this.running = true;
     this.stopRequested = false;
     this.sent = 0;
+    this.pushback = '';
     this.sinceBreak = 0;
     this.breakAfter = 6 + Math.floor(Math.random() * 5);
     try {
@@ -227,6 +230,7 @@ export class ApplyQueue {
         this.tried.add(cardKey(card));
         const dryBefore = this.dry;
         const sent = await this.one(card, prefs);
+        if (this.pushback) return this.finish(`${this.pushback}. Stopped for today so your account stays safe.`, 'error', this.pushback);
         if (!sent && this.dry === dryBefore && !this.aiError) {
           this.skipped++;
           if (prefs.unattended && !this.stopRequested) {
@@ -363,9 +367,22 @@ export class ApplyQueue {
       if (!b) break;
       quietFocus(8000); // the dialog focuses its first field on open: not a reason to suggest
       humanClick(b);
-      dialog = await this.until(() => !!applyDialog(), attempt ? 15_000 : 8000);
+      dialog = await this.until(() => !!applyDialog() || !!pushbackNotice(), attempt ? 15_000 : 8000);
+      if (pushbackNotice()) break; // the daily-limit pop-up: don't press again
     }
     if (this.stopRequested) return false;
+    // LinkedIn's "You reached today’s Easy Apply limit" pop-up opens instead of the form: stop the
+    // batch here (the autopilot stops LinkedIn for today) rather than trying every job.
+    const limit = pushbackNotice();
+    if (limit) {
+      trace(`pushback after pressing Easy Apply on ${label}: ${limit}`);
+      for (const d of openDialogs()) {
+        const ok = [...d.querySelectorAll<HTMLElement>('button')].find((b) => /^(got it|dismiss|ok)$/i.test((b.textContent || b.getAttribute('aria-label') || '').trim()));
+        if (ok) humanClick(ok);
+      }
+      this.pushback = limit;
+      return false;
+    }
     if (!dialog) {
       trace(`skip: the Easy Apply dialog didn't open for ${label}`);
       return false;

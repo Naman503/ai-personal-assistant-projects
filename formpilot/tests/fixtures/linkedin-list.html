@@ -53,16 +53,29 @@ function select(j) {
   // Like LinkedIn: the old job (and its Easy Apply button) stays on screen while the new one loads.
   setTimeout(() => {
     pane.innerHTML = `<a href="/jobs/view/${j.id}/">${j.title}</a><p><a href="https://www.linkedin.com/company/${j.company.toLowerCase()}/life">${j.company} Pvt Ltd</a></p>` +
-      (j.applied ? '<h2>Application status</h2>' : j.easy ? `<button type="button" aria-label="Easy Apply to this job" componentkey="ea">Easy Apply</button>` : '<button type="button">Apply</button>');
+      (j.applied ? '<h2>Application status</h2>' : j.easy ? (window.__asLink ? `<a aria-label="Easy Apply to this job" aria-disabled="false" componentkey="ea" href="${location.href}">Easy Apply</a>` : `<button type="button" aria-label="Easy Apply to this job" componentkey="ea">Easy Apply</button>`) : '<button type="button">Apply</button>');
     const b = pane.querySelector('[aria-label="Easy Apply to this job"]');
     if (b) b.onclick = () => {
       // Live LinkedIn (17 Nov): while "Save this application?" is open, Easy Apply does nothing.
       if (document.getElementById('confirm')) { window.__blocked = (window.__blocked || 0) + 1; return; }
+      // ?__limit: LinkedIn's daily Easy Apply limit (markup as captured live on 17 Nov) instead of the form.
+      if (window.__limit) { window.__limitShown = (window.__limitShown || 0) + 1; showLimit(); return false; }
       history.pushState(null, '', '/jobs/view/' + j.id + '/?companyName=' + encodeURIComponent(j.company + ' Private Limited') + '&applicantTrackingSystemName=LinkedIn'); openDialog(j); };
   }, 1500);
 }
 const css = `<style>.fb-form-element__checkbox{position:absolute;opacity:0;width:1px;height:1px}
   label{display:inline-block;border:1px solid #666;border-radius:16px;padding:3px 12px;margin:3px}</style>`;
+// ?limit=1: LinkedIn's daily-limit pop-up instead of the form; ?link=1: Easy Apply as a link (both live, 17 Nov).
+if (/[?&]limit=1/.test(location.search)) window.__limit = true;
+if (/[?&]link=1/.test(location.search)) window.__asLink = true;
+function showLimit() {
+  const d = document.createElement('dialog');
+  d.setAttribute('data-testid', 'dialog');
+  d.innerHTML = '<button type="button" aria-label="Dismiss">x</button><h2 id="dialog-header">You reached today\u2019s Easy Apply limit</h2><p>Great effort applying today. We limit Easy Apply submissions to help ensure each application gets the right attention. Save this job and continue applying tomorrow.</p><a href="#">Learn more</a><button type="button">Got it</button>';
+  document.body.appendChild(d);
+  d.show();
+  d.querySelectorAll('button').forEach((b) => (b.onclick = () => d.remove()));
+}
 function openDialog(j) {
   window.__opened.push(j.title);
   const native = j.id === 5;

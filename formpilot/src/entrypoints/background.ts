@@ -261,6 +261,7 @@ export default defineBackground({
           if (msg.action === 'start') await autopilot.start();
           else if (msg.action === 'stop' || msg.action === 'pause') await autopilot.pause();
           else if (msg.action === 'reset') await autopilot.reset();
+          else if (msg.action === 'unblock' && msg.platform) await autopilot.unblock(msg.platform);
           else if (msg.action === 'run-now') await autopilot.runNow();
           else if (msg.action === 'resume') await autopilot.resume();
           return autopilot.status();

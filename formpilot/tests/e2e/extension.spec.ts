@@ -1213,6 +1213,36 @@ test('autopilot on Foundit: Quick Apply that lands on the success page counts as
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
 });
 
+test('autopilot: LinkedIn\'s daily Easy Apply limit stops only LinkedIn for today; the next portal carries on', async ({ context, sw, extId }) => {
+  test.setTimeout(300_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false, queueSkipTitles: '' },
+    behavior: { enabled: false },
+    autopilot: { titles: 'Mobile Engineer', dryRun: false, dailyCap: 10, batchMin: 2, batchMax: 2, gapMinMin: 30, gapMaxMin: 30, pauseMinSec: 1, pauseMaxSec: 2, startTime: '00:00', endTime: '24:00', days: [0, 1, 2, 3, 4, 5, 6], skipWords: '', linkedinEnabled: true, naukri: { enabled: true, dryRun: true, dailyCap: 5, maxExpMin: 5, mode: 'search' }, foundit: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5 }, cutshort: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5 }, searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}&limit=1&link=1' },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot', 'fpQueueDay']));
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  type St = { running: boolean; phase: string; day: { blocked?: Record<string, { reason: string; kind: string }> }; history: { msg: string }[] };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  // LinkedIn shows its limit pop-up on the first Easy Apply (a link now): LinkedIn stops for today, the autopilot keeps running.
+  await expect.poll(async () => (await state()).day.blocked?.linkedin?.kind, { timeout: 150_000 }).toBe('limit');
+  const st = await state();
+  expect(st.running).toBe(true);
+  expect(st.phase).toBe('waiting');
+  const list = context.pages().find((p) => p.url().includes('linkedin-list.html'))!;
+  expect(await list.evaluate(() => (window as unknown as { __limitShown?: number }).__limitShown)).toBe(1); // stopped at the first one, didn't try every job
+  expect(st.history.map((h) => h.msg).join('\n')).toMatch(/LinkedIn stopped for today: LinkedIn says: ".*Easy Apply limit/);
+  // Skip the short break: the next batch is Naukri, not LinkedIn.
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'run-now' }));
+  await expect.poll(async () => (await state()).history.map((h) => h.msg).join('\n'), { timeout: 30_000 }).toMatch(/Naukri: searching/);
+  // "Try again" lets LinkedIn back in today.
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'unblock', platform: 'linkedin' }));
+  expect((await state()).day.blocked?.linkedin).toBeUndefined();
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
+});
+
 test('autopilot: when the AI\'s daily quota is used up, it waits for the reset instead of skipping jobs', async ({ context, sw, extId }) => {
   test.setTimeout(180_000);
   await configure(sw, {
