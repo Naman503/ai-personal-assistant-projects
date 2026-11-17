@@ -539,6 +539,16 @@ async function applyWithNote(p: 'wellfound' | 'yc', dryRun: boolean, fill: Fill)
     }
   }
   await sleep(between(0.8, 1.6));
+  // Note boxes the form fill left empty (17 Nov: two Wellfound pop-ups came back with 0
+  // characters): write each one from the job and your profile, one question at a time.
+  for (const t of [...d.querySelectorAll<HTMLTextAreaElement>('textarea')].filter((x) => visible(x) && !clean(x.value))) {
+    const q =
+      clean(t.labels?.[0]?.textContent || t.getAttribute('aria-label') || t.placeholder) ||
+      (p === 'yc' ? `Write a short message to the founder about why you're a fit for this role (3-4 sentences).` : 'What interests you about working for this company?');
+    const a = await answerFor(q, 'text');
+    if (a) fillElement(t, a, 'replace', q);
+    await sleep(between(0.4, 0.9));
+  }
   const note = d.querySelector<HTMLTextAreaElement>(p === 'yc' ? '#apply-message, textarea' : 'textarea');
   const text = clean(note?.value);
   const answers = [...d.querySelectorAll<HTMLTextAreaElement>('textarea')].map((t) => ({ q: clean(t.labels?.[0]?.textContent || t.getAttribute('aria-label') || t.name || 'note').slice(0, 120), a: t.value }));
