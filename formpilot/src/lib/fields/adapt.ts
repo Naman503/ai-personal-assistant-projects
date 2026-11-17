@@ -61,7 +61,12 @@ function decimalsAllowed(f: FieldSpec): boolean {
 }
 
 type MoneyUnit = 1 | 1e3 | 1e5 | 1e7;
+/** Rupees per US dollar, for salary boxes that ask in USD (approximate on purpose). */
+const USD_INR = 88;
 function moneyUnitAsked(q: string): MoneyUnit | null {
+  // "in INR lakhs" is lakhs; "in INR" is rupees even when the job's own range says "(3 to 5 LPA)".
+  if (/\bin (inr |rs\.? |rupees )?(lpa|lakhs?|lacs?|lac)\b/.test(q)) return 1e5;
+  if (/\bin (inr|rupees|rs)\b/.test(q)) return 1;
   if (/\b(lpa|lakhs?|lacs?|lac|lakh|in l)\b/.test(q)) return 1e5;
   if (/\b(crores?|cr)\b/.test(q)) return 1e7;
   if (/\b(thousands?|in k|000s)\b/.test(q)) return 1e3;
@@ -226,9 +231,15 @@ export function adaptValue(text: string, f: FieldSpec): string {
         else if (unit === 1 && inr > 0 && inr < 200 && periodAsked(q) !== 'month') inr *= 1e5;
       }
       const want = periodAsked(q);
-      const have = money.period ?? (/\b(ctc|lpa|package)\b/.test(s.toLowerCase()) || money.inr >= 1e5 ? 'year' : null);
+      // No period written: ₹4 lakh or more is a yearly figure; less, asked per month, is already
+      // monthly (17 Nov: "expected monthly salary" 1,25,000 was divided by 12 again → 10417).
+      // "15,00,000 per month" is a yearly figure mislabelled: nobody here is asked that per month.
+      const yearly = /\b(ctc|lpa|package)\b/.test(s.toLowerCase()) || inr >= 4e5;
+      const have = money.period === 'month' && inr >= 5e5 ? 'year' : (money.period ?? (yearly ? 'year' : want === 'month' ? 'month' : inr >= 1e5 ? 'year' : null));
       if (want === 'month' && have === 'year') inr /= 12;
       else if (want === 'year' && have === 'month') inr *= 12;
+      // Asked in US dollars and answered in rupees (16 Nov: "Monthly salary (USD)" got 89583).
+      if (/\b(usd|us ?\$|dollars?)\b|\$/.test(q) && !/\$|\busd\b|dollar/i.test(s)) return String(Math.round(inr / USD_INR));
       return round(inr / unit, dec && unit !== 1);
     }
   }

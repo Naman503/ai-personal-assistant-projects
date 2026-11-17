@@ -58,6 +58,23 @@ export function keepInAnswer(f: Pick<FieldContext, 'label' | 'options'>): string
 }
 
 /**
+ * Questions whose honest answer is "none" unless your memory says otherwise (17 Nov: "Current
+ * Variable Compensation" got the full CTC; "If yes, please provide their name(s)" got your own
+ * name). Variable pay / bonus / stock: 0. A follow-up asking who you know or who referred you: Not
+ * applicable. Facts you saved still win (they're checked first).
+ */
+const NO_VARIABLE = /\b(variable (pay|compensation|component|ctc|part)|bonus|incentives?|unvested|esops?|rsus?|stock options?|joining bonus)\b/i;
+const NO_ONE = /^\s*if (yes|so)\b[^?]*\b(their|the|his|her) names?\b|^\s*if (yes|so)\b[^?]*\b(name\(s\)|names? of|employee names?|referr|relative|who)\b/i;
+
+export function noneAnswer(f: Pick<FieldContext, 'label' | 'options'>): string | null {
+  const q = f.label ?? '';
+  if (f.options?.length) return null;
+  if (NO_VARIABLE.test(q) && !/\b(expect|expected|desired)\b/i.test(q)) return '0';
+  if (NO_ONE.test(q)) return 'Not applicable';
+  return null;
+}
+
+/**
  * Questions where "Yes" screens you out and "No" is your situation: non-compete agreements,
  * needing visa sponsorship (in India), criminal records. Answered No by rule.
  */

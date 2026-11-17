@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bot, Activity, Clock, Filter, Gauge, History, Play, Square, FastForward } from 'lucide-react';
+import { Bot, Activity, Clock, Filter, Gauge, History, Play, Pause, RotateCcw, FastForward } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Switch, Textarea } from '@/components/ui';
 import { describe, time, useAutopilot } from '@/hooks/useAutopilot';
 import { relevantWords } from '@/lib/queue';
@@ -37,13 +37,22 @@ export function Autopilot({ settings, update }: PageProps) {
               <Button onClick={() => void call('run-now')} disabled={!d.canSkip} title="Skip the current break or pause">
                 <FastForward className="size-4" /> Skip break
               </Button>
-              <Button variant="danger" onClick={() => void call('stop')}>
-                <Square className="size-4" /> Stop
+              <Button variant="danger" onClick={() => void call('pause')} title="Stops now and remembers where it is: portal, title, job list and position">
+                <Pause className="size-4" /> Pause
+              </Button>
+            </div>
+          ) : st?.phase === 'paused' && st.current ? (
+            <div className="flex gap-2">
+              <Button onClick={() => void call('reset').then(() => call('start'))} title="Drop the paused batch and begin a new one on the next portal">
+                <RotateCcw className="size-4" /> Start fresh
+              </Button>
+              <Button variant="primary" onClick={() => void call('start')}>
+                <Play className="size-4" /> Resume
               </Button>
             </div>
           ) : (
             <Button variant="primary" onClick={() => void call('start')}>
-              <Play className="size-4" /> Start
+              <Play className="size-4" /> {st?.phase === 'paused' ? 'Resume' : 'Start'}
             </Button>
           )
         }
@@ -53,7 +62,7 @@ export function Autopilot({ settings, update }: PageProps) {
         <CardHeader icon={<Activity className="size-4" />} title="Now" />
         <div className="space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={d.tone}>{st?.running ? 'On' : 'Off'}</Badge>
+            <Badge tone={d.tone}>{st?.running ? 'On' : st?.phase === 'paused' ? 'Paused' : 'Off'}</Badge>
             {(
               [
                 ['LinkedIn', a.linkedinEnabled, a.dryRun],
@@ -76,7 +85,15 @@ export function Autopilot({ settings, update }: PageProps) {
                 ['Sent', day.sent],
                 ['Would apply (dry run)', day.dry],
                 ['Skipped', day.skipped],
-                ['Today', `${day.sent + day.dry} / ${a.dailyCap}`],
+                ...(
+                  [
+                    ['LinkedIn', 'linkedin', a.linkedinEnabled, a.dailyCap],
+                    ['Naukri', 'naukri', a.naukri.enabled, a.naukri.dailyCap],
+                    ['Cutshort', 'cutshort', a.cutshort.enabled, a.cutshort.dailyCap],
+                  ] as const
+                )
+                  .filter(([, , on]) => on)
+                  .map(([n, k, , cap]) => [`${n} today`, `${day.byPlatform[k].sent + day.byPlatform[k].dry} / ${cap}`] as const),
               ].map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
                   <div className="text-lg font-semibold">{v}</div>

@@ -941,7 +941,7 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   await expect.poll(() => sw.evaluate(async () => !!((await chrome.alarms.get('fp-ap-tick')) || (await chrome.alarms.get('fp-ap-go')))), { timeout: 15_000 }).toBe(true);
   // Stop: nothing more is scheduled.
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
-  await expect.poll(async () => (await state()).phase, { timeout: 5000 }).toBe('stopped');
+  await expect.poll(async () => (await state()).phase, { timeout: 5000 }).toBe('paused');
   // …and its tab is handed back to normal browser behaviour.
   await expect.poll(attached, { timeout: 5000 }).toBe(false);
   expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-tick'))).toBeFalsy();
@@ -997,6 +997,90 @@ test('autopilot on Naukri (live: Apply + chatbot) then Cutshort (dry run: form f
   expect(hist).toContain('Naukri · Applied: React Native Developer - Wissen');
   expect(hist).toContain('Cutshort · Would apply: Junior React Native Developer');
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
+});
+
+test('autopilot: Pause keeps the batch and the counts; Resume opens the same job, not the next portal', async ({ context, sw, extId }) => {
+  test.setTimeout(240_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false },
+    behavior: { enabled: false },
+    autopilot: {
+      titles: 'React Native Developer',
+      gapMinMin: 30,
+      gapMaxMin: 30,
+      startTime: '00:00',
+      endTime: '24:00',
+      days: [0, 1, 2, 3, 4, 5, 6],
+      skipWords: '',
+      linkedinEnabled: true,
+      naukri: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5, mode: 'search' },
+      cutshort: { enabled: true, dryRun: true, dailyCap: 5, maxExpMin: 5 },
+      searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}',
+    },
+  });
+  // Paused earlier today on Naukri, on the second job of its batch, with today's counts so far.
+  const date = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  await sw.evaluate(
+    async ({ date }) => {
+      const now = Date.now();
+      await chrome.storage.local.set({
+        fpAutopilot: {
+          running: false,
+          phase: 'paused',
+          day: { date, sent: 4, dry: 0, skipped: 1, perTitle: { 'naukri:React Native Developer': 1 }, exhausted: [], seen: ['http://localhost:4173/naukri-job.html?id=9'], byPlatform: { linkedin: { sent: 3, dry: 0, skipped: 0 }, naukri: { sent: 1, dry: 0, skipped: 1 }, cutshort: { sent: 0, dry: 0, skipped: 0 } } },
+          lastTitle: -1,
+          lastPlatform: 1,
+          message: 'Paused by you',
+          history: [],
+          current: {
+            platform: 'naukri',
+            title: 'React Native Developer',
+            index: 0,
+            batch: 2,
+            startedAt: now - 600_000,
+            tries: 0,
+            stage: 'job',
+            url: 'http://localhost:4173/naukri-search.html?q=React',
+            jobs: [
+              { url: 'http://localhost:4173/naukri-job.html?id=9', title: 'Earlier job', company: 'Done Co' },
+              { url: 'http://localhost:4173/naukri-job.html?id=1', title: 'React Native Developer - Wissen', company: 'Wissen Infotech' },
+            ],
+            i: 1,
+            done: 1,
+            sent: 1,
+            dry: 0,
+            skipped: 0,
+            pausedAt: now - 60_000,
+          },
+        },
+      });
+    },
+    { date },
+  );
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/options.html#autopilot`);
+  await expect(ui.getByText('Paused', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+  await expect(ui.getByText(/Resume picks up at Naukri "React Native Developer", job 2 of 2/)).toBeVisible();
+  await expect(ui.getByText('Naukri today', { exact: true })).toBeVisible();
+  type St = { running: boolean; phase: string; current?: { i?: number; platform?: string }; day: { byPlatform: Record<string, { sent: number }>; seen: string[] }; history: { msg: string }[] };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  await ui.getByRole('button', { name: 'Resume' }).click();
+  // The same portal and the same job (not LinkedIn, which would be next after a fresh start).
+  await expect.poll(async () => (await state()).history.map((h) => h.msg).join('\n'), { timeout: 10_000 }).toMatch(/Resumed: .*Picking up at Naukri "React Native Developer", job 2 of 2/);
+  await expect.poll(() => context.pages().some((p) => p.url().includes('naukri-job.html?id=1')), { timeout: 15_000 }).toBe(true);
+  expect(context.pages().some((p) => p.url().includes('linkedin'))).toBe(false);
+  // It finishes that job; earlier counts are kept, nothing is repeated.
+  await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 150_000 }).toBe(2);
+  const st = await state();
+  expect(st.day.byPlatform.linkedin.sent).toBe(3);
+  expect(st.day.seen.filter((u) => u.endsWith('naukri-job.html?id=9'))).toHaveLength(1);
+  expect(st.day.seen.filter((u) => u.endsWith('naukri-job.html?id=1'))).toHaveLength(1);
+  // Batch done (2 of 2): a normal break follows. Pause there, then Start fresh is not offered.
+  await expect.poll(async () => (await state()).phase, { timeout: 15_000 }).toBe('waiting');
+  await ui.getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(async () => (await state()).phase, { timeout: 5000 }).toBe('paused');
+  expect((await state()).current).toBeUndefined();
+  await expect(ui.getByText('Resume starts the next batch').first()).toBeVisible();
 });
 
 test('autopilot: when the AI\'s daily quota is used up, it waits for the reset instead of skipping jobs', async ({ context, sw, extId }) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { rpc } from '@/lib/messages';
 import type { ApState } from '@/lib/autopilot-runner';
+import { resumePoint } from '@/lib/autopilot-resume';
 
 export const time = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 const left = (ms: number) => {
@@ -10,6 +11,8 @@ const left = (ms: number) => {
 
 /** What the autopilot is doing, in words, with what you can do about it. */
 export function describe(st: ApState | null): { tone: 'green' | 'amber' | 'neutral' | 'red'; title: string; detail: string; canSkip: boolean } {
+  if (st && !st.running && st.phase === 'paused')
+    return { tone: 'amber', title: 'Paused', detail: st.current ? `Resume picks up at ${resumePoint(st.current)}` : 'Resume starts the next batch', canSkip: false };
   if (!st || !st.running) return { tone: 'neutral', title: 'Off', detail: st?.message ?? 'Not running', canSkip: false };
   const fresh = st.progress && Date.now() - st.progress.at < 10 * 60_000 ? st.progress.text : '';
   switch (st.phase) {
@@ -35,7 +38,7 @@ export function describe(st: ApState | null): { tone: 'green' | 'amber' | 'neutr
 
 export function useAutopilot(every = 2000) {
   const [st, setSt] = useState<ApState | null>(null);
-  const call = (action: 'start' | 'stop' | 'status' | 'run-now') => rpc<ApState>({ type: 'autopilot', action }).then(setSt).catch(() => {});
+  const call = (action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now') => rpc<ApState>({ type: 'autopilot', action }).then(setSt).catch(() => {});
   useEffect(() => {
     void call('status');
     const t = setInterval(() => void call('status'), every);

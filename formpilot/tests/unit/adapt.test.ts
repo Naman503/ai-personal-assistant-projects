@@ -130,3 +130,22 @@ describe('live LinkedIn salary / notice boxes and "Invalid input" repair', () =>
     expect(repairValue('15', 'Enter a whole number between 0 and 99', ctc)).toBe(null); // already fits: leave it to you
   });
 });
+
+describe('salary answers seen going wrong live (16–17 Nov)', () => {
+  it('a monthly amount for a monthly question is not divided by 12 again', () => {
+    expect(adaptValue('125000', f('What is your expected monthly salary in INR?'))).toBe('125000');
+    expect(adaptValue('15,00,000', f('What is your expected monthly salary in INR?'))).toBe('125000');
+    expect(adaptValue('1000000', f('What is your current monthly salary in INR?'))).toBe('83333');
+  });
+  it('"in INR" means rupees even when the job quotes its range in LPA', () => {
+    expect(adaptValue('41667', f('Our monthly salary for this role is INR 25,000 to INR 41,667 (3 to 5 LPA). What monthly salary in INR, within this range, would you accept?'))).toBe('41667');
+    expect(adaptValue('15 LPA', f('What is your expected annual fixed compensation (in INR lakhs)?'))).toBe('15');
+  });
+  it('"15,00,000 INR per month" is a yearly figure', () => {
+    expect(adaptValue('1,500,000 INR per month', f('Desired salary per month (in your local currency):'))).toBe('125000');
+  });
+  it('USD boxes get dollars', () => {
+    expect(adaptValue('10,75,000', f('Current Monthly Salary/Compensation (USD)'))).toBe('1018');
+    expect(adaptValue('125000', f('Expected Monthly Salary/Compensation (USD)'))).toBe('1420');
+  });
+});

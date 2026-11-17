@@ -4,6 +4,19 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.21.0] - 2026-11-17
+
+### Added
+- **Pause and Resume for the autopilot.** Stop is now Pause: it stops at once and keeps the batch in progress (portal, job title, the job list and the position in it). Resume reopens that portal and carries on from the same job, instead of starting a new batch on the next portal. "Start fresh" drops the paused batch. Closing the autopilot window pauses it the same way.
+- The Autopilot page shows today's count per portal (LinkedIn, Naukri, Cutshort against each daily limit) and, while paused, where Resume picks up.
+- LinkedIn jobs skipped today (needs a test, wrong company, form it can't finish) aren't opened again in later batches. Jobs that only failed to load are tried again.
+- Pop-ups over the LinkedIn job list after an application ("Turn your resume into a profile…", Premium, job alerts) get **Not now** / **No thanks** / the X before the next job, never the action button.
+
+### Fixed
+- **Applications lost from the counts when you stopped.** LinkedIn's queue reports its sends when it stops, and a Naukri job can finish after Stop; those reports were ignored, so daily limits drifted. They're counted now.
+- **Salary answers in the wrong unit.** "Expected monthly salary in INR" got 10417 (a monthly figure divided by 12 again); "What monthly salary in INR, within INR 25,000–41,667 (3 to 5 LPA)" got 0.42 (lakhs, because the job's range said LPA); "Desired salary per month" got "1,500,000 INR per month"; salary boxes in USD got rupees. Monthly vs yearly is now judged by size when the answer doesn't say, "in INR" means rupees, and USD boxes get dollars.
+- **"Current variable compensation" got the full CTC** and "If yes, please provide their name(s)" got your own name. Variable pay / bonus / stock now answer 0 and those follow-ups "Not applicable", unless your memory says otherwise.
+
 ## [1.19.4] - 2026-11-17
 
 ### Fixed

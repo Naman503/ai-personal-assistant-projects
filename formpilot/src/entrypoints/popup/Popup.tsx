@@ -372,13 +372,13 @@ export function Popup() {
                       <Play className="size-4" />
                     </button>
                   ) : null}
-                  <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" title="Stop" onClick={() => void apCall('stop')}>
+                  <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" title="Pause (remembers where it is)" onClick={() => void apCall('pause')}>
                     <Square className="size-4" />
                   </button>
                 </>
               ) : (
                 <button className="rounded-lg bg-brand px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110" onClick={() => void apCall('start')}>
-                  Start
+                  {ap?.phase === 'paused' ? 'Resume' : 'Start'}
                 </button>
               )}
             </div>

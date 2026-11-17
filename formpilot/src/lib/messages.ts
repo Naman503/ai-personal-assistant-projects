@@ -42,11 +42,11 @@ export type RpcRequest =
   | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[]; recordedBy?: string }
   | { type: 'autopilot-batch-done'; result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string; aiError?: string } }
   | { type: 'autopilot-progress'; text: string }
-  | { type: 'autopilot-skip'; job: string; reason: string }
+  | { type: 'autopilot-skip'; job: string; reason: string; key?: string }
   | { type: 'autopilot-rec-picked'; picked: { id: string; title: string; company: string; url: string }[] }
   | { type: 'autopilot-rec-done'; result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string } }
   | { type: 'autopilot-job-done'; result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string } }
-  | { type: 'autopilot'; action: 'start' | 'stop' | 'status' | 'run-now' | 'resume' }
+  | { type: 'autopilot'; action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now' | 'resume' }
   | { type: 'outreach-done'; result: import('@/entrypoints/content/linkedin-outreach').OutreachResult }
   | { type: 'outreach'; action: 'status' | 'run-now' }
   | { type: 'tracker-test'; url?: string }

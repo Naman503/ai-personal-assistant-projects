@@ -239,6 +239,21 @@ export function closeButton(d: Element): HTMLElement | null {
   );
 }
 
+/**
+ * A pop-up with no form in it that sits over the job list (after "application sent": "Turn your
+ * resume into a profile…", Premium, job alerts): its decline button. Never the action button
+ * ("Update profile", "Try Premium"), and never a dialog that holds an application form.
+ */
+export function upsellDecline(d: Element): HTMLElement | null {
+  if (d.querySelector('input:not([type=hidden]),select,textarea')) return null;
+  const bs = [...d.querySelectorAll<HTMLElement>('button')].filter((b) => isVisible(b));
+  return (
+    bs.find((b) => /^(not now|no,? thanks|maybe later|skip( for now)?|done|got it)$/i.test((b.textContent || '').replace(/\s+/g, ' ').trim())) ??
+    bs.find((b) => /^(dismiss|close)/i.test(b.getAttribute('aria-label') || '')) ??
+    null
+  );
+}
+
 /** Today's date in local time, for the daily count. */
 export const today = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 

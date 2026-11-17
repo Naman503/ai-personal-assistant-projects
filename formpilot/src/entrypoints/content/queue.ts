@@ -28,6 +28,7 @@ import {
   pushbackNotice,
   sameCompany,
   today,
+  upsellDecline,
   titleRelevant,
   type JobCard,
 } from '@/lib/queue';
@@ -77,6 +78,8 @@ export interface QueuePrefs {
   relevant?: string[];
   /** Autopilot: pause between jobs, seconds [min, max]. */
   pauseSec?: [number, number];
+  /** Autopilot: jobs (cardKey) already skipped today, not opened again. */
+  seen?: string[];
 }
 
 /** What one queue run did (sent back to the autopilot). */
@@ -203,6 +206,7 @@ export class ApplyQueue {
 
   private async loop() {
     const prefs = this.prefs();
+    for (const k of prefs.seen ?? []) this.tried.add(k);
     trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles, autoSubmit: !!prefs.autoSubmit, batch: prefs.batch ?? null, dryRun: !!prefs.dryRun, unattended: !!prefs.unattended });
     for (let page = 0; page < 10 && !this.stopRequested; page++) {
       await this.loadWholeList();
@@ -228,7 +232,7 @@ export class ApplyQueue {
           if (prefs.unattended && !this.stopRequested) {
             const job = `${card.title}${card.company ? ` · ${card.company}` : ''}`;
             const why = lastTrace.replace(/^(skip|skipped)[^:]*:\s*/i, '').replace(job, 'it').slice(0, 200);
-            chrome.runtime.sendMessage({ type: 'autopilot-skip', job, reason: why }).catch(() => {});
+            chrome.runtime.sendMessage({ type: 'autopilot-skip', job, reason: why, key: cardKey(card) }).catch(() => {});
           }
         }
         if (this.stopRequested) break;
@@ -528,6 +532,15 @@ export class ApplyQueue {
   /** Before opening a job: close whatever an earlier job (or you) left open. */
   private async clearLeftovers() {
     if (await this.pressDiscard()) trace('closed a leftover "Save this application?" dialog');
+    // "Not now" on pop-ups that block the list (profile / Premium offers after a send).
+    for (const d of openDialogs()) {
+      if (applyDialog() === d && !isSentDialog(d)) continue;
+      const b = upsellDecline(d);
+      if (!b) continue;
+      trace(`closed a pop-up over the job list with "${(b.textContent || b.getAttribute('aria-label') || '').trim().slice(0, 30)}": ${(d.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80)}`);
+      humanClick(b);
+      await sleep(600);
+    }
     const d = applyDialog();
     if (d && !isSentDialog(d)) {
       trace('closing a leftover application dialog');
