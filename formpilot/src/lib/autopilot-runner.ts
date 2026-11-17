@@ -14,6 +14,7 @@ import type { Settings } from './settings';
 import { AI_BLOCKING, nextPacificMidnight, batchSize, freshDay, gapMinutes, inActiveHours, ist, linkedInSearchUrl, nextStart, normalizeDay, pickTitle, titleKey, titlesOf, type DayState } from './autopilot';
 import { createLogger } from './logger';
 import { recordInTracker } from './tracker';
+import { keepTabAwake, releaseTab } from './tab-awake';
 import { relevantWords, titleRelevant, titleSkipped } from './queue';
 import { cutshortSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
 
@@ -133,6 +134,7 @@ export class Autopilot {
     const st = await loadState();
     if (st.tabId !== undefined) await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'apply-queue-stop' }, { frameId: 0 }).catch(() => {});
     await Promise.all(ALL.map((a) => chrome.alarms.clear(a)));
+    await releaseTab(st.tabId);
     try {
       chrome.power?.releaseKeepAwake();
     } catch {
@@ -250,6 +252,7 @@ export class Autopilot {
     const url = c.rec ? ap.naukri.recUrl || NAUKRI_REC_URL : custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, { ...ap, postedDays: days }) : c.platform === 'naukri' ? naukriSearchUrl(c.title, days) : cutshortSearchUrl(c.title));
     const tabId = await this.ensureTab(st, url);
     if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
+    await keepTabAwake(tabId);
     st.lastPlatform = c.pi;
     st.current = { platform: c.platform, title: c.title, index: c.index, batch: c.size, startedAt: Date.now(), tries: 0, ...(c.platform === 'linkedin' ? {} : { stage: c.rec ? ('rec' as const) : ('list' as const), i: 0, done: 0, sent: 0, dry: 0, skipped: 0 }) };
     st.phase = 'loading';
@@ -279,17 +282,20 @@ export class Autopilot {
   }
 
   /**
-   * The autopilot's tab must be the front tab of its window: in a background tab LinkedIn's Easy
-   * Apply doesn't open (17 Nov: other tabs opened in that window stalled every LinkedIn batch).
-   * This selects the tab inside its own window; it doesn't focus the window or take you away from
-   * what you're doing elsewhere.
+   * The autopilot's tab must keep running at full speed: in a hidden tab LinkedIn's Easy Apply
+   * doesn't open and every wait crawls. Two causes, two fixes:
+   *  - another tab in front of it in its window (17 Nov: stalled every LinkedIn batch): select it
+   *    again inside its own window, without focusing the window or taking you away from your work;
+   *  - its window behind other windows, which Brave also treats as hidden: lib/tab-awake.ts.
    */
   private async front(tabId: number) {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
-    if (tab && !tab.active) {
+    if (!tab) return;
+    if (!tab.active) {
       await chrome.tabs.update(tabId, { active: true }).catch(() => {});
       log.info('brought the autopilot tab back to the front of its window');
     }
+    await keepTabAwake(tabId);
   }
 
   private relevant(ap: Settings['autopilot']) {
