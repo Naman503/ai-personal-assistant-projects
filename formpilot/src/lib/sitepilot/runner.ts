@@ -22,6 +22,7 @@ import { keepTabAwake, releaseTab } from '../tab-awake';
 import { addShot, addStep, companyCount, counts, enqueue, nextQueued, spDb, type NewJob, type SpJob } from './db';
 import { ACTION_SCHEMA, AGENT_SYSTEM, buildAgentPrompt, describeAction, parseAction } from './agent';
 import { ATS_NAME, detectAts, needsAccount, type Ats } from './detect';
+import { boardFromUrl, fetchBoard, fitting, parseBoards, type Board } from './boards';
 import type { AgentAction, PageSnapshot, RoundContext, RoundResult, SpOutcome } from './types';
 
 const log = createLogger('sitepilot');
@@ -55,6 +56,21 @@ export interface SpState {
   waiting?: string;
   history: { t: number; msg: string }[];
   harvest?: { i: number; at: number };
+  /** Last read of the company job boards. */
+  boardsAt?: number;
+}
+
+const LEARNED = 'fpSpBoards';
+/** Boards learned from links Site Pilot met (a Naukri job that led to jobs.lever.co/acme…). */
+export async function learnedBoards(): Promise<string[]> {
+  return ((await chrome.storage.local.get(LEARNED))[LEARNED] as string[] | undefined) ?? [];
+}
+async function learnBoard(url: string | undefined) {
+  const b = url ? boardFromUrl(url) : null;
+  if (!b) return;
+  const key = `${b.kind}:${b.token}`;
+  const have = await learnedBoards();
+  if (!have.some((x) => x.toLowerCase() === key.toLowerCase())) await chrome.storage.local.set({ [LEARNED]: [...have, key].slice(-300) });
 }
 
 const blank = (): SpState => ({ running: false, phase: 'stopped', message: 'Not running', history: [] });
@@ -313,6 +329,7 @@ export class SitePilot {
     }
     const job = await nextQueued();
     if (!job) {
+      if (sp.harvestBoards && Date.now() - (st.boardsAt ?? 0) > 4 * 3600_000) return this.harvestBoards(st);
       if (sp.harvestNaukri && Date.now() - (st.harvest?.at ?? 0) > 45 * 60_000) return this.harvest(st);
       st.phase = 'idle';
       st.nextAt = Date.now() + 15 * 60_000;
@@ -603,6 +620,7 @@ export class SitePilot {
     const job = await spDb().jobs.get(cur.jobId);
     const ats = job?.ats || detectAts(job?.applyUrl || job?.url || '');
     await spDb().jobs.update(cur.jobId, { status: outcome, reason, doneAt: Date.now(), updatedAt: Date.now(), ats, dry: outcome === 'ready' });
+    await learnBoard(job?.applyUrl ?? job?.url).catch(() => {});
     await addStep(cur.jobId, `${outcome}: ${reason}`);
     const label = { sent: 'Sent', ready: 'Ready (dry run, not sent)', 'needs-you': 'Needs you', skipped: 'Skipped', failed: 'Failed', unsure: 'Submitted, no confirmation seen' }[outcome];
     if (outcome === 'sent' && job && this.s.tracker.enabled && this.s.tracker.url) {
@@ -629,6 +647,33 @@ export class SitePilot {
   }
 
   // ---------------- finding jobs ----------------
+
+  /** Queue empty: read every company job board (your list + learned ones) and queue what fits. */
+  private async harvestBoards(st: SpState) {
+    const sp = this.s.sitePilot;
+    const ap = this.s.autopilot;
+    st.boardsAt = Date.now();
+    st.phase = 'working';
+    await save(st, 'Queue is empty: reading company job boards');
+    const boards: Board[] = parseBoards([sp.boards, ...(await learnedBoards())].join(','));
+    const relevant = ap.mustWords.trim() ? relevantWords(ap.mustWords.split(/[,\n]+/)) : relevantWords(titlesOf(ap));
+    let found = 0;
+    let added = 0;
+    let failed = 0;
+    for (const b of boards) {
+      const jobs = await fetchBoard(b).catch(() => (failed++, []));
+      const fit = fitting(jobs, { relevant, skipWords: ap.skipWords, days: sp.boardDays });
+      found += fit.length;
+      if (fit.length) added += (await enqueue(fit.map((j) => ({ url: j.url, title: j.title, company: j.company, location: j.location, description: j.description, source: 'board' as const })))).added;
+      await new Promise((r) => setTimeout(r, 400 + Math.random() * 600)); // one board at a time, politely
+    }
+    const now = await loadSpState();
+    if (!now.running) return;
+    now.phase = 'idle';
+    now.boardsAt = st.boardsAt;
+    await save(now, `Job boards: ${boards.length} read${failed ? ` (${failed} didn't answer)` : ''}, ${found} jobs fit, ${added} new in the queue`);
+    await at(TICK, Date.now() + (added ? 5_000 : 60_000));
+  }
 
   /** Queue empty: read a Naukri search (newest jobs for the next title) and queue what fits. */
   private async harvest(st: SpState) {

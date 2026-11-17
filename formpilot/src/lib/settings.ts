@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_PROVIDERS } from './settings-core';
+import { DEFAULT_BOARDS } from './sitepilot/boards';
 
 export * from './settings-core';
 
@@ -266,6 +267,12 @@ const SitePilotSchema = z.object({
   vision: z.boolean().catch(true),
   /** When the queue is empty, find "Apply on company site" jobs on Naukri for your job titles. */
   harvestNaukri: z.boolean().catch(true),
+  /** When the queue is empty, read company job boards (Greenhouse, Lever, Ashby, Workable…) for jobs that fit. */
+  harvestBoards: z.boolean().catch(true),
+  /** Job boards to read, "system:company" separated by commas (e.g. greenhouse:gitlab, lever:paytm). */
+  boards: z.string().catch(DEFAULT_BOARDS),
+  /** Only board jobs posted in the last N days. */
+  boardDays: z.number().int().min(1).max(90).catch(21),
   /** Take the Autopilot's company-site jobs and outside forms. */
   fromAutopilot: z.boolean().catch(true),
   /** A shareable link to your resume (Google Drive…), for forms that ask for a link instead of a file. */
