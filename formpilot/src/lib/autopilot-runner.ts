@@ -266,7 +266,7 @@ export class Autopilot {
     if (st.tabId !== undefined) {
       const tab = await chrome.tabs.get(st.tabId).catch(() => null);
       if (tab && tab.windowId === st.windowId) {
-        await chrome.tabs.update(st.tabId, { url });
+        await chrome.tabs.update(st.tabId, { url, active: true });
         return st.tabId;
       }
     }
@@ -276,6 +276,20 @@ export class Autopilot {
     st.windowId = win.id;
     st.tabId = tabId;
     return tabId;
+  }
+
+  /**
+   * The autopilot's tab must be the front tab of its window: in a background tab LinkedIn's Easy
+   * Apply doesn't open (17 Nov: other tabs opened in that window stalled every LinkedIn batch).
+   * This selects the tab inside its own window; it doesn't focus the window or take you away from
+   * what you're doing elsewhere.
+   */
+  private async front(tabId: number) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab && !tab.active) {
+      await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+      log.info('brought the autopilot tab back to the front of its window');
+    }
   }
 
   private relevant(ap: Settings['autopilot']) {
@@ -288,6 +302,7 @@ export class Autopilot {
     const st = await loadState();
     const cur = st.current;
     if (!st.running || !cur || st.tabId === undefined) return;
+    await this.front(st.tabId);
     const p = cur.platform ?? 'linkedin';
     const pp = platformPrefs(ap, p);
     if (p === 'linkedin') {
@@ -385,7 +400,7 @@ export class Autopilot {
     cur.tries = 0;
     st.day.seen = [...st.day.seen, job.url, jobKey(job)].slice(-1500);
     st.progress = { text: `Opening ${job.title} · ${job.company}`, at: Date.now() };
-    if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: job.url }).catch(() => {});
+    if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: job.url, active: true }).catch(() => {});
     await at(GO, Date.now() + loadWait());
     await at(WATCHDOG, Date.now() + 12 * 60_000);
     await save(st);
@@ -615,6 +630,7 @@ export class Autopilot {
     if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
     st.progress = { text, at: Date.now() };
     await chrome.storage.local.set({ [AP_KEY]: st });
+    if (st.tabId !== undefined) await this.front(st.tabId);
   }
 
   /** A batch ran far too long (stuck page): stop it there and carry on later. */

@@ -901,6 +901,11 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
     return chrome.windows.get(st.windowId);
   });
   expect(win.focused).toBe(false);
+  // Someone opens another tab in the autopilot's window: its own tab comes back to the front.
+  await sw.evaluate(async () => {
+    const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { windowId: number };
+    await chrome.tabs.create({ windowId: st.windowId, url: 'about:blank', active: true });
+  });
   const list = context.pages().find((p) => p.url().includes('linkedin-list.html?q=Mobile'))!;
   // Closing a form asks "Save this application?" (live LinkedIn); it must be discarded, or every
   // later Easy Apply press does nothing.
@@ -910,6 +915,7 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   // While it works, the live status says what it's doing in that window.
   await expect.poll(async () => ((await state()) as { progress?: { text: string } }).progress?.text ?? '', { timeout: 90_000 }).toMatch(/Reading|Filling|Opening/);
   await expect.poll(async () => (await state()).day.dry, { timeout: 150_000 }).toBe(2);
+  expect(await sw.evaluate(async () => { const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { tabId: number }; return (await chrome.tabs.get(st.tabId)).active; })).toBe(true);
   expect(await list.evaluate(() => (window as unknown as { __blocked?: number }).__blocked ?? 0)).toBe(0);
   expect(await list.locator('#confirm').count()).toBe(0);
   // The Autopilot page shows the break and offers to skip it.
