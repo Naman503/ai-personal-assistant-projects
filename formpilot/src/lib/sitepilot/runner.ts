@@ -232,8 +232,10 @@ export class SitePilot {
     this.knownTab = st.running && st.tabId !== undefined ? st.tabId : null;
     if (!st.running || tabId !== st.tabId || !st.cur) return;
     // Naukri sometimes sends the tab itself to the company site.
-    if (st.cur.stage === 'resolve' && info.url && !/naukri\.com/i.test(info.url) && /^https?:/i.test(info.url)) {
-      await this.resolved({ url: info.url });
+    // After a server redirect Chrome may report the final address only on the tab, at "complete".
+    const now = info.url ?? (info.status === 'complete' ? tab.url : undefined);
+    if (st.cur.stage === 'resolve' && now && !/naukri\.com/i.test(now) && /^https?:/i.test(now)) {
+      await this.resolved({ url: now });
       return;
     }
     if (info.status !== 'complete') return;
@@ -280,14 +282,15 @@ export class SitePilot {
     if (job.company && (await companyCount(job.company, job.id)) >= sp.perCompany) return this.finishQuick(st, job, 'skipped', `already ${sp.perCompany} applications to ${job.company} in 30 days`);
     if (needsAccount(job.url)) return this.finishQuick(st, job, 'needs-you', 'this site needs an account (sign in and apply yourself)');
 
-    const naukri = /naukri\.com\/job-listings/i.test(job.url);
+    // Known company link from an earlier try: go straight there.
+    const naukri = /naukri\.com\/job-listings/i.test(job.url) && !job.applyUrl;
     await spDb().jobs.update(job.id, { status: 'working', startedAt: Date.now(), updatedAt: Date.now(), attempts: job.attempts + 1 });
     st.cur = { jobId: job.id, stage: naukri ? 'resolve' : 'apply', startedAt: Date.now(), lastActivity: Date.now(), round: 0, actions: 0, submitted: 0, busy: false, restarts: 0 };
     st.phase = 'working';
     st.nextAt = undefined;
     await save(st, `Working on: ${job.title || job.url}${job.company ? ` · ${job.company}` : ''}`);
     await addStep(job.id, naukri ? 'opening the Naukri job to follow "Apply on company site"' : `opening ${job.url.slice(0, 120)}`);
-    const tabId = await this.ensureTab(st, job.url);
+    const tabId = await this.ensureTab(st, naukri ? job.url : job.applyUrl || job.url);
     if (tabId === undefined) return this.finish('failed', 'could not open the Site Pilot window');
     // Its window sits behind yours: keep the page running at full speed (same as the Autopilot's tab).
     await keepTabAwake(tabId);
@@ -330,6 +333,13 @@ export class SitePilot {
         pending?: boolean;
       };
       if (r?.pending) return; // it pressed the button; the link arrives by message or navigation
+      // The page's script wasn't there yet (still loading): try again shortly.
+      if (/receiving end does not exist|could not establish/i.test(r?.reason ?? '') && cur.restarts < 4) {
+        cur.busy = false;
+        cur.restarts++;
+        await save(st);
+        return at(LOAD, Date.now() + 8_000);
+      }
       return this.resolved(r ?? {});
     }
     return this.startRound(st);
@@ -340,6 +350,17 @@ export class SitePilot {
     const st = await loadSpState();
     if (!st.cur || st.cur.stage !== 'resolve' || st.tabId === undefined) return;
     const id = st.cur.jobId;
+    // Naukri's own hop (it records the click, then redirects to the company): follow it; the
+    // tab update with the company address finishes this step.
+    if (r.url && /naukri\.com\/.*(saveCompanyApply|apply-services|redirect)/i.test(r.url)) {
+      await addStep(id, 'following Naukri\'s link to the company site');
+      st.cur.busy = true;
+      st.cur.lastActivity = Date.now();
+      await save(st);
+      await chrome.tabs.update(st.tabId, { url: r.url, active: true }).catch(() => {});
+      await at(LOAD, Date.now() + 45_000);
+      return;
+    }
     if (r.url && /^https?:\/\//i.test(r.url) && !/naukri\.com/i.test(r.url)) {
       const job = await spDb().jobs.get(id);
       await spDb().jobs.update(id, { applyUrl: r.url, via: job?.via ?? job?.url, ats: detectAts(r.url), updatedAt: Date.now() });

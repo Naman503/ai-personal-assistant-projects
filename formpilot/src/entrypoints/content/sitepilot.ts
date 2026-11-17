@@ -709,6 +709,29 @@ async function doAction(a: AgentAction, reg: Map<string, Target>): Promise<strin
   }
 }
 
+/**
+ * The button that opens this job's application. One "Apply" on the page: that one. Several (a
+ * careers page listing roles): the one whose row names this job; none matches → null.
+ */
+function openButtonFor(title: string): HTMLElement | null {
+  const all = [...document.querySelectorAll<HTMLElement>('a, button, [role=button]')].filter((x) => isVisible(x) && OPEN_FORM_RE.test(buttonText(x)));
+  if (all.length <= 1) return all[0] ?? null;
+  const words = title.toLowerCase().split(/[^a-z0-9+#]+/).filter((w) => w.length > 2 && !/^(the|and|for|with|developer|engineer)$/.test(w));
+  if (!words.length) return null;
+  let best: { el: HTMLElement; score: number } | null = null;
+  for (const el of all) {
+    let p: HTMLElement | null = el.parentElement;
+    for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
+      const t = textOf(p).toLowerCase();
+      if (t.length > 800) break;
+      const hit = words.filter((w) => t.includes(w)).length / words.length;
+      if (hit >= 0.6 && (!best || hit > best.score)) best = { el, score: hit };
+      if (hit >= 0.6) break;
+    }
+  }
+  return best?.el ?? null;
+}
+
 // ---------------- the round ----------------
 
 export class SitePilotPage {
@@ -799,8 +822,26 @@ export class SitePilotPage {
         location.href = emb;
         return this.result({ kind: 'continue' }, ats, actions);
       }
-      const open = [...document.querySelectorAll<HTMLElement>('a, button, [role=button]')].find((x) => isVisible(x) && OPEN_FORM_RE.test(buttonText(x)));
-      if (open && !ctx.submitted) {
+      const open = openButtonFor(ctx.title);
+      if (!open && !ctx.submitted && ctx.vision && actions < ctx.actionsLeft) {
+        // A careers page with several roles (or none labelled "Apply"): the model picks this job's link.
+        this.progress(`looking for "${ctx.title}" on this careers page`);
+        const snap = snapshot(document.body, this.reg, ats);
+        const a = await rpc<AgentAction>({ type: 'sp-agent', snap, history: [...this.history, `find the role "${ctx.title}" and open its application`] }).catch(() => null);
+        actions++;
+        if (a?.do === 'click' && this.reg.get(a.id)) {
+          const el = this.reg.get(a.id)!.el;
+          this.history.push(`opened "${buttonText(el).slice(0, 60)}"`);
+          humanClick(el);
+          await settled(document.body, 800, 8000);
+          if (!formScope()) return this.result({ kind: 'continue', note: `opened "${buttonText(el).slice(0, 60)}"` }, ats, actions);
+          scope = formScope();
+        } else if (a?.do === 'stop') {
+          await rpc({ type: 'sp-shot', kind: 'stuck' }).catch(() => null);
+          return done('needs-you', a.why || `couldn't find "${ctx.title}" on this careers page`);
+        }
+      }
+      if (!scope && open && !ctx.submitted) {
         this.progress(`pressing "${buttonText(open)}" to open the application form`);
         humanClick(open);
         await settled(document.body, 800, 8000);
@@ -984,12 +1025,22 @@ export async function naukriResolve(): Promise<{ url?: string; naukriApply?: boo
     btn = document.querySelector<HTMLElement>('#company-site-button') ?? [...document.querySelectorAll<HTMLElement>('button, a')].find((b) => /apply on company site/i.test(textOf(b))) ?? null;
     if (!btn) {
       if ([...document.querySelectorAll<HTMLElement>('#apply-button, button')].some((b) => /^apply$/i.test(textOf(b)) && isVisible(b))) return { naukriApply: true };
-      if (/\balready applied\b|\bapplied\b/i.test(textOf(document.querySelector('.styles_jhc__apply-button-container__5Bqnb, [class*="apply-button-container"]')))) return { reason: 'already applied on Naukri' };
+      const box = textOf(document.querySelector('.styles_jhc__apply-button-container__5Bqnb, [class*="apply-button-container"]'));
+      if (/\balready applied\b|\bapplied\b/i.test(box)) {
+        // Applied through Naukri itself: nothing to do. Sent to the company site before (an earlier
+        // try): go there again through Naukri's hop.
+        const jid = location.pathname.match(/-(\d{9,})(?:[/?#]|$)/)?.[1];
+        if (/company|redirect/i.test(box + textOf(document.querySelector('[class*="jhc__"]'))) && jid) return { url: `https://www.naukri.com/cloudgateway-apply/apply-services/v0/apply/saveCompanyApply?id=&file=${jid}&logstr=jdrestapi` };
+        return { reason: 'already applied on Naukri' };
+      }
       if (/showAcp|myapply/i.test(location.href)) return { reason: 'Naukri did not hand over the company link' };
       await sleep(500);
     }
   }
   if (!btn) return { reason: 'no "Apply on company site" button on the Naukri page' };
+  // Naukri's own hop for this job (what the button opens): records the click, then redirects.
+  const id = location.pathname.match(/-(\d{9,})(?:[/?#]|$)/)?.[1];
+  if (id) return { url: `https://www.naukri.com/cloudgateway-apply/apply-services/v0/apply/saveCompanyApply?id=&file=${id}&logstr=jdrestapi` };
   html.setAttribute('data-fp-capture-open', '1');
   const got = new Promise<string | null>((resolve) => {
     const mo = new MutationObserver(() => {
