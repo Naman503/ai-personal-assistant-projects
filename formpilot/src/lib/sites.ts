@@ -206,6 +206,9 @@ export function sentNotice(p: Platform, doc: Document = document, href = locatio
   // The site turned its own button into a confirmation (17 Nov, Instahyre's job pop-up: "Apply"
   // became "Application Sent!"; that text sits past the first 30,000 characters of the page).
   if (buttonByText(/^(application sent!?|applied successfully!?|application submitted!?)$/i, doc)) return true;
+  // Wellfound sends after a short undo window: the pop-up / page shows "Scheduled" with an Undo
+  // button (18 Nov, live: three sent jobs were logged as "no confirmation" and not counted).
+  if (p === 'wellfound' && (buttonByText(/^undo\b/i, doc) || /\b(application (is )?scheduled|scheduled to send|undo · \d|your application (has been|was) (sent|submitted))\b/i.test((doc.body?.innerText ?? '').slice(0, 30000)))) return true;
   const t = (doc.body?.innerText ?? '').slice(0, 30000);
   if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted)|message sent|you applied|application received)/i.test(t)) return true;
   // Foundit: Quick Apply lands on foundit.in/srp/applied-success?id=<job> (seen 17 Nov), or the

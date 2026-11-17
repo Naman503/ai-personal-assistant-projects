@@ -81,6 +81,11 @@ describe('remote portals: job lists', () => {
     doc.body.innerHTML = '<div role="dialog"><button>Not interested</button><button>Application Sent!</button></div>';
     expect(sentNotice('instahyre', doc, 'https://www.instahyre.com/candidate/opportunities/?matching=true#opp-1')).toBe(true);
   });
+  it('Wellfound: the undo window after Send counts as sent', () => {
+    const doc = document.implementation.createHTMLDocument('x');
+    doc.body.innerHTML = '<div role="dialog"><p>Application scheduled</p><button>Undo</button></div>';
+    expect(sentNotice('wellfound', doc, 'https://wellfound.com/jobs/1-x')).toBe(true);
+  });
   it('knows the hosts and their lists', () => {
     expect(platformOf('https://wellfound.com/jobs')).toBe('wellfound');
     expect(platformOf('https://www.workatastartup.com/jobs/1')).toBe('yc');
