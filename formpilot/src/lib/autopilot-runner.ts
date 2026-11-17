@@ -438,7 +438,10 @@ export class Autopilot {
   }
 
   /** A Naukri / Cutshort job page finished. */
-  async onJobDone(result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string }, tabId?: number) {
+  /** Jobs the Autopilot can't do itself (company-site applies, outside forms) go to Site Pilot. */
+  handOff?: (jobs: import('./sitepilot/db').NewJob[]) => Promise<unknown>;
+
+  async onJobDone(result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string; formUrl?: string }, tabId?: number) {
     const ap = this.settings().autopilot;
     const st = await loadState();
     const cur = st.current;
@@ -471,7 +474,17 @@ export class Autopilot {
       cur.done = (cur.done ?? 0) + 1;
     }
     const verb = result.outcome === 'sent' ? 'Applied' : result.outcome === 'dry' ? 'Would apply' : 'Skipped';
-    await save(st, `${PLATFORM_NAME[p]} · ${verb}: ${job?.title ?? '?'} · ${job?.company ?? ''} (${result.reason})`);
+    let handed = '';
+    if (job && this.handOff && this.settings().sitePilot.fromAutopilot) {
+      if (result.reason === 'applies on the company site') {
+        await this.handOff([{ url: job.url, title: job.title, company: job.company, location: job.location, source: 'naukri', via: job.url }]).catch(() => {});
+        handed = ' → Site Pilot';
+      } else if (result.formUrl) {
+        await this.handOff([{ url: result.formUrl, title: job.title, company: job.company, location: job.location, source: 'naukri-form', via: job.url }]).catch(() => {});
+        handed = ' → Site Pilot fills the form';
+      }
+    }
+    await save(st, `${PLATFORM_NAME[p]} · ${verb}: ${job?.title ?? '?'} · ${job?.company ?? ''} (${result.reason})${handed}`);
     if (result.pushback) return this.stop(`${result.pushback}. Stopped so your account stays safe.`, true);
     cur.i = (cur.i ?? 0) + 1;
     if (cur.i >= (cur.jobs?.length ?? 0) || (cur.done ?? 0) >= cur.batch || counts.sent + counts.dry >= platformPrefs(ap, p).dailyCap) return this.finishBatch(st, 'batch done');

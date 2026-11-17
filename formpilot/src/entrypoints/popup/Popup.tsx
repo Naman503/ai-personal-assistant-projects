@@ -95,6 +95,7 @@ export function Popup() {
   const [summary, setSummary] = useState<TrackerSummary | null>(null);
   const [trackerErr, setTrackerErr] = useState('');
   const [busy, setBusy] = useState<'' | 'save-job' | 'mark-applied'>('');
+  const [spAdded, setSpAdded] = useState('');
   const [copied, setCopied] = useState(false);
   const { st: ap, call: apCall } = useAutopilot(1500);
   const apNow = describeAutopilot(ap);
@@ -305,6 +306,25 @@ export function Popup() {
             ) : null}
           </div>
         )}
+
+        {/* Site Pilot: apply on this company page / Google Form / Naukri company-site job with the local model. */}
+        {host && !/(^|\.)linkedin\.com$/.test(host) ? (
+          <button
+            className={btn}
+            disabled={spAdded !== ''}
+            onClick={() => {
+              track('toolbar_action', { action: 'site_pilot_add' });
+              const url = tab?.url ?? '';
+              rpc<{ added: number; known: number }>({ type: 'sp-add', jobs: [{ url, title: job?.role, company: job?.company, location: job?.location, source: /naukri\.com$/.test(host) ? 'naukri' : 'manual', via: /naukri\.com$/.test(host) ? url : undefined }] })
+                .then((r) => setSpAdded(r.added ? 'Added to Site Pilot' : 'Already in Site Pilot'))
+                .catch(() => setSpAdded('Could not add'));
+            }}
+            title="Site Pilot fills and sends this application in its own window, with your local model"
+          >
+            <Send className="size-3.5 text-brand" />
+            {spAdded || 'Apply with Site Pilot'}
+          </button>
+        ) : null}
 
         {diskVersion ? (
           <button

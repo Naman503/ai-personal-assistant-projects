@@ -40,6 +40,8 @@ export default defineConfig({
       // Autopilot: keeps its own tab running at full speed while its window is behind others
       // (lib/tab-awake.ts). Used only on the autopilot's tab, only while the autopilot is on.
       'debugger',
+      // Site Pilot and the local model: slow down while you're using the Mac (keyboard/mouse idle state only).
+      'idle',
     ],
     host_permissions: ['<all_urls>'],
     action: { default_title: 'FormPilot' },

@@ -1,4 +1,5 @@
 import { applyHere, applyNaukriRecommended } from './sites';
+import { naukriResolve, SitePilotPage } from './sitepilot';
 import { runOutreach } from './linkedin-outreach';
 import { multiApplyResult, siteJobs, sitePushback } from '@/lib/sites';
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
@@ -38,7 +39,7 @@ export default defineContentScript({
     // Forward warnings/errors to the background log viewer (Options → Logs).
     // Warnings and errors always reach Options → Logs; so do the form-filling steps (each field,
     // each fix, each Next) so a run that went wrong can be read back afterwards.
-    const FORWARD_INFO = new Set(['fill', 'fill-form', 'content:walk', 'autopilot:site']);
+    const FORWARD_INFO = new Set(['fill', 'fill-form', 'content:walk', 'autopilot:site', 'sitepilot']);
     addLogSink((e) => {
       if ((e.level === 'warn' || e.level === 'error' || (e.level === 'info' && FORWARD_INFO.has(e.ns))) && contextAlive()) {
         chrome.runtime.sendMessage({ type: 'log', entry: e }).catch(() => {});
@@ -67,6 +68,8 @@ export default defineContentScript({
       recordSent: () => watcher.markApplied(),
       aiError: () => controller.takeFillError(),
     });
+    // Site Pilot: company application forms, answered by the local model only.
+    const sitePage = new SitePilotPage((anchor) => controller.fillForm('toolbar', { anchor, quiet: true, engine: 'local' }));
     controller.afterFill = (anchor) => {
       if (settings.tracker.walkToSubmit) void walker.run(anchor);
     };
@@ -191,6 +194,23 @@ export default defineContentScript({
         if (window !== window.top) return;
         reply({ ok: true });
         void runOutreach(msg.task).then((result) => chrome.runtime.sendMessage({ type: 'outreach-done', result }).catch(() => {}));
+        return;
+      }
+      if (msg?.type === 'sp-round') {
+        if (window !== window.top) return;
+        reply({ ok: true });
+        void sitePage
+          .round(msg.ctx)
+          .catch((e) => ({ kind: 'continue' as const, note: `error: ${(e as Error).message}` }))
+          .then((result) => chrome.runtime.sendMessage({ type: 'sp-round-done', result }).catch(() => {}));
+        return;
+      }
+      if (msg?.type === 'sp-resolve') {
+        if (window !== window.top) return;
+        reply({ pending: true });
+        void naukriResolve()
+          .catch((e) => ({ reason: `error: ${(e as Error).message}` }))
+          .then((r) => chrome.runtime.sendMessage({ type: 'sp-resolved', ...r }).catch(() => {}));
         return;
       }
       if (msg?.type !== 'command') return;

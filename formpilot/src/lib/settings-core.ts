@@ -231,6 +231,22 @@ export const DEFAULTS: Settings = {
     cutshort: { enabled: false, dailyCap: 10, dryRun: true, maxExpMin: 5 },
     searchUrl: '',
   },
+  localAi: { whenActive: 'slow', idleMinutes: 3, keepAlive: '5m', numCtx: 8192, lightModel: '', rpmActive: 2, rpmIdle: 6 },
+  sitePilot: {
+    kind: 'ollama',
+    baseUrl: 'http://localhost:11434',
+    model: 'gemma4:12b',
+    liveAts: [],
+    pauseMinSec: 60,
+    pauseMaxSec: 240,
+    perCompany: 2,
+    vision: true,
+    harvestNaukri: true,
+    fromAutopilot: true,
+    resumeLink: '',
+    maxActions: 30,
+    maxMinutes: 15,
+  },
   debug: { logLevel: 'info', console: true },
 };
 

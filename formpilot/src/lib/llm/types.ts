@@ -13,6 +13,12 @@ export interface LLMRequest {
   signal: AbortSignal;
   /** Called with the full text so far on every streamed chunk. */
   onText?: (full: string) => void;
+  /** Screenshots (base64 JPEG/PNG, no data: prefix) for models that can see. Only Ollama uses them. */
+  images?: string[];
+  /** Background work (Site Pilot): a local call may wait until you're away from the Mac. */
+  background?: boolean;
+  /** Told why a local call is waiting (pacing, you're active). */
+  onWait?: (why: string) => void;
 }
 
 export interface LLMResult {

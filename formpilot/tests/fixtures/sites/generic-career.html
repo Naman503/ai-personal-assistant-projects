@@ -1,0 +1,198 @@
+<!doctype html>
+<!--
+  Fixture: hand-made company careers application (no ATS), login-free 3-step wizard.
+  Exercises things ATS fixtures don't: a stepper where only the active step is visible
+  (later steps are `hidden` until "Next"), label/for + aria-describedby wiring, a native country-code
+  <select> next to a tel input, a resume <input type=file> hidden inside a drop zone, client-side
+  validation messages (span.error-message[role=alert], aria-invalid), a REQUIRED privacy-consent
+  checkbox and an OPTIONAL marketing opt-in checkbox (must be left unticked by an autofiller),
+  and a review step. Submit shows "Thank you for applying" in place and sets location.hash
+  "#applied". window.__submitted = { name: value } (from FormData, file -> filename).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Careers - Senior React Native Engineer | Acme Labs</title>
+<style>
+  :root { font-family: system-ui, sans-serif; color: #1d1d1f; }
+  body { margin: 0; background: #f5f5f7; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 32px 16px 80px; }
+  .card { background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  ol.steps { display: flex; gap: 12px; list-style: none; padding: 0; margin: 0 0 20px; }
+  ol.steps li { flex: 1; padding: 8px; border-bottom: 3px solid #ddd; font-size: 13px; color: #888; }
+  ol.steps li[aria-current=step] { border-color: #0071e3; color: #0071e3; font-weight: 600; }
+  .form-row { margin: 16px 0; display: flex; flex-direction: column; gap: 6px; }
+  .form-row label, legend { font-weight: 600; font-size: 14px; }
+  .form-row input[type=text], .form-row input[type=email], .form-row input[type=tel], .form-row input[type=url], .form-row input[type=number], .form-row select, .form-row textarea { padding: 10px; border: 1px solid #c7c7cc; border-radius: 8px; font: inherit; }
+  [aria-invalid=true] { border-color: #d70015 !important; }
+  .error-message { color: #d70015; font-size: 13px; }
+  .hint { color: #6e6e73; font-size: 12px; }
+  .phone { display: flex; gap: 8px; } .phone select { width: 120px; } .phone input { flex: 1; }
+  .dropzone { border: 2px dashed #c7c7cc; border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; }
+  .dropzone.is-dragover { background: #eef5ff; border-color: #0071e3; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  fieldset { border: 0; padding: 0; margin: 16px 0; }
+  .choice { display: inline-flex; gap: 6px; margin-right: 16px; font-weight: 400; }
+  .actions { display: flex; justify-content: space-between; margin-top: 24px; }
+  .btn { border: 0; border-radius: 980px; padding: 10px 22px; font-size: 15px; cursor: pointer; }
+  .btn-primary { background: #0071e3; color: #fff; } .btn-secondary { background: #e8e8ed; }
+  .consent { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; margin: 10px 0; }
+  .req { color: #d70015; }
+  dl.review { display: grid; grid-template-columns: 200px 1fr; gap: 6px 12px; font-size: 14px; }
+  dl.review dt { color: #6e6e73; }
+</style>
+</head>
+<body>
+<header class="site-header"><div class="wrap" style="padding-bottom:0"><a href="#">Acme Labs</a> · <a href="#">Careers</a></div></header>
+<div class="wrap">
+  <h1>Senior React Native Engineer</h1>
+  <p class="hint">Bengaluru · Hybrid · Full-time · Job ID ACME-RN-114</p>
+  <div class="card" id="application">
+    <ol class="steps" aria-label="Application progress">
+      <li data-step-indicator="1" aria-current="step">1. About you</li>
+      <li data-step-indicator="2">2. Experience</li>
+      <li data-step-indicator="3">3. Review &amp; consent</li>
+    </ol>
+    <form id="careers-application" action="/careers/apply" method="post" enctype="multipart/form-data" novalidate>
+      <section class="form-step" data-step="1" aria-labelledby="step1-title">
+        <h2 id="step1-title">About you</h2>
+        <div class="form-row"><label for="fullName">Full name <span class="req" aria-hidden="true">*</span></label><input type="text" id="fullName" name="candidate[fullName]" autocomplete="name" required aria-describedby="fullName-error"><span class="error-message" id="fullName-error" role="alert"></span></div>
+        <div class="form-row"><label for="email">Email address <span class="req" aria-hidden="true">*</span></label><input type="email" id="email" name="candidate[email]" autocomplete="email" required aria-describedby="email-error"><span class="error-message" id="email-error" role="alert"></span></div>
+        <div class="form-row"><label for="phone">Mobile number <span class="req" aria-hidden="true">*</span></label>
+          <div class="phone"><select id="phoneCountry" name="candidate[phoneCountry]" aria-label="Country code"><option value="+91" selected>🇮🇳 +91</option><option value="+1">🇺🇸 +1</option><option value="+44">🇬🇧 +44</option><option value="+971">🇦🇪 +971</option><option value="+65">🇸🇬 +65</option></select><input type="tel" id="phone" name="candidate[phone]" autocomplete="tel-national" inputmode="tel" required aria-describedby="phone-error phone-hint"></div>
+          <span class="hint" id="phone-hint">10-digit mobile number without the country code.</span><span class="error-message" id="phone-error" role="alert"></span></div>
+        <div class="form-row"><label for="city">Current location (city) <span class="req" aria-hidden="true">*</span></label><input type="text" id="city" name="candidate[currentCity]" list="city-suggestions" autocomplete="address-level2" required aria-describedby="city-error"><datalist id="city-suggestions"><option value="Bengaluru"><option value="Mumbai"><option value="Pune"><option value="Hyderabad"><option value="Chennai"><option value="Delhi NCR"></datalist><span class="error-message" id="city-error" role="alert"></span></div>
+        <div class="form-row"><label for="linkedin">LinkedIn profile URL</label><input type="url" id="linkedin" name="candidate[linkedinUrl]" placeholder="https://www.linkedin.com/in/..." aria-describedby="linkedin-error"><span class="error-message" id="linkedin-error" role="alert"></span></div>
+        <div class="actions"><span></span><button type="button" class="btn btn-primary" data-action="next">Next</button></div>
+      </section>
+
+      <section class="form-step" data-step="2" aria-labelledby="step2-title" hidden>
+        <h2 id="step2-title">Experience</h2>
+        <div class="form-row">
+          <span id="resume-label" style="font-weight:600;font-size:14px">Resume / CV <span class="req" aria-hidden="true">*</span></span>
+          <div class="dropzone" id="resume-dropzone" role="button" tabindex="0" aria-labelledby="resume-label" aria-describedby="resume-hint resume-error">
+            <p><strong>Drag &amp; drop your resume here</strong> or <span class="link">browse</span></p>
+            <p class="hint" id="resume-hint">PDF, DOC or DOCX, up to 5 MB.</p>
+            <p id="resume-filename" class="hint"></p>
+            <input type="file" id="resume" name="resume" class="visually-hidden" accept=".pdf,.doc,.docx,application/pdf" required tabindex="-1">
+          </div>
+          <span class="error-message" id="resume-error" role="alert"></span>
+        </div>
+        <div class="form-row"><label for="rnYears">Years of React Native experience <span class="req" aria-hidden="true">*</span></label><input type="number" id="rnYears" name="experience[reactNativeYears]" min="0" max="40" step="0.5" required aria-describedby="rnYears-error"><span class="error-message" id="rnYears-error" role="alert"></span></div>
+        <div class="form-row"><label for="notice">Notice period <span class="req" aria-hidden="true">*</span></label><select id="notice" name="experience[noticePeriod]" required aria-describedby="notice-error"><option value="">Select…</option><option value="0">Immediate joiner</option><option value="15">15 days</option><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option></select><span class="error-message" id="notice-error" role="alert"></span></div>
+        <div class="form-row"><label for="currentCtc">Current CTC (₹ LPA) <span class="req" aria-hidden="true">*</span></label><input type="text" id="currentCtc" name="experience[currentCtc]" inputmode="decimal" required aria-describedby="currentCtc-error"><span class="error-message" id="currentCtc-error" role="alert"></span></div>
+        <div class="form-row"><label for="expectedCtc">Expected CTC (₹ LPA) <span class="req" aria-hidden="true">*</span></label><input type="text" id="expectedCtc" name="experience[expectedCtc]" inputmode="decimal" required aria-describedby="expectedCtc-error"><span class="error-message" id="expectedCtc-error" role="alert"></span></div>
+        <fieldset aria-describedby="workAuth-error"><legend>Are you legally authorized to work in India? <span class="req" aria-hidden="true">*</span></legend>
+          <label class="choice"><input type="radio" name="experience[workAuthorized]" value="yes" required> Yes</label>
+          <label class="choice"><input type="radio" name="experience[workAuthorized]" value="no"> No</label>
+          <span class="error-message" id="workAuth-error" role="alert"></span></fieldset>
+        <fieldset aria-describedby="relocate-error"><legend>Are you willing to relocate to Bengaluru? <span class="req" aria-hidden="true">*</span></legend>
+          <label class="choice"><input type="radio" name="experience[relocate]" value="yes" required> Yes</label>
+          <label class="choice"><input type="radio" name="experience[relocate]" value="no"> No</label>
+          <label class="choice"><input type="radio" name="experience[relocate]" value="already"> I already live there</label>
+          <span class="error-message" id="relocate-error" role="alert"></span></fieldset>
+        <div class="form-row"><label for="source">How did you hear about us?</label><select id="source" name="experience[source]"><option value="">Select…</option><option>LinkedIn</option><option>Company website</option><option>Employee referral</option><option>Job board (Naukri, Instahyre, etc.)</option><option>Other</option></select></div>
+        <div class="form-row"><label for="why">Why do you want to join Acme Labs? <span class="req" aria-hidden="true">*</span></label><textarea id="why" name="experience[motivation]" rows="5" minlength="30" maxlength="1500" required aria-describedby="why-hint why-error"></textarea><span class="hint" id="why-hint">At least 30 characters.</span><span class="error-message" id="why-error" role="alert"></span></div>
+        <div class="actions"><button type="button" class="btn btn-secondary" data-action="back">Back</button><button type="button" class="btn btn-primary" data-action="next">Next</button></div>
+      </section>
+
+      <section class="form-step" data-step="3" aria-labelledby="step3-title" hidden>
+        <h2 id="step3-title">Review &amp; consent</h2>
+        <dl class="review" id="review"></dl>
+        <label class="consent" for="privacyConsent"><input type="checkbox" id="privacyConsent" name="consent[privacy]" value="accepted" required aria-describedby="privacyConsent-error"><span>I agree to Acme Labs processing my personal data for recruitment purposes as described in the <a href="#">Candidate Privacy Notice</a>. <span class="req" aria-hidden="true">*</span></span></label>
+        <span class="error-message" id="privacyConsent-error" role="alert"></span>
+        <label class="consent" for="marketingOptIn"><input type="checkbox" id="marketingOptIn" name="consent[marketing]" value="yes"><span>Keep me updated about future job openings and Acme Labs news by email (optional).</span></label>
+        <div class="actions"><button type="button" class="btn btn-secondary" data-action="back">Back</button><button type="submit" class="btn btn-primary" id="submit-application">Submit application</button></div>
+      </section>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var form = document.getElementById('careers-application');
+  var step = 1;
+  function q(s, r) { return (r || document).querySelector(s); }
+  function qa(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function errFor(el) {
+    var ids = (el.getAttribute('aria-describedby') || (el.closest('fieldset') && el.closest('fieldset').getAttribute('aria-describedby')) || '').split(/\s+/);
+    for (var i = 0; i < ids.length; i++) if (/-error$/.test(ids[i])) return document.getElementById(ids[i]);
+    return null;
+  }
+  function setErr(el, msg) { var e = errFor(el); if (e) e.textContent = msg || ''; if (el.type !== 'radio') el.setAttribute('aria-invalid', msg ? 'true' : 'false'); }
+  function validateStep(n) {
+    var sec = q('[data-step="' + n + '"]'), ok = true, first = null;
+    qa('input, select, textarea', sec).forEach(function (el) {
+      var msg = '';
+      if (el.type === 'radio') {
+        if (!el.required) return;
+        if (!form.querySelector('input[name="' + CSS.escape(el.name) + '"]:checked')) msg = 'Please choose an option.';
+      } else if (el.type === 'checkbox') {
+        if (el.required && !el.checked) msg = 'You must accept the privacy notice to apply.';
+      } else if (el.type === 'file') {
+        if (el.required && !(el.files && el.files.length)) msg = 'Please upload your resume.';
+        else if (el.files && el.files[0] && el.files[0].size > 5 * 1024 * 1024) msg = 'File is larger than 5 MB.';
+      } else {
+        var v = el.value.trim();
+        if (el.required && !v) msg = 'This field is required.';
+        else if (v && el.type === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) msg = 'Enter a valid email address.';
+        else if (v && el.id === 'phone' && v.replace(/\D/g, '').length !== 10) msg = 'Enter a 10-digit mobile number.';
+        else if (v && el.type === 'url' && !/^https?:\/\/\S+\.\S+/.test(v)) msg = 'Enter a valid URL starting with https://';
+        else if (v && el.minLength > 0 && v.length < el.minLength) msg = 'Please write at least ' + el.minLength + ' characters.';
+      }
+      setErr(el, msg);
+      if (msg) { ok = false; first = first || el; }
+    });
+    if (first) { (first.type === 'file' ? q('#resume-dropzone') : first).focus(); }
+    return ok;
+  }
+  function show(n) {
+    step = n;
+    qa('.form-step').forEach(function (s) { s.hidden = Number(s.getAttribute('data-step')) !== n; });
+    qa('[data-step-indicator]').forEach(function (li) { if (Number(li.getAttribute('data-step-indicator')) === n) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current'); });
+    if (n === 3) renderReview();
+    location.hash = '#step-' + n;
+  }
+  function renderReview() {
+    var dl = q('#review'); dl.innerHTML = '';
+    [['Name', '#fullName'], ['Email', '#email'], ['Phone', '#phone'], ['Location', '#city'], ['Resume', '#resume'], ['RN experience', '#rnYears'], ['Notice period', '#notice'], ['Expected CTC', '#expectedCtc']].forEach(function (p) {
+      var el = q(p[1]), v = el.type === 'file' ? (el.files[0] && el.files[0].name) : el.tagName === 'SELECT' ? el.options[el.selectedIndex].text : el.value;
+      var dt = document.createElement('dt'); dt.textContent = p[0]; var dd = document.createElement('dd'); dd.textContent = v || '—';
+      dl.appendChild(dt); dl.appendChild(dd);
+    });
+  }
+  form.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-action]'); if (!a) return;
+    if (a.getAttribute('data-action') === 'next') { if (validateStep(step)) show(step + 1); }
+    else show(step - 1);
+  });
+  form.addEventListener('input', function (e) { if (e.target.getAttribute('aria-invalid') === 'true') setErr(e.target, ''); });
+  form.addEventListener('change', function (e) { if (e.target.type === 'radio' || e.target.type === 'checkbox') setErr(e.target, ''); });
+
+  // Drop zone with hidden file input
+  var dz = q('#resume-dropzone'), file = q('#resume');
+  dz.addEventListener('click', function (e) { if (e.target !== file) file.click(); });
+  dz.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+  ['dragenter', 'dragover'].forEach(function (t) { dz.addEventListener(t, function (e) { e.preventDefault(); dz.classList.add('is-dragover'); }); });
+  ['dragleave', 'drop'].forEach(function (t) { dz.addEventListener(t, function (e) { e.preventDefault(); dz.classList.remove('is-dragover'); }); });
+  dz.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files.length) { file.files = e.dataTransfer.files; file.dispatchEvent(new Event('change', { bubbles: true })); } });
+  file.addEventListener('change', function () { q('#resume-filename').textContent = file.files[0] ? 'Selected: ' + file.files[0].name : ''; setErr(file, ''); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (step !== 3) { if (validateStep(step)) show(step + 1); return; }
+    if (!validateStep(1)) return show(1);
+    if (!validateStep(2)) return show(2);
+    if (!validateStep(3)) return;
+    var out = {};
+    new FormData(form).forEach(function (v, k) { out[k] = v instanceof File ? v.name : v; });
+    window.__submitted = out;
+    q('#application').innerHTML = '<div class="success" role="status"><h2>Thank you for applying!</h2><p>We have received your application for <strong>Senior React Native Engineer</strong>. Our talent team will get back to you within 10 working days.</p><p>Application reference: ACME-' + Date.now().toString().slice(-6) + '</p></div>';
+    location.hash = '#applied';
+  });
+})();
+</script>
+</body>
+</html>

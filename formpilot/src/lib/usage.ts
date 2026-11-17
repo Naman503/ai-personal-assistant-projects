@@ -178,7 +178,7 @@ export const CLIENT_EVENTS: Record<string, { counter: boolean; props?: Record<st
   chat_question: { counter: true, props: { found: 'bool' } },
   form_fill_applied: { counter: false, props: { fields: 'number', filled: 'number', trigger: ['shortcut', 'context_menu', 'popup_menu', 'toolbar'] } },
   toolbar_popup_opened: { counter: true, props: { site_active: 'bool', provider_ready: 'bool', locked: 'bool' } },
-  toolbar_action: { counter: true, props: { action: ['fill_form', 'providers', 'memory', 'settings', 'logs', 'about', 'email', 'toggle_extension', 'toggle_site'] } },
+  toolbar_action: { counter: true, props: { action: ['fill_form', 'providers', 'memory', 'settings', 'logs', 'about', 'email', 'toggle_extension', 'toggle_site', 'site_pilot_add'] } },
   options_opened: { counter: true },
   options_section_viewed: { counter: true, props: { section: OPTIONS_SECTIONS } },
   options_action: {

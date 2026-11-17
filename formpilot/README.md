@@ -294,6 +294,32 @@ FormPilot can keep a record of every job you apply to in a tracker you host your
 5. **Apply queue (LinkedIn)**: on a LinkedIn job search, click *Apply to this list* in the toolbar popup. FormPilot opens each Easy Apply job you haven't applied to, fills it to the Submit button and waits for you to press Submit, then moves to the next. Daily limit, pause and titles to skip are in *Settings → Behavior → Job tracker*.
 4. Optional, **Walk the form to Submit**: after *Fill this form* on a multi-step application (LinkedIn Easy Apply and similar), FormPilot presses Next or Review for you, fills each step and stops at the Submit button, highlighted. It never presses Submit, and it stops when a step needs you.
 
+### Site Pilot: company career sites with a local model
+
+*Settings → Site Pilot* applies on company career sites and Google Forms in its own Brave window, using only a local model through Ollama (default `gemma4:12b`, which reads screenshots). It runs separately from the Autopilot, and both can run at once.
+
+- **Where jobs come from:**
+  - Naukri jobs that "apply on the company site", handed over by the Autopilot or found by Site Pilot's own Naukri search;
+  - Google Forms a recruiter's chatbot asks for;
+  - links you paste;
+  - the popup's **Apply with Site Pilot** button on any page.
+- **What it does for each job:**
+  1. Opens the form, uploads your resume and answers each field from your memory: saved answers, facts and rules first, then the local model.
+  2. Handles Google Forms options, react-select dropdowns, Yes/No buttons and suggestion lists.
+  3. Ticks required privacy boxes, never marketing ones.
+  4. Fixes rejected values.
+  5. Lets the model look at a screenshot and fix whatever is left.
+  6. Presses Submit once the form is complete. Every application is recorded with its answers, steps and screenshots.
+- **Dry run** is on until you tick a system under *Really submit on*: Google Forms, Greenhouse, Lever, Ashby, Workable or other sites.
+- **Left for you:** sign-ins, account-only systems (Workday, Taleo, iCIMS, SuccessFactors), CAPTCHAs, tests and payments go to **Needs you**.
+- **Limits:** none per day. At most 2 applications per company in 30 days.
+- **Local model settings:**
+  - **Go slow** (fewer calls while you use the Mac) or **Pause**;
+  - calls per minute;
+  - how long the model stays loaded;
+  - context size;
+  - an optional lighter model while you work.
+
 The tracker needs one endpoint, `POST /api/record-application`, that takes `{kind, url, role, company, location, source, salary, description, answers: [{q, a}], recordedBy}` and returns `{ok, id, created, status}`. *Test connection* calls `GET /api/state`.
 
 ---

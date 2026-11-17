@@ -17,7 +17,7 @@ import {
   HardDrive,
   Info,
   Mail,
-  PanelTop, Bot } from 'lucide-react';
+  PanelTop, Bot, Building2 } from 'lucide-react';
 import { useApplyAppearance, useSettings } from '@/hooks/useSettings';
 import { cn } from '@/components/ui/cn';
 import type { Settings } from '@/lib/settings';
@@ -29,6 +29,7 @@ import { Generation } from './pages/Generation';
 import { Memory } from './pages/Memory';
 import { Behavior } from './pages/Behavior';
 import { Autopilot } from './pages/Autopilot';
+import { SitePilot } from './pages/SitePilot';
 import { CacheHistory } from './pages/CacheHistory';
 import { Privacy } from './pages/Privacy';
 import { Appearance } from './pages/Appearance';
@@ -52,6 +53,7 @@ const NAV: { id: string; label: string; icon: ComponentType<{ className?: string
   { id: 'generation', label: 'Generation', icon: SlidersHorizontal, page: Generation, group: 'Tuning' },
   { id: 'behavior', label: 'Behavior', icon: MousePointerClick, page: Behavior, group: 'Tuning' },
   { id: 'autopilot', label: 'Autopilot', icon: Bot, page: Autopilot, group: 'Tuning' },
+  { id: 'sitepilot', label: 'Site Pilot', icon: Building2, page: SitePilot, group: 'Tuning' },
   { id: 'popup', label: 'Popup', icon: PanelTop, page: PopupSettings, group: 'Tuning' },
   { id: 'cache', label: 'Speed & History', icon: Zap, page: CacheHistory, group: 'Tuning' },
   { id: 'privacy', label: 'Privacy & Data', icon: ShieldCheck, page: Privacy, group: 'System' },

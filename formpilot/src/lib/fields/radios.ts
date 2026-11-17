@@ -14,7 +14,9 @@ const textOf = (el: Element) => clean((el as HTMLElement).innerText || el.textCo
 function legend(radio: HTMLInputElement): string {
   const lg = radio.closest('fieldset')?.querySelector('legend');
   if (!lg) return '';
-  let t = clean(lg.querySelector('[aria-hidden="true"]')?.textContent || lg.textContent);
+  // LinkedIn repeats the question in an aria-hidden span; a hidden "*" alone is just the required mark.
+  const hidden = clean(lg.querySelector('[aria-hidden="true"]')?.textContent);
+  let t = clean(hidden.length > 2 ? hidden : lg.textContent);
   const half = t.length / 2;
   if (Number.isInteger(half) && t.slice(0, half) === t.slice(half)) t = t.slice(0, half).trim();
   return t;
@@ -36,14 +38,23 @@ export function radioGroupLabel(radios: HTMLInputElement[]): string {
   const aria = first.getAttribute('aria-label');
   if (aria && radios.length > 1 && radios.every((r) => r.getAttribute('aria-label') === aria)) return clean(aria);
   // Text just before the group (a <p>/<span>/<label> heading); for a group without a container,
-  // the text before the common parent of its options.
-  let prev = group?.previousElementSibling ?? commonParent(radios)?.previousElementSibling;
-  for (let i = 0; i < 3 && prev; i++, prev = prev.previousElementSibling) {
-    if (prev.querySelector('input, select, textarea')) break;
-    const t = textOf(prev);
-    if (t) return t;
+  // the text before the common parent of its options. Lever-style markup nests the options one or
+  // two levels below the question, so look before each ancestor too (until one holds other fields).
+  let box: Element | null = group ?? commonParent(radios);
+  for (let level = 0; level < 4 && box; level++, box = box.parentElement) {
+    let prev = box.previousElementSibling;
+    for (let i = 0; i < 3 && prev; i++, prev = prev.previousElementSibling) {
+      if (prev.querySelector('input, select, textarea')) break;
+      const t = textOf(prev);
+      if (t) return t;
+    }
+    const parent = box.parentElement;
+    if (!parent || [...parent.querySelectorAll('input, select, textarea')].some((x) => !radios.includes(x as HTMLInputElement))) break;
   }
-  return clean(resolveLabel(first.parentElement as HTMLElement)) || first.name;
+  const fallback = clean(resolveLabel(first.parentElement as HTMLElement));
+  // A label that is just one of the options ("Yes") is no question.
+  const options = new Set(radios.map((r) => radioOptionLabel(r, radios).toLowerCase()));
+  return fallback && !options.has(fallback.toLowerCase()) ? fallback : first.name;
 }
 
 /** The text of one option. */

@@ -809,7 +809,7 @@ export class Controller {
   /** Called after every whole-form fill (the walker hooks in here). */
   afterFill?: (anchor: HTMLElement, result: { filled: number; total: number }, trigger: FillTrigger) => void;
 
-  async fillForm(trigger: FillTrigger = 'popup_menu', opts: { anchor?: HTMLElement; quiet?: boolean } = {}): Promise<{ filled: number; total: number; error?: string }> {
+  async fillForm(trigger: FillTrigger = 'popup_menu', opts: { anchor?: HTMLElement; quiet?: boolean; engine?: 'local' } = {}): Promise<{ filled: number; total: number; error?: string }> {
     const none: { filled: number; total: number; error?: string } = { filled: 0, total: 0 };
     let anchor = opts.anchor ?? this.field ?? deepActiveElement();
     // Nothing fillable focused (toolbar button, a step with only radio buttons, LinkedIn's
@@ -838,6 +838,8 @@ export class Controller {
     for (const el of els) {
       const h = el as HTMLInputElement;
       if (h.disabled || h.readOnly) continue;
+      // Site Pilot already picked this dropdown's option (react-select keeps its input empty).
+      if (el.hasAttribute('data-fp-handled')) continue;
       const f = extractField(el);
       if (!f || isSensitive(f.semantic) || h.type === 'password') continue;
       if (f.currentValue.trim() && f.kind !== 'select') continue; // never overwrite user input
@@ -928,6 +930,7 @@ export class Controller {
         fields: fillable.map(({ id, field }) => ({ id, field })),
         page,
         trigger,
+        engine: opts.engine,
       });
       const undo: { el: HTMLElement; previous: string; radios?: HTMLInputElement[]; boxes?: HTMLInputElement[]; ticked?: HTMLInputElement[] }[] = [];
       let n = 0;

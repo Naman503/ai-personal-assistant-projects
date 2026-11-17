@@ -1,0 +1,302 @@
+<!doctype html>
+<!--
+  Fixture: Google Forms (docs.google.com/forms/d/e/<publishedId>/viewform), 2 pages + confirmation.
+  Markup copied from live public forms fetched Nov 2026 (obfuscated Wiz class names such as
+  Qr7Oae / M7eMe / whsOnd are stable-ish but undocumented; prefer roles + aria + data-* hooks):
+    - each question = div.Qr7Oae[role=listitem] > div[jsmodel][data-params="%.@.[itemId,"Title",null,type,[[entryId,...]]..."];
+      title in div[role=heading] > span.M7eMe, required marker span.vnumgf[aria-label="Required question"] " *";
+    - text inputs (input.whsOnd) and textareas (textarea.KHxj8b) have NO name; they're linked to the
+      title via aria-labelledby. Answers are posted through hidden <input name="entry.<id>"> that
+      Google's JS maintains (emulated here), plus entry.<id>_sentinel for choice questions;
+    - multiple choice = div[role=radiogroup] > div[role=radio][data-value][aria-checked];
+      checkboxes = div[role=list] > div[role=checkbox][data-answer-value][aria-checked];
+      dropdown = div[role=listbox] with div[role=option][data-value] (opens on click);
+      "Other:" option has data-value="__other_option__" + a text box;
+    - navigation buttons are div[role=button] with span text "Next" / "Back" / "Submit"
+      (Submit also has aria-label="Submit"); progress "Page 1 of 2";
+    - validation: "This is a required question" in the question's div[role=alert];
+    - FB_PUBLIC_LOAD_DATA_ (below) has the full question model (types: 0 short answer,
+      1 paragraph, 2 multiple choice, 3 dropdown, 4 checkboxes, 8 page break, 9 date, 10 time).
+  Google Forms cannot take file uploads without Google sign-in, so the resume is a link question.
+  Success: confirmation "Your response has been recorded." + location.hash "#formResponse"
+  (real form navigates to .../formResponse). window.__submitted = { "entry.<id>": value|array }.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Acme Labs - Senior React Native Engineer Application</title>
+<style>
+  body { margin: 0; background: #f0ebf8; font-family: Roboto, Arial, sans-serif; color: #202124; }
+  .RH5hzf { max-width: 640px; margin: 12px auto; padding: 0 8px; }
+  .Dq4amc, .Qr7Oae > div, .ThHDze { background: #fff; border-radius: 8px; border: 1px solid #dadce0; padding: 20px 24px; margin-bottom: 12px; }
+  .Dq4amc { border-top: 10px solid #673ab7; }
+  .F9yp7e { font-size: 32px; }
+  .md0UAd { color: #d93025; font-size: 14px; margin-top: 12px; }
+  .M7eMe { font-size: 16px; }
+  .vnumgf { color: #d93025; }
+  .whsOnd, .KHxj8b, .Hvn9fb { width: 100%; border: 0; border-bottom: 1px solid #dadce0; padding: 6px 0; font: inherit; outline: none; background: transparent; }
+  .ndJi5d { display: none; }
+  .nWQGrd, .eBFwI { margin: 10px 0; }
+  .docssharedWizToggleLabeledContainer { cursor: pointer; display: block; }
+  .bzfPab { display: flex; align-items: center; gap: 12px; }
+  [role=radio], [role=checkbox] { width: 18px; height: 18px; border: 2px solid #5f6368; border-radius: 50%; box-sizing: border-box; }
+  [role=checkbox] { border-radius: 3px; }
+  [role=radio][aria-checked=true], [role=checkbox][aria-checked=true] { background: #673ab7; border-color: #673ab7; }
+  .jgvuAb { display: inline-block; border: 1px solid #dadce0; border-radius: 4px; min-width: 200px; cursor: pointer; position: relative; }
+  .jgvuAb .MocG8c { padding: 8px 12px; display: none; }
+  .jgvuAb .MocG8c[aria-selected=true] { display: block; }
+  .jgvuAb.open .MocG8c { display: block; }
+  .jgvuAb.open { box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  .MocG8c.KKjvXb { background: #e8eaed; }
+  .SL4Sz { color: #d93025; font-size: 12px; margin-top: 8px; }
+  .HHgTUd > div { border-color: #d93025; }
+  .ThHDze { background: transparent; border: 0; padding: 0; }
+  .DE3NNc { display: flex; align-items: center; gap: 16px; }
+  .uArJ5e { background: #673ab7; color: #fff; border-radius: 4px; padding: 8px 24px; cursor: pointer; user-select: none; }
+  .uArJ5e.kCyAyd { background: transparent; color: #673ab7; }
+  .uArJ5e.YhQJj.back { background: #fff; color: #673ab7; border: 1px solid #dadce0; }
+  .HZh16d { font-size: 12px; color: #5f6368; }
+  .cJ3RAd { width: 120px; height: 10px; background: #e0e0e0; border-radius: 5px; overflow: hidden; }
+  .Jo4Fpf { height: 100%; background: #673ab7; }
+  .T2dutf { font-size: 12px; color: #5f6368; margin-top: 12px; }
+  .vHW8K { font-size: 14px; margin-top: 16px; }
+  .OxAavc .meSK8 { font-size: 20px; }
+</style>
+<script>
+var FB_PUBLIC_LOAD_DATA_ = [null,[null,[
+[300000001,"Full name",null,0,[[1000000001,null,true,null,null,null,null,null,null,null,[]]]],
+[300000002,"Email address",null,0,[[1000000002,null,true,[[1,2,null,"Must be a valid email"]],null,null,null,null,null,null,[]]]],
+[300000003,"Phone number (with country code)",null,0,[[1000000003,null,true,null,null,null,null,null,null,null,[]]]],
+[300000004,"Current location (city)",null,0,[[1000000004,null,true,null,null,null,null,null,null,null,[]]]],
+[300000005,"LinkedIn profile URL",null,0,[[1000000005,null,false,null,null,null,null,null,null,null,[]]]],
+[300000006,"Link to your resume (Google Drive / Dropbox, viewable by anyone with the link)",null,0,[[1000000006,null,true,null,null,null,null,null,null,null,[]]]],
+[300000007,"Years of professional React Native experience",null,2,[[1000000007,[["Less than 2"],["2 - 4"],["5 - 7"],["8 or more"]],true,null,null,null,null,null,null,null,[]]]],
+[300000008,"Notice period",null,3,[[1000000008,[["Immediate"],["15 days or less"],["30 days"],["60 days"],["90 days"]],true,null,null,null,null,null,null,null,[]]]],
+[300000009,"Compensation & preferences",null,8,null,null,null,null,null,null,null,[null,"Compensation & preferences"]],
+[300000010,"Current CTC (INR per annum)",null,0,[[1000000009,null,true,null,null,null,null,null,null,null,[]]]],
+[300000011,"Expected CTC (INR per annum)",null,0,[[1000000010,null,true,null,null,null,null,null,null,null,[]]]],
+[300000012,"Are you legally authorized to work in India?",null,2,[[1000000011,[["Yes"],["No"]],true,null,null,null,null,null,null,null,[]]]],
+[300000013,"Are you willing to relocate to Bengaluru?",null,2,[[1000000012,[["Yes"],["No"],["Maybe"]],true,null,null,null,null,null,null,null,[]]]],
+[300000014,"How did you hear about us?",null,4,[[1000000013,[["LinkedIn"],["Company website"],["Employee referral"],["",null,null,null,1]],false,null,null,null,null,null,null,null,[]]]],
+[300000015,"Why do you want to join Acme Labs?",null,1,[[1000000014,null,true,null,null,null,null,null,null,null,[]]]]
+],null,null,null,null,null,null,"Acme Labs - Senior React Native Engineer Application",48,[null,null,null,2,0,null,1],null,null,null,null,[2]],"/forms","Acme Labs - Senior React Native Engineer Application",null,null,null,"",null,0,0,null,"",0,"e/1FAIpQLSfFixtureAcmeLabsRN0000000000000000000000000/viewform",0,0];
+</script>
+</head>
+<body>
+<div class="Uc2NEf">
+<form action="#formResponse" target="_self" method="POST" id="mG61Hd" data-shuffle-seed="-1234567890" data-first-entry="0" data-last-entry="8" data-is-first-page="true">
+  <div class="RH5hzf RLS9Fe">
+    <div class="lrKTG">
+      <div class="Dq4amc"><div class="m7w29c O8VmIc tIvQIf">
+        <div class="N0gd6"><div class="ahS2Le"><div class="F9yp7e ikZYwf LgNcQe" dir="auto" role="heading" aria-level="1">Acme Labs - Senior React Native Engineer Application</div></div><div class="liS6Hc">Tell us a bit about yourself. Takes about 5 minutes.</div></div>
+        <div class="DqBBlb"><div class="md0UAd" aria-hidden="true" dir="auto">* Indicates required question</div></div>
+      </div></div>
+      <div class="o3Dpx" role="list" id="question-list"></div>
+      <div class="ThHDze" data-shuffle-seed="-1234567890" data-should-execute-invisible-captcha-on-form-submit="false" data-is-receipt-checked="false"><div class="DE3NNc CekdCb" id="nav"></div><div class="T2dutf">Never submit passwords through Google Forms.</div></div>
+      <div id="entry-store"></div>
+      <input type="hidden" name="fvv" value="1"><input type="hidden" name="partialResponse" value="[null,null,&quot;-1234567890&quot;]"><input type="hidden" name="pageHistory" value="0"><input type="hidden" name="fbzx" value="-1234567890"><input type="hidden" name="submissionTimestamp" value="-1">
+    </div>
+  </div>
+</form>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var ITEMS = FB_PUBLIC_LOAD_DATA_[1][1];
+  var pages = [[]];
+  ITEMS.forEach(function (it) { if (it[3] === 8) pages.push([it]); else pages[pages.length - 1].push(it); });
+  var page = 0, uid = 0, answers = {};
+  function nid() { return 'i' + (++uid); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+  function params(it) { return esc('%.@.' + JSON.stringify([it[0], it[1], null, it[3], it[4]])); }
+
+  function header(it, req) {
+    var hid = nid(), rid = nid(), did = nid();
+    return { hid: hid, did: did, html: '<div class="z12JJ"><div class="M4DNQ"><div id="' + hid + '" class="HoXoMd D1wxyf RjsPE" role="heading" aria-level="3"' + (req ? ' aria-describedby="' + rid + '"' : '') + '><span class="M7eMe">' + esc(it[1]) + '</span>' + (req ? '<span class="vnumgf" id="' + rid + '" aria-label="Required question"> *</span>' : '') + '</div><div class="gubaDc OIC90c RjsPE" id="' + did + '"></div></div></div>' };
+  }
+  function shortText(it, hd, eid) {
+    var lid = nid(), aid = nid();
+    return '<div class="AgroKb"><div class="rFrNMe k3kHxc RdH0ib yqQS1 zKHdkd" jscontroller="mxS5xe"><div class="aCsJod oJeWuf"><div class="aXBtI Wic03c"><div class="Xb9hP"><input type="text" class="whsOnd zHQkBf" jsname="YPqjbf" autocomplete="off" tabindex="0" aria-labelledby="' + hd.hid + ' ' + lid + '" aria-describedby="' + hd.did + ' ' + aid + '"' + (it[4][0][2] ? ' required' : '') + ' dir="auto" data-initial-dir="auto" data-initial-value="" data-entry="' + eid + '"/><div class="ndJi5d snByac" aria-hidden="true" id="' + lid + '">Your answer</div></div><div class="i9lrp mIZh1c"></div><div class="OabDMe cXrdqd"></div></div></div><div class="LXRPh"><div class="ovnfwe Is7Fhb"></div></div></div></div><div class="SL4Sz" id="' + aid + '" role="alert"></div>';
+  }
+  function paragraph(it, hd, eid) {
+    var aid = nid();
+    return '<div class="AgroKb"><div class="RpC4Ne oJeWuf" jscontroller="gZjhIf"><div class="Pc9Gce Wic03c"><textarea class="KHxj8b tL9Q4c" jsname="YPqjbf" tabindex="0" aria-label="Your answer" dir="auto" data-initial-dir="auto" data-initial-value="" aria-labelledby="' + hd.hid + '" aria-describedby="' + hd.did + ' ' + aid + '"' + (it[4][0][2] ? ' required' : '') + ' data-entry="' + eid + '"></textarea><div class="qdOxv-fmcmS-wGMbrd" aria-hidden="true">Your answer</div></div></div></div><div class="SL4Sz" id="' + aid + '" role="alert"></div>';
+  }
+  function radios(it, hd, eid) {
+    var aid = nid();
+    var opts = it[4][0][1].map(function (o) {
+      var id = nid();
+      return '<div class="nWQGrd zwllIb"><label for="' + id + '" class="docssharedWizToggleLabeledContainer ajBQVb"><div class="bzfPab wFGF8"><div class="d7L4fc bJNwt  FXLARc aomaEc ECvBRb"><div id="' + id + '" class="Od2TWd hYsg7c" jscontroller="EcW08c" aria-label="' + esc(o[0]) + '" data-value="' + esc(o[0]) + '" role="radio" aria-checked="false" tabindex="0"><div class="x0k1lc MbhUzd"></div><div class="uyywbd"></div><div class="vd3tt"><div class="AB7Lab Id5V1"><div class="rseUEf nQOrEb"></div></div></div></div></div><div class="YEVVod"><div class="ulDsOb"><span dir="auto" class="aDTYNe snByac OvPDhc OIC90c">' + esc(o[0]) + '</span></div></div></div></label></div>';
+    }).join('');
+    return '<div class="oyXaNc"><input type="hidden" name="entry.' + eid + '_sentinel"><div><div class="lLfZXe fnxRtf cNDBpf" jscontroller="wPRNsd" aria-labelledby="' + hd.hid + '" aria-describedby="' + hd.did + ' ' + aid + '"' + (it[4][0][2] ? ' aria-required="true"' : '') + ' role="radiogroup" data-entry="' + eid + '"><span jsslot role="presentation" class="H2Gmcc tyNBNd"><div class="SG0AAe">' + opts + '</div></span></div></div></div><div class="SL4Sz" id="' + aid + '" role="alert"></div>';
+  }
+  function checks(it, hd, eid) {
+    var aid = nid();
+    var opts = it[4][0][1].map(function (o) {
+      var id = nid();
+      if (o[4] === 1) { // "Other:" option
+        return '<div class="eBFwI" role="listitem"><label for="' + id + '" class="docssharedWizToggleLabeledContainer Yri8Nb"><div class="bzfPab wFGF8"><div id="' + id + '" class="uVccjd aiSeRd FXLARc wGQFbe BJHAP oLlshd" jscontroller="D8e5bc" data-answer-value="__other_option__" role="checkbox" aria-checked="false" tabindex="0"></div><div class="YEVVod"><div class="ulDsOb"><span dir="auto" class="aDTYNe snByac n5vBHf OIC90c">Other:</span></div></div></div></label><div class="pIDwKe"><input type="text" class="Hvn9fb zHQkBf" autocomplete="off" tabindex="0" aria-label="Other response" dir="auto" data-other-for="' + eid + '"/></div></div>';
+      }
+      return '<div class="eBFwI" role="listitem"><label for="' + id + '" class="docssharedWizToggleLabeledContainer Yri8Nb"><div class="bzfPab wFGF8"><div id="' + id + '" class="uVccjd aiSeRd FXLARc wGQFbe BJHAP oLlshd" jscontroller="D8e5bc" aria-label="' + esc(o[0]) + '" data-answer-value="' + esc(o[0]) + '" role="checkbox" aria-checked="false" tabindex="0"><div class="PkgjBf MbhUzd"></div><div class="uHMk6b fsHoPb"></div><div class="rq8Mwb"><div class="TCA6qd"><div class="MbUTNc oyD5Oc"></div><div class="Ii6cVc oyD5Oc"></div></div></div></div><div class="YEVVod"><div class="ulDsOb"><span dir="auto" class="aDTYNe snByac n5vBHf OIC90c">' + esc(o[0]) + '</span></div></div></div></label></div>';
+    }).join('');
+    return '<div class="Y6Myld"><input type="hidden" name="entry.' + eid + '_sentinel"><div role="list" aria-labelledby="' + hd.hid + '" aria-describedby="' + hd.did + ' ' + aid + '" class="" data-entry="' + eid + '">' + opts + '</div></div><div class="SL4Sz" id="' + aid + '" role="alert"></div>';
+  }
+  function dropdown(it, hd, eid) {
+    var aid = nid();
+    var opts = '<div class="MocG8c HZ3kWc mhLiyf LMgvRb KKjvXb DEh1R" data-value="" aria-selected="true" role="option" tabindex="0"><div class="kRoyt MbhUzd"></div><span jsslot class="vRMGwf oJeWuf">Choose</span></div><div class="mbHMhf" role="presentation"></div>' +
+      it[4][0][1].map(function (o) { return '<div class="MocG8c HZ3kWc mhLiyf OIC90c LMgvRb" data-value="' + esc(o[0]) + '" aria-selected="false" role="option" tabindex="-1"><div class="kRoyt MbhUzd"></div><span jsslot class="vRMGwf oJeWuf">' + esc(o[0]) + '</span></div>'; }).join('');
+    return '<div class="vQES8d"><div role="listbox" aria-expanded="false" class="jgvuAb ybOdnf cGN2le t9kgXb llrsB" jscontroller="YwHGTd" tabindex="0" aria-describedby="' + hd.did + ' ' + aid + '" aria-labelledby="' + hd.hid + '"' + (it[4][0][2] ? ' aria-required="true"' : '') + ' data-entry="' + eid + '"><div role="presentation"><div class="ry3kXd" role="presentation">' + opts + '</div></div></div></div><div class="SL4Sz" id="' + aid + '" role="alert"></div>';
+  }
+
+  function renderPage() {
+    var list = document.getElementById('question-list');
+    list.innerHTML = '';
+    pages[page].forEach(function (it) {
+      if (it[3] === 8) {
+        list.insertAdjacentHTML('beforeend', '<div class="Qr7Oae" role="listitem"><div class="OxAavc" data-item-id="' + it[0] + '"><div class="meSK8 M7eMe" role="heading" aria-level="2">' + esc(it[1]) + '</div></div></div>');
+        return;
+      }
+      var eid = it[4][0][0], req = !!it[4][0][2], hd = header(it, req), body;
+      switch (it[3]) {
+        case 0: body = shortText(it, hd, eid); break;
+        case 1: body = paragraph(it, hd, eid); break;
+        case 2: body = radios(it, hd, eid); break;
+        case 3: body = dropdown(it, hd, eid); break;
+        case 4: body = checks(it, hd, eid); break;
+      }
+      list.insertAdjacentHTML('beforeend', '<div class="Qr7Oae" role="listitem"><div jsmodel="CP1oW" data-params="' + params(it) + '"><div class="geS5n">' + hd.html + body + '</div></div></div>');
+    });
+    restore();
+    renderNav();
+    var f = document.getElementById('mG61Hd');
+    f.setAttribute('data-is-first-page', String(page === 0));
+    document.querySelector('input[name=pageHistory]').value = Array.from({ length: page + 1 }, function (_, i) { return i; }).join(',');
+    window.scrollTo(0, 0);
+  }
+  function btn(text, extra, cls) { return '<div role="button" class="uArJ5e UQuaGc ' + cls + '" jscontroller="VXdfxd" tabindex="0"' + (extra || '') + '><div class="Fvio9d MbhUzd"></div><div class="e19J0b CeoRYc"></div><span jsslot class="l4V7wb Fxmcue"><span class="NPEfkd RveJvd snByac">' + text + '</span></span></div>'; }
+  function renderNav() {
+    var last = page === pages.length - 1, pct = Math.round(((page + 1) / pages.length) * 100);
+    var html = '<div class="lRwqcd">' + (page > 0 ? btn('Back', ' data-nav="back"', 'YhQJj zo8FOc back') : '') + (last ? btn('Submit', ' aria-label="Submit" data-nav="submit"', 'Y5sE8d VkkpIf QvWxOd') : btn('Next', ' data-nav="next"', 'YhQJj zo8FOc ctEux')) + '</div>' +
+      '<div class="bEJm0e"><div class="cJ3RAd graCKc" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-labelledby="lpd4pf" role="progressbar"><div class="Jo4Fpf TpX7Me-vfifzc" style="width:' + pct + '%"></div></div><div id="lpd4pf" class="HZh16d" aria-hidden="true">Page ' + (page + 1) + ' of ' + pages.length + '</div></div>' +
+      '<div class="nYdzXd">' + btn('Clear form', ' data-nav="clear"', 'kCyAyd l3F1ye TFBnVe') + '</div>';
+    document.getElementById('nav').innerHTML = html;
+  }
+
+  // ---- hidden entry.* inputs (what actually gets POSTed) ----
+  function store(eid, value) {
+    answers[eid] = value;
+    var box = document.getElementById('entry-store');
+    box.querySelectorAll('input[name="entry.' + eid + '"]').forEach(function (n) { n.remove(); });
+    [].concat(value).forEach(function (v) {
+      if (v === '' || v == null) return;
+      var i = document.createElement('input'); i.type = 'hidden'; i.name = 'entry.' + eid; i.value = v; box.appendChild(i);
+    });
+    var q = document.querySelector('[data-entry="' + eid + '"]');
+    if (q) clearError(q.closest('.Qr7Oae'));
+  }
+  function restore() {
+    document.querySelectorAll('#question-list [data-entry]').forEach(function (n) {
+      var v = answers[n.getAttribute('data-entry')]; if (v == null) return;
+      if (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA') n.value = v;
+      else if (n.getAttribute('role') === 'radiogroup') n.querySelectorAll('[role=radio]').forEach(function (r) { r.setAttribute('aria-checked', String(r.getAttribute('data-value') === v)); });
+      else if (n.getAttribute('role') === 'list') n.querySelectorAll('[role=checkbox]').forEach(function (c) { c.setAttribute('aria-checked', String(v.indexOf(c.getAttribute('data-answer-value')) >= 0)); });
+      else if (n.getAttribute('role') === 'listbox') n.querySelectorAll('[role=option]').forEach(function (o) { o.setAttribute('aria-selected', String(o.getAttribute('data-value') === v)); });
+    });
+  }
+
+  var list = document.getElementById('question-list');
+  list.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.matches('[data-entry]')) store(t.getAttribute('data-entry'), t.value);
+    if (t.matches('[data-other-for]')) {
+      var eid = t.getAttribute('data-other-for');
+      var cb = t.closest('.eBFwI').querySelector('[role=checkbox]');
+      if (t.value && cb.getAttribute('aria-checked') !== 'true') toggleCheckbox(cb);
+      answers[eid + '.other_option_response'] = t.value;
+    }
+  });
+  list.addEventListener('change', function (e) { var t = e.target; if (t.matches('[data-entry]')) store(t.getAttribute('data-entry'), t.value); });
+
+  function toggleCheckbox(c) {
+    var on = c.getAttribute('aria-checked') !== 'true';
+    c.setAttribute('aria-checked', String(on));
+    var grp = c.closest('[role=list]'), eid = grp.getAttribute('data-entry');
+    store(eid, Array.prototype.filter.call(grp.querySelectorAll('[role=checkbox]'), function (x) { return x.getAttribute('aria-checked') === 'true'; }).map(function (x) { return x.getAttribute('data-answer-value'); }));
+  }
+  function selectRadio(r) {
+    var grp = r.closest('[role=radiogroup]');
+    grp.querySelectorAll('[role=radio]').forEach(function (x) { x.setAttribute('aria-checked', 'false'); x.classList.remove('N2RpBe'); });
+    r.setAttribute('aria-checked', 'true'); r.classList.add('N2RpBe');
+    store(grp.getAttribute('data-entry'), r.getAttribute('data-value'));
+  }
+  function closeListbox(lb) { lb.classList.remove('open'); lb.setAttribute('aria-expanded', 'false'); }
+  list.addEventListener('click', function (e) {
+    var label = e.target.closest('.docssharedWizToggleLabeledContainer');
+    var r = (label && label.querySelector('[role=radio]')) || e.target.closest('[role=radio]');
+    var c = (label && label.querySelector('[role=checkbox]')) || e.target.closest('[role=checkbox]');
+    if (r) { e.preventDefault(); selectRadio(r); return; }
+    if (c) { e.preventDefault(); toggleCheckbox(c); return; }
+    var opt = e.target.closest('[role=option]'), lb = e.target.closest('[role=listbox]');
+    if (lb && opt && lb.classList.contains('open')) {
+      lb.querySelectorAll('[role=option]').forEach(function (o) { o.setAttribute('aria-selected', String(o === opt)); o.classList.toggle('KKjvXb', o === opt); });
+      closeListbox(lb);
+      store(lb.getAttribute('data-entry'), opt.getAttribute('data-value'));
+      return;
+    }
+    if (lb) { lb.classList.add('open'); lb.setAttribute('aria-expanded', 'true'); }
+  });
+  list.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if ((e.key === ' ' || e.key === 'Enter') && t.matches('[role=radio]')) { e.preventDefault(); selectRadio(t); }
+    if ((e.key === ' ' || e.key === 'Enter') && t.matches('[role=checkbox]')) { e.preventDefault(); toggleCheckbox(t); }
+    if (t.matches('[role=listbox]') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); t.classList.add('open'); t.setAttribute('aria-expanded', 'true'); }
+  });
+  document.addEventListener('click', function (e) { document.querySelectorAll('[role=listbox].open').forEach(function (lb) { if (!lb.contains(e.target)) closeListbox(lb); }); });
+
+  // ---- validation / navigation ----
+  function clearError(li) { if (!li) return; li.classList.remove('HHgTUd'); var a = li.querySelector('.SL4Sz'); if (a) a.textContent = ''; }
+  function validatePage() {
+    var ok = true, first = null;
+    pages[page].forEach(function (it) {
+      if (it[3] === 8 || !it[4][0][2]) return;
+      var eid = it[4][0][0], v = answers[eid];
+      var empty = v == null || v === '' || (Array.isArray(v) && !v.length);
+      var bad = !empty && it[4][0][3] && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+      if (empty || bad) {
+        ok = false;
+        var li = document.querySelector('[data-entry="' + eid + '"]').closest('.Qr7Oae');
+        li.classList.add('HHgTUd');
+        li.querySelector('.SL4Sz').textContent = empty ? 'This is a required question' : it[4][0][3][0][3];
+        first = first || li;
+      }
+    });
+    if (first) first.scrollIntoView({ block: 'center' });
+    return ok;
+  }
+  document.getElementById('nav').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-nav]'); if (!b) return;
+    var a = b.getAttribute('data-nav');
+    if (a === 'next') { if (validatePage()) { page++; renderPage(); } }
+    else if (a === 'back') { page--; renderPage(); }
+    else if (a === 'clear') { answers = {}; document.getElementById('entry-store').innerHTML = ''; page = 0; renderPage(); }
+    else if (a === 'submit') {
+      if (!validatePage()) return;
+      var out = {};
+      Object.keys(answers).forEach(function (k) { var v = answers[k]; if (v === '' || v == null || (Array.isArray(v) && !v.length)) return; out[k.indexOf('.') > 0 ? 'entry.' + k : 'entry.' + k] = v; });
+      window.__submitted = out;
+      document.querySelector('.lrKTG').innerHTML =
+        '<div class="Dq4amc"><div class="m7w29c O8VmIc tIvQIf"><div class="N0gd6"><div class="ahS2Le"><div class="F9yp7e ikZYwf LgNcQe" dir="auto" role="heading" aria-level="1">Acme Labs - Senior React Native Engineer Application</div></div></div>' +
+        '<div class="vHW8K">Your response has been recorded.</div><div class="c2gzEf"><a href="#">Submit another response</a></div></div></div>';
+      location.hash = '#formResponse';
+    }
+  });
+  document.getElementById('nav').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { var b = e.target.closest('[data-nav]'); if (b) { e.preventDefault(); b.click(); } } });
+  document.getElementById('mG61Hd').addEventListener('submit', function (e) { e.preventDefault(); });
+
+  renderPage();
+})();
+</script>
+</body>
+</html>

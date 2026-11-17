@@ -232,6 +232,49 @@ const AutopilotSchema = z.object({
   searchUrl: z.string().catch(''),
 });
 
+/** How the local model (Ollama) runs, so it doesn't get in your way while you work. Used for every local call. */
+const LocalAiSchema = z.object({
+  /** While you're using the Mac: "slow" spaces calls out and unloads the model sooner, "pause" waits until you're away, "full" ignores you. */
+  whenActive: z.enum(['slow', 'pause', 'full']).catch('slow'),
+  /** Minutes without keyboard or mouse before you count as away. */
+  idleMinutes: z.number().int().min(1).max(30).catch(3),
+  /** How long Ollama keeps the model in memory after a call ("0" unloads at once). */
+  keepAlive: z.enum(['0', '5m', '30m']).catch('5m'),
+  /** Context window in tokens: smaller uses less memory. */
+  numCtx: z.number().int().min(2048).max(32768).catch(8192),
+  /** A smaller model to use while you're active (empty: always the main one). */
+  lightModel: z.string().catch(''),
+  /** Most local model calls per minute while you're active / away. */
+  rpmActive: z.number().int().min(1).max(30).catch(2),
+  rpmIdle: z.number().int().min(1).max(60).catch(6),
+});
+
+/** Site Pilot: applies on company career sites and Google Forms with the local model only. */
+const SitePilotSchema = z.object({
+  /** The local model Site Pilot uses (never a cloud model). "openai" is for tests (an OpenAI-compatible local server). */
+  kind: z.enum(['ollama', 'openai']).catch('ollama'),
+  baseUrl: z.string().catch('http://localhost:11434'),
+  model: z.string().catch('gemma4:12b'),
+  /** Systems it really submits on. Empty: dry run everywhere (fills, checks, stops before Submit). */
+  liveAts: z.array(z.string()).catch([]),
+  /** Pause between jobs, seconds (random in the range). */
+  pauseMinSec: z.number().min(0).max(1800).catch(60),
+  pauseMaxSec: z.number().min(0).max(1800).catch(240),
+  /** At most this many applications to one company in 30 days. */
+  perCompany: z.number().int().min(1).max(20).catch(2),
+  /** Look at the page with screenshots (the model checks the form and fixes what's left). */
+  vision: z.boolean().catch(true),
+  /** When the queue is empty, find "Apply on company site" jobs on Naukri for your job titles. */
+  harvestNaukri: z.boolean().catch(true),
+  /** Take the Autopilot's company-site jobs and outside forms. */
+  fromAutopilot: z.boolean().catch(true),
+  /** A shareable link to your resume (Google Drive…), for forms that ask for a link instead of a file. */
+  resumeLink: z.string().catch(''),
+  /** Most actions and minutes per job before it's left for you. */
+  maxActions: z.number().int().min(5).max(80).catch(30),
+  maxMinutes: z.number().int().min(3).max(60).catch(15),
+});
+
 const DebugSchema = z.object({
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).catch('info'),
   console: z.boolean().catch(true),
@@ -250,6 +293,8 @@ export const SettingsSchema = z.object({
   panel: PanelSchema.prefault(EMPTY),
   tracker: TrackerSchema.prefault(EMPTY),
   autopilot: AutopilotSchema.prefault(EMPTY),
+  localAi: LocalAiSchema.prefault(EMPTY),
+  sitePilot: SitePilotSchema.prefault(EMPTY),
   debug: DebugSchema.prefault(EMPTY),
 });
 

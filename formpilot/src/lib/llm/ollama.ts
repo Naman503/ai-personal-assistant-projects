@@ -9,22 +9,30 @@
 import type { ProviderConfig } from '../settings';
 import { LLMError, type ProviderAdapter } from './types';
 import { httpError, joinUrl, readNDJSON, safeFetch } from './http';
+import { localGate, ollamaSettings } from './local-run';
 
 const NAME = 'Ollama';
+/** Models that accept Ollama's `think` switch (others reject it). */
+const THINKS = /^(gemma4|qwen3|deepseek-r1|gpt-oss|magistral|phi4-reasoning)/i;
 
 export const ollama: ProviderAdapter = {
   async generate(cfg, req) {
     if (!cfg.model) throw new LLMError('no-provider', 'No Ollama model selected.', { provider: NAME, hint: 'Run `ollama pull llama3.2` and pick it in settings.' });
+    // Pace local calls and, for background work, wait while you're using the Mac (local-run.ts).
+    const { active } = await localGate(req.signal, { canPause: req.background, onWait: req.onWait });
+    const run = ollamaSettings(cfg.model, active);
     const body: Record<string, unknown> = {
-      model: cfg.model,
+      model: run.model,
       messages: [
         { role: 'system', content: req.system },
-        { role: 'user', content: req.prompt },
+        { role: 'user', content: req.prompt, ...(req.images?.length ? { images: req.images } : {}) },
       ],
       stream: req.stream,
-      options: { temperature: req.temperature, num_predict: req.maxTokens },
-      keep_alive: '15m',
+      options: { temperature: req.temperature, num_predict: req.maxTokens, ...run.options },
+      keep_alive: run.keep_alive,
     };
+    // Thinking models (gemma4, qwen3) think first unless told not to: much slower for form answers.
+    if (req.thinking === 'off' && THINKS.test(run.model)) body.think = false;
     if (req.schema) body.format = req.schema;
     const res = await safeFetch(
       joinUrl(cfg.baseUrl, 'api/chat'),
@@ -52,7 +60,7 @@ export const ollama: ProviderAdapter = {
       text = o.message?.content ?? '';
       req.onText?.(text);
     }
-    return { text: text.replace(/<think>[\s\S]*?<\/think>\s*/g, ''), model: cfg.model };
+    return { text: text.replace(/<think>[\s\S]*?<\/think>\s*/g, ''), model: run.model };
   },
 
   async listModels(cfg: ProviderConfig, signal) {

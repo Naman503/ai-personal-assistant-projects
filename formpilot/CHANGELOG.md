@@ -4,6 +4,35 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.20.0] - 2026-11-17
+
+### Added
+- **Site Pilot** (Settings → Site Pilot). A second pilot, separate from the Autopilot, that applies on company career sites and Google Forms with the local model only (Ollama, `gemma4:12b` by default), in its own window. It runs alongside the Autopilot and has no daily limit; it applies at most twice to one company in 30 days.
+  - **Sources:**
+    - Naukri jobs that apply on the company site (handed over by the Autopilot, or found by its own Naukri search);
+    - Google Forms from a recruiter's chatbot;
+    - pasted links;
+    - the popup's **Apply with Site Pilot** button.
+  - **Each job:**
+    - resume upload;
+    - answers from your memory and the local model;
+    - Google Forms options, react-select dropdowns, Yes/No buttons, suggestion lists;
+    - required consent (never marketing);
+    - "decline" on demographic questions;
+    - fixes for values the site rejects;
+    - a look at a screenshot by the model before Submit.
+  - **Dry run** until you tick a system as live. Sign-ins, CAPTCHAs, tests and account-only systems go to **Needs you** with a screenshot.
+  - **Records:** each application keeps its answers, steps and screenshots. Sent ones go to the job tracker.
+- **Local model controls**, used for every local call:
+  - go slow or pause while you're using the Mac;
+  - calls per minute;
+  - keep-alive;
+  - context size;
+  - an optional lighter model while you work.
+  - The Ollama provider now sends screenshots to models that can see, and turns off "thinking" for gemma4/qwen3 when it isn't wanted (much faster form answers).
+
+### Fixed
+- Radio questions whose text sits beside the options (Lever, many career sites) were read as "Yes". A required `*` hidden in a legend no longer hides the question.
 ## [1.19.4] - 2026-11-17
 
 ### Fixed

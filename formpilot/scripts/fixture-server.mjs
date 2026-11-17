@@ -20,12 +20,41 @@ createServer(async (req, res) => {
 }).listen(PAGE_PORT, () => console.log(`fixtures on http://localhost:${PAGE_PORT}/form.html`));
 
 function answerFor(prompt) {
+  // Site Pilot's look-and-act step: submit when nothing is missing, else stop for the user.
+  if (prompt.includes('Your one next action as JSON')) {
+    if (/MISSING: none/.test(prompt) && /ERRORS SHOWN: none/.test(prompt)) return JSON.stringify({ do: 'submit', why: 'all filled' });
+    const m = prompt.match(/MISSING \(required, empty\): ([^\n]*)/);
+    return JSON.stringify({ do: 'stop', why: `mock: missing ${m ? m[1] : 'something'}`, needsYou: true });
+  }
   if (prompt.includes('Fill in ALL')) {
-    const ids = [...prompt.matchAll(/"id": "(f\d+)",\s*"question": "([^"]*)"/g)];
+    const ids = [...prompt.matchAll(/"id": "([a-z]\d+)",\s*"question": "([^"]*)"/g)];
+ // Choice fields: like a real model, answer with one of the options.
+    const fitOptions = (id, value) => {
+      const from = prompt.indexOf(`"id": "${id}"`);
+      const next = prompt.indexOf('"id": "', from + 5);
+      const block = prompt.slice(from, next === -1 ? undefined : next);
+      const m = block.match(/"options": (\[[^\]]*\])/);
+      if (!m || !value || /^f\d/.test(id)) return value; // f-ids: the extension's own fitting is under test
+      let opts = [];
+      try {
+        opts = JSON.parse(m[1]);
+      } catch {
+        return value;
+      }
+      const parts = value.split(/\s*\|\s*/);
+      if (parts.every((p) => opts.includes(p))) return value;
+      const n = parseFloat(value);
+      const inRange = opts.find((o) => {
+        const r = o.match(/(\d+)\s*[-–]\s*(\d+)/);
+        return r && n >= +r[1] && n <= +r[2];
+      });
+      return inRange ?? opts.find((o) => o.toLowerCase().includes(value.toLowerCase().split(' ')[0])) ?? opts[0];
+    };
+    const raw = (q) => /^address/i.test(q) ? 'HSR Layout, Bengaluru, Karnataka' : /email/i.test(q) ? 'jane@doe.dev' : /linkedin/i.test(q) ? 'https://www.linkedin.com/in/janedoe' : null;
     return JSON.stringify({
       fields: ids.map(([, id, q]) => ({
         id,
-        value: /industr/i.test(q) ? 'IT/Tech | E-Commerce' : /^city|current city|which city/i.test(q) ? 'Indore' : /start date/i.test(q) ? '2025-03-01' : /notice/i.test(q) ? '30 days' : /ctc|salary/i.test(q) ? '10,75,000' : /experience/i.test(q) ? '3+ years' : /lwd|last working/i.test(q) ? '15 Dec 2026' : /mobile|phone/i.test(q) ? '+91 62645 79927' : /country/i.test(q) ? 'India' : /relocat|commut|interested|jd meets|meets your profile|authori[sz]ed|eligible/i.test(q) ? 'Yes' : /name/i.test(q) ? 'Jane Doe' : /why|motivat/i.test(q) ? 'Because I love building developer tools.' : '',
+        value: raw(q) ?? fitOptions(id, /industr/i.test(q) ? 'IT/Tech | E-Commerce' : /platforms/i.test(q) ? 'iOS | Android' : /^city|current city|which city/i.test(q) ? 'Indore' : /current location|^location/i.test(q) ? 'Bengaluru' : /start date/i.test(q) ? '2025-03-01' : /notice/i.test(q) ? '30 days' : /ctc|salary/i.test(q) ? '10,75,000' : /experience/i.test(q) ? '3+ years' : /lwd|last working/i.test(q) ? '15 Dec 2026' : /mobile|phone/i.test(q) ? '+91 62645 79927' : /country/i.test(q) ? 'India' : /relocat|commut|interested|jd meets|meets your profile|authori[sz]ed|eligible/i.test(q) ? 'Yes' : /name/i.test(q) ? 'Jane Doe' : /why|motivat/i.test(q) ? 'Because I love building developer tools.' : ''),
       })),
     });
   }

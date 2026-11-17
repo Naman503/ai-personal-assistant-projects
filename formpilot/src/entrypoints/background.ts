@@ -1,5 +1,8 @@
 import { Autopilot } from '@/lib/autopilot-runner';
 import { Outreach } from '@/lib/outreach-runner';
+import { SitePilot, siteSettings } from '@/lib/sitepilot/runner';
+import { setLocalRun } from '@/lib/llm/local-run';
+import { factsBlock } from '@/lib/memory/facts';
 import { parseWorkHistory } from '@/lib/fields/workdates';
 import { addLogSink, configureLogger, createLogger, LogRing , type LogEntry } from '@/lib/logger';
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, patchSettings, type Settings } from '@/lib/settings';
@@ -49,6 +52,11 @@ export default defineBackground({
     const outreach = new Outreach(() => settings);
     const usage = new UsageReporter(() => settings);
     const engine = new SuggestEngine(() => settings, usage);
+    const sitePilot = new SitePilot({
+      settings: () => settings,
+      profile: async () => ({ facts: factsBlock(await engine.facts()), profile: settings.generation.persona || '' }),
+    });
+    autopilot.handOff = (jobs) => sitePilot.add(jobs);
     /** Once a day: provider mix, memory size and a settings snapshot (enums, booleans, buckets only). */
     const usageDaily = async () => {
       const active = activeProviders(settings);
@@ -90,6 +98,7 @@ export default defineBackground({
       settings = s;
       configureLogger({ level: s.debug.logLevel, console: s.debug.console });
       resetCooldowns();
+      setLocalRun(s.localAi);
       void syncOllamaRules(s);
     };
     const ready = loadSettings().then((s) => {
@@ -114,8 +123,11 @@ export default defineBackground({
       if (a.name === 'usage') void ready.then(flushUsage);
       if (a.name.startsWith('fp-ap-')) void ready.then(() => autopilot.onAlarm(a.name));
       if (a.name.startsWith('fp-or-')) void ready.then(() => outreach.onAlarm(a.name));
+      if (a.name.startsWith('fp-sp-')) void ready.then(() => sitePilot.onAlarm(a.name));
     });
-    chrome.windows?.onRemoved.addListener((id) => void ready.then(() => { void autopilot.onWindowRemoved(id); void outreach.onWindowRemoved(id); }));
+    chrome.windows?.onRemoved.addListener((id) => void ready.then(() => { void autopilot.onWindowRemoved(id); void outreach.onWindowRemoved(id); void sitePilot.onWindowRemoved(id); }));
+    chrome.tabs?.onUpdated.addListener((tabId, info, tab) => void ready.then(() => sitePilot.onTabUpdated(tabId, info, tab)).catch(() => {}));
+    void ready.then(() => sitePilot.resume()).catch(() => {});
     chrome.debugger?.onDetach.addListener((src, reason) => void ready.then(() => autopilot.onDetach(src.tabId, reason)));
     void ready.then(() => autopilot.resume()).catch(() => {});
     void ready.then(() => outreach.sync()).catch(() => {});
@@ -262,6 +274,30 @@ export default defineBackground({
           else if (msg.action === 'run-now') await autopilot.runNow();
           else if (msg.action === 'resume') await autopilot.resume();
           return autopilot.status();
+        case 'sp':
+          if (msg.action === 'start') await sitePilot.start();
+          else if (msg.action === 'stop') await sitePilot.stop();
+          else if (msg.action === 'run-now') await sitePilot.runNow();
+          return sitePilot.status();
+        case 'sp-add':
+          return sitePilot.add(msg.jobs);
+        case 'sp-round-done':
+          await sitePilot.onRoundDone(msg.result, sender.tab?.id);
+          return null;
+        case 'sp-resolved':
+          await sitePilot.resolved(msg);
+          return null;
+        case 'sp-agent':
+          return sitePilot.agent(msg.snap, msg.history, sender.tab?.id);
+        case 'sp-shot':
+          return sitePilot.shot(msg.kind).then((r) => (r ? { id: r.id } : null));
+        case 'sp-submit':
+          return sitePilot.onSubmit(msg.ats, sender.tab?.id);
+        case 'sp-resume':
+          return sitePilot.resumeFile();
+        case 'sp-progress':
+          await sitePilot.onProgress(msg.text, sender.tab?.id);
+          return null;
         case 'outreach-done':
           await outreach.done(msg.result, sender.tab?.id);
           return null;
@@ -306,7 +342,8 @@ export default defineBackground({
           const trigger = ['shortcut', 'context_menu', 'popup_menu', 'toolbar'].includes(msg.trigger ?? '') ? msg.trigger! : 'other';
           let out: Awaited<ReturnType<typeof engine.fillForm>>;
           try {
-            out = await engine.fillForm(msg.fields, msg.page, signal);
+            // Site Pilot: the local model only, with a long time limit (it is paced while you work).
+            out = msg.engine === 'local' ? await engine.fillForm(msg.fields, msg.page, AbortSignal.timeout(8 * 60_000), siteSettings(settings)) : await engine.fillForm(msg.fields, msg.page, signal);
           } catch (e) {
             const category = isAbort(e) ? 'timeout' : errorCategory((e as LLMError)?.code);
             void usage.count('ai_error', { op: 'form', category, provider: providerFamily(activeProviders(settings)[0]) });

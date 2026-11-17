@@ -1,0 +1,417 @@
+<!doctype html>
+<!--
+  Fixture: Greenhouse "new" job board (job-boards.greenhouse.io/<board>/jobs/<id>, Remix + React).
+  Markup mirrors the server-rendered HTML captured from live boards in Nov 2026
+  (class names, ids, aria-* and nesting copied; emotion "remix-css-*" hashes kept as seen).
+  Behaviour emulated offline:
+    - text inputs are "controlled": the app only learns a value from an `input` event
+      (setting .value without dispatching input leaves the field empty on submit);
+    - react-select comboboxes (classNamePrefix "select"): open on mousedown on .select__control,
+      type to filter, ArrowDown/Enter or click a .select__option; hidden required input gets the value;
+    - Location (City) is an async react-select: options appear ~300ms after typing;
+    - resume: visually-hidden <input type=file id=resume>, "Attach" button clicks it, filename shown
+      in .file-upload__filename; "Enter manually" swaps in <textarea id=resume_text>;
+    - validation: helper-text--error "This field is required." + aria-invalid; selects use native
+      required hidden inputs exactly like the real page;
+    - success: renders the real confirmation markup ("Thank you for applying.") and sets
+      location.hash = "#confirmation" (the real board navigates to /jobs/<id>/confirmation).
+  window.__submitted = { fieldId: value, ... } after a successful submit.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Job Application for Senior React Native Engineer at Acme Labs</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; color: #222; background: #fff; }
+  .main { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px; }
+  .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(1px,1px,1px,1px); white-space: nowrap; }
+  .remix-css-7pg0cj-a11yText { z-index: 9999; border: 0; clip: rect(1px,1px,1px,1px); height: 1px; width: 1px; position: absolute; overflow: hidden; padding: 0; white-space: nowrap; }
+  .remix-css-b62m3t-container { position: relative; box-sizing: border-box; }
+  .select__control { display: flex; align-items: center; justify-content: space-between; min-height: 38px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: default; }
+  .select__control--is-focused { border-color: #2684ff; box-shadow: 0 0 0 1px #2684ff; }
+  .select__control--error { border-color: #d0021b; }
+  .select__value-container { display: grid; flex: 1; padding: 2px 8px; position: relative; overflow: hidden; }
+  .select__placeholder, .select__single-value { grid-area: 1/1/2/3; color: #808080; }
+  .select__single-value { color: #333; }
+  .select__input-container { grid-area: 1/1/2/3; display: inline-grid; }
+  .select__input { color: inherit; background: 0; width: 100%; border: 0; outline: 0; padding: 0; font: inherit; }
+  .select__menu { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0,0,0,.1), 0 4px 11px rgba(0,0,0,.1); margin-top: 8px; }
+  .select__menu-list { max-height: 300px; overflow-y: auto; padding: 4px 0; }
+  .select__option { padding: 8px 12px; cursor: default; }
+  .select__option--is-focused { background: #deebff; }
+  .select__option--is-selected { background: #2684ff; color: #fff; }
+  .select__menu-notice { padding: 8px 12px; color: #999; text-align: center; }
+  .remix-css-1a0ro4n-requiredInput { opacity: 0; pointer-events: none; position: absolute; bottom: 0; left: 0; right: 0; width: 100%; }
+  .field-wrapper { margin: 18px 0; }
+  .label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+  .label span[aria-hidden] { color: #d0021b; }
+  .select__label--error, .label--error { color: #d0021b; }
+  .input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #ccc; border-radius: 4px; font: inherit; }
+  .input[aria-invalid="true"] { border-color: #d0021b; }
+  .helper-text--error { color: #d0021b; font-size: 13px; margin: 4px 0 0; }
+  .phone-input { border: 0; padding: 0; margin: 18px 0; display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
+  .btn { border: 1px solid #ccc; background: #fff; padding: 8px 16px; border-radius: 20px; cursor: pointer; }
+  .application--submit .btn { background: #1a7f37; color: #fff; border: 0; padding: 12px 24px; }
+  .button-container { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .file-upload__filetypes { font-size: 12px; color: #666; width: 100%; }
+  .file-upload__filename { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .checkbox { border: 0; padding: 0; }
+  .checkbox__wrapper { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .application--header--required { display: flex; gap: 4px; color: #666; }
+  .confirmation { text-align: center; padding: 60px 20px; }
+</style>
+</head>
+<body>
+<div id="app_body">
+<main class="main font-secondary job-post">
+  <div class="job__header">
+    <div class="job__title">
+      <h1 class="section-header section-header--large font-primary">Senior React Native Engineer</h1>
+      <div class="job__location"><p class="body body--metadata">Bengaluru, Karnataka, India (Hybrid)</p></div>
+    </div>
+  </div>
+  <div class="job__description body">
+    <p>Acme Labs builds offline-first field-service apps. We are hiring a senior engineer to lead our React Native platform team.</p>
+  </div>
+
+  <div class="application--container">
+    <div class="application--header">
+      <div class="application--header--text">
+        <div class="application--header--title"><h2 class="section-header font-primary">Apply for this job</h2></div>
+        <div class="application--header--required"><div class="application--header--required--asterisk"><p class="body body__secondary">*</p></div><p class="body body__secondary">indicates a required field</p></div>
+      </div>
+      <div class="application--header--buttons"><div class="application--header--apply-with-seek"></div></div>
+    </div>
+
+    <form method="get" action="/acmelabs/jobs/4012345007" id="application-form" class="application--form" data-discover="true">
+      <div class="application--questions">
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="first_name-label" for="first_name" class="label label">First Name<span aria-hidden="true">*</span></label><input id="first_name" class="input input__single-line" aria-label="First Name" aria-describedby="first_name-description first_name-error first_name-help" aria-invalid="false" aria-errormessage="first_name-error" aria-required="true" type="text" maxlength="255" autocomplete="given-name" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="last_name-label" for="last_name" class="label label">Last Name<span aria-hidden="true">*</span></label><input id="last_name" class="input input__single-line" aria-label="Last Name" aria-describedby="last_name-description last_name-error last_name-help" aria-invalid="false" aria-errormessage="last_name-error" aria-required="true" type="text" maxlength="255" autocomplete="family-name" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="preferred_name-label" for="preferred_name" class="label label">Preferred First Name</label><input id="preferred_name" class="input input__single-line" aria-label="Preferred First Name" aria-describedby="preferred_name-description preferred_name-error preferred_name-help" aria-invalid="false" aria-errormessage="preferred_name-error" aria-required="false" type="text" maxlength="255" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="email-label" for="email" class="label label">Email<span aria-hidden="true">*</span></label><input id="email" class="input input__single-line" aria-label="Email" aria-describedby="email-description email-error email-help" aria-invalid="false" aria-errormessage="email-error" aria-required="true" type="text" maxlength="255" autocomplete="email" value=""/></div></div></div>
+        <div>
+          <fieldset class="phone-input">
+            <legend class="visually-hidden">Phone</legend>
+            <div class="phone-input__country"><div class="select" data-gh-select="country" data-required="true" data-label="Country"></div></div>
+            <div class="phone-input__phone"><div class="text-input-wrapper"><div class="input-wrapper"><label id="phone-label" for="phone" class="label label">Phone<span aria-hidden="true">*</span></label><input id="phone" class="input input__single-line" aria-label="Phone" aria-describedby="phone-description phone-error phone-help" aria-invalid="false" aria-errormessage="phone-error" aria-required="true" type="tel" maxlength="255"/></div></div></div>
+          </fieldset>
+        </div>
+        <div class="field-wrapper"><div class="select" data-gh-select="candidate-location" data-required="true" data-label="Location (City)" data-async="true" data-placeholder=""></div><button type="button" class="btn--tertiary">Locate me</button></div>
+
+        <div class="field-wrapper">
+          <div role="group" aria-labelledby="upload-label-resume" aria-required="true" class="file-upload" data-allow-s3="false">
+            <div id="upload-label-resume" class="label upload-label">Resume/CV<span aria-hidden="true">*</span></div>
+            <div class="file-upload__wrapper">
+              <div class="button-container">
+                <div class="secondary-button"><div><button type="button" class="btn btn--rounded" data-attach-for="resume">Attach</button><label class="visually-hidden" for="resume">Attach</label><input id="resume" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf"/></div></div>
+                <div class="secondary-button"><button type="button" class="btn btn--rounded" data-testid="resume-dropbox">Dropbox</button></div>
+                <div class="secondary-button"><button type="button" class="btn btn--rounded">Google Drive</button></div>
+                <div class="secondary-button"><div><button type="button" class="btn btn--rounded" data-testid="resume-text">Enter manually</button><label class="visually-hidden" for="resume_text">Enter manually</label></div></div>
+                <p id="accepted-filetypes" class="file-upload__filetypes">Accepted file types: pdf, doc, docx, txt, rtf</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field-wrapper">
+          <div role="group" aria-labelledby="upload-label-cover_letter" aria-required="false" class="file-upload" data-allow-s3="false">
+            <div id="upload-label-cover_letter" class="label upload-label">Cover Letter</div>
+            <div class="file-upload__wrapper">
+              <div class="button-container">
+                <div class="secondary-button"><div><button type="button" class="btn btn--rounded" data-attach-for="cover_letter">Attach</button><label class="visually-hidden" for="cover_letter">Attach</label><input id="cover_letter" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf"/></div></div>
+                <div class="secondary-button"><button type="button" class="btn btn--rounded" data-testid="cover_letter-dropbox">Dropbox</button></div>
+                <div class="secondary-button"><button type="button" class="btn btn--rounded">Google Drive</button></div>
+                <div class="secondary-button"><div><button type="button" class="btn btn--rounded" data-testid="cover_letter-text">Enter manually</button><label class="visually-hidden" for="cover_letter_text">Enter manually</label></div></div>
+                <p id="accepted-filetypes" class="file-upload__filetypes">Accepted file types: pdf, doc, docx, txt, rtf</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="application--questions">
+        <hr/>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="question_41000001-label" for="question_41000001" class="label label">LinkedIn Profile<span aria-hidden="true">*</span></label><input id="question_41000001" class="input input__single-line" aria-label="LinkedIn Profile" aria-describedby="question_41000001-description question_41000001-error question_41000001-help" aria-invalid="false" aria-errormessage="question_41000001-error" aria-required="true" type="text" maxlength="255" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="question_41000002-label" for="question_41000002" class="label label">Website</label><input id="question_41000002" class="input input__single-line" aria-label="Website" aria-describedby="question_41000002-description question_41000002-error question_41000002-help" aria-invalid="false" aria-errormessage="question_41000002-error" aria-required="false" type="text" maxlength="255" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="question_41000003-label" for="question_41000003" class="label label">How many years of professional React Native experience do you have?<span aria-hidden="true">*</span></label><input id="question_41000003" class="input input__single-line" aria-label="How many years of professional React Native experience do you have?" aria-describedby="question_41000003-description question_41000003-error question_41000003-help" aria-invalid="false" aria-errormessage="question_41000003-error" aria-required="true" type="text" maxlength="255" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="question_41000004-label" for="question_41000004" class="label label">Current CTC (INR per annum)<span aria-hidden="true">*</span></label><input id="question_41000004" class="input input__single-line" aria-label="Current CTC (INR per annum)" aria-describedby="question_41000004-description question_41000004-error question_41000004-help" aria-invalid="false" aria-errormessage="question_41000004-error" aria-required="true" type="text" maxlength="255" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper"><label id="question_41000005-label" for="question_41000005" class="label label">Expected CTC (INR per annum)<span aria-hidden="true">*</span></label><input id="question_41000005" class="input input__single-line" aria-label="Expected CTC (INR per annum)" aria-describedby="question_41000005-description question_41000005-error question_41000005-help" aria-invalid="false" aria-errormessage="question_41000005-error" aria-required="true" type="text" maxlength="255" value=""/></div></div></div>
+        <div class="field-wrapper"><div class="select" data-gh-select="question_41000006" data-required="true" data-label="What is your notice period?"></div></div>
+        <div class="field-wrapper"><div class="select" data-gh-select="question_41000007" data-required="true" data-label="Are you legally authorized to work in India?"></div></div>
+        <div class="field-wrapper"><div class="select" data-gh-select="question_41000008" data-required="true" data-label="Are you willing to relocate to Bengaluru for this position?"></div></div>
+        <div class="field-wrapper"><div class="select" data-gh-select="question_41000009" data-required="false" data-label="How did you hear about this job?"></div></div>
+        <div class="field-wrapper">
+          <fieldset class="checkbox" id="question_41000010[]" aria-required="true">
+            <legend class="label checkbox__description">Which platforms have you shipped production apps to? Select all that apply.<!-- --> <span class="required">*</span></legend>
+            <div class="checkbox__wrapper"><div class="checkbox__input"><input description="Which platforms have you shipped production apps to? Select all that apply." required="" type="checkbox" id="question_41000010[]_51000001" name="question_41000010[]" aria-describedby="question_41000010[]-description question_41000010[]-error" aria-invalid="false" aria-errormessage="question_41000010[]-error" value="51000001"/></div><label for="question_41000010[]_51000001">iOS</label></div>
+            <div class="checkbox__wrapper"><div class="checkbox__input"><input description="Which platforms have you shipped production apps to? Select all that apply." required="" type="checkbox" id="question_41000010[]_51000002" name="question_41000010[]" aria-describedby="question_41000010[]-description question_41000010[]-error" aria-invalid="false" aria-errormessage="question_41000010[]-error" value="51000002"/></div><label for="question_41000010[]_51000002">Android</label></div>
+            <div class="checkbox__wrapper"><div class="checkbox__input"><input description="Which platforms have you shipped production apps to? Select all that apply." required="" type="checkbox" id="question_41000010[]_51000003" name="question_41000010[]" aria-describedby="question_41000010[]-description question_41000010[]-error" aria-invalid="false" aria-errormessage="question_41000010[]-error" value="51000003"/></div><label for="question_41000010[]_51000003">Web (React Native Web)</label></div>
+          </fieldset>
+        </div>
+        <div class="field-wrapper field-wrapper--multiline"><div class="text-input-wrapper"><div class="input-wrapper input-wrapper__multi-line"><label id="question_41000011-label" for="question_41000011" class="label label">Why do you want to join Acme Labs?<span aria-hidden="true">*</span></label><textarea id="question_41000011" class="input input__multi-line" aria-label="Why do you want to join Acme Labs?" aria-describedby="question_41000011-description question_41000011-error question_41000011-help" aria-invalid="false" aria-errormessage="question_41000011-error" aria-required="true" rows="4"></textarea></div></div></div>
+      </div>
+
+      <hr/>
+      <div class="eeoc__container">
+        <h3 class="section-header font-primary">Voluntary Self-Identification</h3>
+        <div><p>For government reporting purposes, we ask candidates to respond to the below self-identification survey. Completion of the form is entirely voluntary. Whatever your decision, it will not be considered in the hiring process or thereafter.</p></div>
+        <div class="eeoc__question__wrapper"><div class="select" data-gh-select="gender" data-required="false" data-label="Gender"></div></div>
+        <div class="eeoc__question__wrapper"><div class="select" data-gh-select="hispanic_ethnicity" data-required="false" data-label="Are you Hispanic/Latino?"></div></div>
+        <div class="eeoc__question__wrapper" id="race-wrapper" hidden><div class="select" data-gh-select="race" data-required="false" data-label="Please identify your race"></div></div>
+        <a class="link" target="_blank" href="#" rel="noreferrer">Race &amp; Ethnicity Definitions</a>
+        <div><p>If you believe you belong to any of the categories of protected veterans, please indicate by making the appropriate selection.</p></div>
+        <div class="eeoc__question__wrapper"><div class="select" data-gh-select="veteran_status" data-required="false" data-label="Veteran Status"></div></div>
+        <div class="eeoc__question__wrapper"><div class="select" data-gh-select="disability_status" data-required="false" data-label="Disability Status"></div></div>
+      </div>
+      <hr/>
+      <div class="application--submit"><button type="submit" class="btn btn--rounded" aria-disabled="false">Submit application</button></div>
+    </form>
+  </div>
+</main>
+<footer class="footer" dir="ltr"><div class="footer-row"><p class="body">Powered by</p><a class="footer-logo-link" href="#">Greenhouse</a></div></footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var OPTIONS = {
+    'country': ['Australia +61', 'Canada +1', 'Germany +49', 'India +91', 'Singapore +65', 'United Arab Emirates +971', 'United Kingdom +44', 'United States +1'],
+    'candidate-location': ['Bengaluru, Karnataka, India', 'Bengaluru Rural, Karnataka, India', 'Mumbai, Maharashtra, India', 'Pune, Maharashtra, India', 'Hyderabad, Telangana, India', 'New Delhi, Delhi, India', 'Chennai, Tamil Nadu, India', 'Noida, Uttar Pradesh, India', 'Gurugram, Haryana, India', 'San Francisco, California, United States', 'London, England, United Kingdom'],
+    'question_41000006': ['Immediate', '15 days or less', '30 days', '60 days', '90 days'],
+    'question_41000007': ['Yes', 'No'],
+    'question_41000008': ['Yes', 'No'],
+    'question_41000009': ['LinkedIn', 'Company website', 'Employee referral', 'Naukri', 'Instahyre', 'Other'],
+    'gender': ['Male', 'Female', 'Decline To Self Identify'],
+    'hispanic_ethnicity': ['Yes', 'No', 'Decline To Self Identify'],
+    'race': ['American Indian or Alaskan Native', 'Asian', 'Black or African American', 'White', 'Native Hawaiian or Other Pacific Islander', 'Two or More Races', 'Decline To Self Identify'],
+    'veteran_status': ['I am not a protected veteran', 'I identify as one or more of the classifications of a protected veteran', "I don't wish to answer"],
+    'disability_status': ['Yes, I have a disability, or have had one in the past', 'No, I do not have a disability and have not had one in the past', 'I do not want to answer']
+  };
+
+  // React-style state: text values only change via `input` events.
+  var state = {};
+  var selected = {};
+  var files = {};
+
+  function el(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
+  // ---- react-select markup (copied from live SSR) ----
+  function renderSelect(host) {
+    var id = host.getAttribute('data-gh-select');
+    var req = host.getAttribute('data-required') === 'true';
+    var label = host.getAttribute('data-label');
+    var placeholder = host.hasAttribute('data-placeholder') ? host.getAttribute('data-placeholder') : (id === 'country' ? '' : 'Select...');
+    host.innerHTML =
+      '<div class="select__container"><label id="' + id + '-label" for="' + id + '" class="label select__label">' + esc(label) + (req ? '<span aria-hidden="true">*</span>' : '') + '</label>' +
+      '<div class="select-shell remix-css-b62m3t-container"><span id="react-select-' + id + '-live-region" class="remix-css-7pg0cj-a11yText"></span><span aria-live="polite" aria-atomic="false" aria-relevant="additions text" role="log" class="remix-css-7pg0cj-a11yText"></span>' +
+      '<div><div class="select__control remix-css-13cymwt-control"><div class="select__value-container remix-css-hlgwow"><div class="select__placeholder remix-css-1jqq78o-placeholder" id="react-select-' + id + '-placeholder">' + esc(placeholder) + '</div>' +
+      '<div class="select__input-container remix-css-19bb58m" data-value=""><input class="select__input" autocapitalize="none" autocomplete="off" autocorrect="off" id="' + id + '" spellcheck="false" tabindex="0" type="text" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" aria-errormessage="' + id + '-error" aria-invalid="false" aria-labelledby="' + id + '-label" aria-required="' + req + '" role="combobox" aria-activedescendant="" aria-describedby="react-select-' + id + '-placeholder" enterkeyhint="done" value=""/></div></div>' +
+      '<div class="select__indicators remix-css-1wy0on6">' + (host.getAttribute('data-async') ? '' : '<button type="button" class="icon-button icon-button--sm" aria-label="Toggle flyout" tabindex="-1">&#9662;</button>') + '</div></div></div>' +
+      (req ? '<input required="" tabindex="-1" aria-hidden="true" class="remix-css-1a0ro4n-requiredInput" value=""/>' : '') +
+      '</div></div>';
+    wireSelect(host, id);
+  }
+
+  function wireSelect(host, id) {
+    var isAsync = host.getAttribute('data-async') === 'true';
+    var control = host.querySelector('.select__control');
+    var input = host.querySelector('input.select__input');
+    var valueContainer = host.querySelector('.select__value-container');
+    var shell = host.querySelector('.select-shell');
+    var reqInput = host.querySelector('.remix-css-1a0ro4n-requiredInput');
+    var menu = null, focusedIdx = -1, visible = [], asyncTimer = null, loading = false;
+
+    function allOptions() { return OPTIONS[id] || []; }
+    function compute() {
+      var q = input.value.trim().toLowerCase();
+      if (isAsync && !q) return [];
+      return allOptions().filter(function (o) { return !q || o.toLowerCase().indexOf(q) !== -1; });
+    }
+    function open() {
+      if (menu) { draw(); return; }
+      control.classList.add('select__control--is-focused', 'select__control--menu-is-open');
+      input.setAttribute('aria-expanded', 'true');
+      input.setAttribute('aria-controls', 'react-select-' + id + '-listbox');
+      menu = el('<div class="select__menu remix-css-1nmdiq5-menu"><div class="select__menu-list remix-css-1n6sfyn-MenuList" role="listbox" aria-multiselectable="false" id="react-select-' + id + '-listbox"></div></div>');
+      shell.appendChild(menu);
+      draw();
+    }
+    function close() {
+      if (!menu) return;
+      menu.remove(); menu = null; focusedIdx = -1;
+      control.classList.remove('select__control--menu-is-open');
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-controls');
+      input.setAttribute('aria-activedescendant', '');
+    }
+    function draw() {
+      if (!menu) return;
+      var list = menu.querySelector('.select__menu-list');
+      list.innerHTML = '';
+      if (loading) { list.appendChild(el('<div class="select__menu-notice select__menu-notice--loading">Loading...</div>')); return; }
+      visible = compute();
+      if (!visible.length) { list.appendChild(el('<div class="select__menu-notice select__menu-notice--no-options">' + (isAsync && !input.value ? 'Start typing...' : 'No options') + '</div>')); return; }
+      if (focusedIdx < 0 || focusedIdx >= visible.length) focusedIdx = 0;
+      visible.forEach(function (o, i) {
+        var cls = 'select__option' + (i === focusedIdx ? ' select__option--is-focused' : '') + (selected[id] === o ? ' select__option--is-selected' : '');
+        var opt = el('<div class="' + cls + '" aria-disabled="false" id="react-select-' + id + '-option-' + i + '" tabindex="-1" role="option" aria-selected="' + (selected[id] === o) + '">' + esc(o) + '</div>');
+        opt.addEventListener('mousemove', function () { if (focusedIdx !== i) { focusedIdx = i; draw(); } });
+        opt.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        opt.addEventListener('click', function () { choose(o); });
+        list.appendChild(opt);
+      });
+      input.setAttribute('aria-activedescendant', 'react-select-' + id + '-option-' + focusedIdx);
+    }
+    function choose(o) {
+      selected[id] = o;
+      input.value = '';
+      host.querySelector('.select__input-container').setAttribute('data-value', '');
+      var ph = valueContainer.querySelector('.select__placeholder');
+      if (ph) ph.remove();
+      var sv = valueContainer.querySelector('.select__single-value');
+      if (!sv) { sv = el('<div class="select__single-value remix-css-1dimb5e-singleValue"></div>'); valueContainer.insertBefore(sv, valueContainer.firstChild); }
+      sv.textContent = o;
+      valueContainer.classList.add('select__value-container--has-value');
+      if (reqInput) reqInput.value = o;
+      clearError(id);
+      close();
+      host.dispatchEvent(new CustomEvent('gh-select-change', { bubbles: true, detail: { id: id, value: o } }));
+    }
+    control.addEventListener('mousedown', function (e) {
+      if (e.target !== input) e.preventDefault();
+      input.focus();
+      if (menu) close(); else open();
+    });
+    input.addEventListener('focus', function () { control.classList.add('select__control--is-focused'); });
+    input.addEventListener('blur', function () {
+      control.classList.remove('select__control--is-focused');
+      input.value = '';
+      close();
+    });
+    input.addEventListener('input', function () {
+      host.querySelector('.select__input-container').setAttribute('data-value', input.value);
+      var sv = valueContainer.querySelector('.select__single-value');
+      if (sv) sv.style.visibility = input.value ? 'hidden' : '';
+      focusedIdx = 0;
+      if (isAsync) {
+        loading = true; open(); draw();
+        clearTimeout(asyncTimer);
+        asyncTimer = setTimeout(function () { loading = false; draw(); }, 300);
+      } else { open(); }
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (!menu) { open(); return; } focusedIdx = Math.min(focusedIdx + 1, visible.length - 1); draw(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (menu) { focusedIdx = Math.max(focusedIdx - 1, 0); draw(); } }
+      else if (e.key === 'Enter') { if (menu && visible[focusedIdx] && !loading) { e.preventDefault(); choose(visible[focusedIdx]); } }
+      else if (e.key === 'Tab') { if (menu && visible[focusedIdx] && input.value && !loading) choose(visible[focusedIdx]); }
+      else if (e.key === 'Escape') { close(); }
+    });
+  }
+
+  document.querySelectorAll('[data-gh-select]').forEach(renderSelect);
+
+  // Race question appears only when "Are you Hispanic/Latino?" = No (real EEOC behaviour).
+  document.addEventListener('gh-select-change', function (e) {
+    if (e.detail.id === 'hispanic_ethnicity') document.getElementById('race-wrapper').hidden = e.detail.value !== 'No';
+  });
+
+  // Required checkbox groups: every box carries `required` (as in the live SSR) until one is checked.
+  document.querySelectorAll('fieldset.checkbox[aria-required="true"]').forEach(function (fs) {
+    var boxes = fs.querySelectorAll('input[type=checkbox]');
+    function sync() { var any = Array.prototype.some.call(boxes, function (b) { return b.checked; }); boxes.forEach(function (b) { b.required = !any; }); }
+    boxes.forEach(function (b) { b.addEventListener('change', sync); });
+  });
+
+  // ---- controlled text inputs ----
+  document.querySelectorAll('input.input, textarea.input').forEach(function (inp) {
+    inp.addEventListener('input', function () { state[inp.id] = inp.value; clearError(inp.id); });
+  });
+
+  // ---- file upload ----
+  function wireUpload(id) {
+    var fileInput = document.getElementById(id);
+    var group = fileInput.closest('.file-upload');
+    group.querySelector('[data-attach-for="' + id + '"]').addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () {
+      var f = fileInput.files && fileInput.files[0];
+      var old = group.querySelector('.file-upload__filename');
+      if (old) old.remove();
+      if (!f) { delete files[id]; return; }
+      files[id] = f.name;
+      var row = el('<div class="file-upload__filename"><span>&#128206;</span><p class="body">' + esc(f.name) + '</p><button type="button" class="icon-button icon-button--sm" aria-label="Remove file">&times;</button></div>');
+      row.querySelector('button').addEventListener('click', function () { fileInput.value = ''; delete files[id]; row.remove(); });
+      group.querySelector('.file-upload__wrapper').appendChild(row);
+      clearError(id);
+    });
+    group.querySelector('[data-testid="' + id + '-text"]').addEventListener('click', function () {
+      if (document.getElementById(id + '_text')) return;
+      var ta = el('<textarea id="' + id + '_text" class="input input__multi-line" aria-label="Enter manually" rows="6"></textarea>');
+      ta.addEventListener('input', function () { state[ta.id] = ta.value; clearError(id); });
+      group.querySelector('.file-upload__wrapper').appendChild(ta);
+    });
+  }
+  wireUpload('resume');
+  wireUpload('cover_letter');
+
+  // ---- validation ----
+  function errorNode(id) { return document.getElementById(id + '-error'); }
+  function clearError(id) {
+    var n = errorNode(id); if (n) n.remove();
+    var inp = document.getElementById(id);
+    if (inp) inp.setAttribute('aria-invalid', 'false');
+    var lbl = document.getElementById(id + '-label');
+    if (lbl) lbl.classList.remove('select__label--error', 'label--error');
+    var ctl = inp && inp.closest('.select') && inp.closest('.select').querySelector('.select__control');
+    if (ctl) ctl.classList.remove('select__control--error');
+  }
+  function setError(id, anchor, msg) {
+    if (errorNode(id)) return;
+    var inp = document.getElementById(id);
+    if (inp) inp.setAttribute('aria-invalid', 'true');
+    var p = el('<p id="' + id + '-error" class="helper-text helper-text--error" aria-live="polite">' + esc(msg) + '</p>');
+    anchor.appendChild(p);
+    var lbl = document.getElementById(id + '-label');
+    if (lbl) lbl.classList.add(lbl.classList.contains('select__label') ? 'select__label--error' : 'label--error');
+    var sel = inp && inp.closest('.select');
+    if (sel) sel.querySelector('.select__control').classList.add('select__control--error');
+  }
+
+  var form = document.getElementById('application-form');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var ok = true, first = null;
+    document.querySelectorAll('input.input[aria-required="true"], textarea.input[aria-required="true"]').forEach(function (inp) {
+      var v = (state[inp.id] || '').trim();
+      if (!v) { ok = false; setError(inp.id, inp.closest('.input-wrapper').parentNode, 'This field is required.'); first = first || inp; }
+      else if (inp.id === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { ok = false; setError(inp.id, inp.closest('.input-wrapper').parentNode, 'Please enter a valid email address.'); first = first || inp; }
+    });
+    document.querySelectorAll('[data-gh-select][data-required="true"]').forEach(function (host) {
+      var id = host.getAttribute('data-gh-select');
+      if (!selected[id]) { ok = false; setError(id, host.querySelector('.select__container'), 'This field is required.'); first = first || document.getElementById(id); }
+    });
+    if (!files.resume && !(state.resume_text || '').trim()) {
+      ok = false; setError('resume', document.querySelector('#resume').closest('.file-upload'), 'This field is required.');
+      first = first || document.getElementById('resume');
+    }
+    if (!ok) { if (first && first.focus) first.focus(); return; }
+
+    var out = {};
+    ['first_name', 'last_name', 'preferred_name', 'email', 'phone', 'question_41000001', 'question_41000002', 'question_41000003', 'question_41000004', 'question_41000005', 'question_41000011', 'resume_text', 'cover_letter_text'].forEach(function (k) { if (state[k] != null) out[k] = state[k]; });
+    Object.keys(selected).forEach(function (k) { out[k] = selected[k]; });
+    out['question_41000010[]'] = Array.prototype.filter.call(document.querySelectorAll('input[name="question_41000010[]"]'), function (c) { return c.checked; })
+      .map(function (c) { return document.querySelector('label[for="' + CSS.escape(c.id) + '"]').textContent; });
+    if (files.resume) out.resume = files.resume;
+    if (files.cover_letter) out.cover_letter = files.cover_letter;
+    window.__submitted = out;
+
+    document.querySelector('main.main').innerHTML =
+      '<div class="confirmation"><div class="image-container"><a href="#" class="logo">Acme Labs</a></div><div class="confirmation__content"><div><div class="body"><span><h1>Thank you for applying.</h1>' +
+      '<p>Your application has been received. If your application seems like a good fit for the position we will contact you soon.</p></span></div>' +
+      '<div class="confirmation__links"><a href="#" target="_top" class="btn btn--rounded">View more jobs at Acme Labs</a><a class="link" target="_top" href="#">Back to job post</a></div></div></div></div>';
+    location.hash = '#confirmation';
+  });
+})();
+</script>
+</body>
+</html>

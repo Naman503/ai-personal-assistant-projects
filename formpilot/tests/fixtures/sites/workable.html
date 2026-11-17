@@ -1,0 +1,290 @@
+<!doctype html>
+<!--
+  Fixture: Workable hosted application (apply.workable.com/<account>/j/<SHORTCODE>/apply/).
+  The live page is a React SPA (empty shell HTML). This fixture is rebuilt from:
+    - the public form schema  GET https://apply.workable.com/api/v1/jobs/<SHORTCODE>/form
+      (sections "Personal information" / "Profile" / "Details" / unnamed GDPR section; field ids are
+      firstname, lastname, email, phone, resume, cover_letter, CA_<n> (account questions),
+      QA_<n> (job questions), gdpr; types text|email|phone|file|paragraph|dropdown|boolean|multiple|group|date);
+    - the production bundle (careers + shared.applicationForm chunks, Nov 2026):
+      form[data-ui="application-form"], every control wrapper carries data-ui="<field id>",
+      section[data-ui="section"], button[type=submit][data-ui="apply-button"] "Submit application",
+      autofill input#file-upload[data-ui="autofill-computer"][hidden], Boolean = "Input.YesNo" segmented
+      radio set (div[role=radio] wrappers, hidden radios value "true"/"false"), Cloudflare Turnstile,
+      i18n strings ("This field is required.", "Autofill completed! ...", "Thank you!",
+      "Your application has been submitted successfully.").
+  Exact inner markup of Workable's design-system controls is approximated (not server-rendered);
+  select on [data-ui] + name/id, not on the hashed "styles--xxxx" classes.
+  Behaviour: React-controlled inputs (state only from `input` events); dropdown is a custom
+  listbox (click [data-ui="<id>"] control, click [role=option]); resume dropzone with hidden file
+  input; autofill parses and fills empty name/email/phone; errors under each field + flash banner;
+  success view + location.hash "#success". window.__submitted = { fieldId: value }.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Senior React Native Engineer - Acme Labs</title>
+<style>
+  body { margin: 0; font-family: "Inter", system-ui, sans-serif; color: #1c2533; background: #fff; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 80px; }
+  .styles--QXNVJ { border: 1px solid #e3e7ec; border-radius: 8px; padding: 20px; margin: 16px 0; }
+  .styles--3JEd1 { margin: 14px 0; display: flex; flex-direction: column; gap: 6px; }
+  .styles--3JEd1 label, .styles--legend { font-weight: 600; font-size: 14px; }
+  .req { color: #c62828; margin-left: 2px; }
+  .ctl input[type=text], .ctl input[type=email], .ctl input[type=tel], .ctl textarea { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #c5ccd6; border-radius: 6px; font: inherit; }
+  [aria-invalid=true] { border-color: #c62828 !important; }
+  .err { color: #c62828; font-size: 13px; }
+  .phone-row { display: flex; gap: 6px; }
+  .cc-btn { border: 1px solid #c5ccd6; border-radius: 6px; background: #fff; padding: 0 10px; cursor: pointer; }
+  .listbox { border: 1px solid #c5ccd6; border-radius: 6px; background: #fff; margin-top: 4px; max-height: 220px; overflow: auto; }
+  .listbox [role=option] { padding: 8px 10px; cursor: pointer; }
+  .listbox [role=option][aria-selected=true], .listbox [role=option]:hover { background: #eef3fb; }
+  .select-btn { text-align: left; border: 1px solid #c5ccd6; border-radius: 6px; padding: 9px 10px; background: #fff; cursor: pointer; font: inherit; }
+  .yesno { display: inline-flex; border: 1px solid #c5ccd6; border-radius: 6px; overflow: hidden; }
+  .yesno [role=radio] { padding: 6px 18px; cursor: pointer; }
+  .yesno [role=radio][aria-checked=true] { background: #00756a; color: #fff; }
+  .yesno input { position: absolute; opacity: 0; pointer-events: none; }
+  .dropzone { border: 1px dashed #9aa6b5; border-radius: 8px; padding: 18px; text-align: center; }
+  .dropzone.drag { background: #eef3fb; }
+  .autofill { background: #f3f7fb; border-radius: 8px; padding: 16px; }
+  .flash { background: #fdecea; color: #8a1c1c; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; }
+  .ok { background: #e7f6ef; color: #0b5a3a; padding: 10px 14px; border-radius: 6px; }
+  .styles--10XMc { background: #00756a; color: #fff; border: 0; border-radius: 6px; padding: 12px 20px; font-size: 15px; cursor: pointer; }
+  .tabs a { margin-right: 16px; }
+</style>
+</head>
+<body>
+<div id="app">
+<main data-ui="careers-page-content">
+  <header><a data-ui="company-logo" href="#">Acme Labs</a></header>
+  <h1 data-ui="job-title">Senior React Native Engineer</h1>
+  <div><span data-ui="job-workplace">Hybrid</span> · <span data-ui="job-type">Full time</span> · <span data-ui="job-department">Engineering</span></div>
+  <nav class="tabs" role="tablist"><a href="#" role="tab" data-ui="role-overview-tab" aria-selected="false">Overview</a><a href="#" role="tab" data-ui="application-form-tab" aria-selected="true">Application</a></nav>
+  <div data-ui="flash-container" id="flash"></div>
+  <form class="styles--2I-rr" data-ui="application-form" id="wk-form" novalidate></form>
+</main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // Shape of GET /api/v1/jobs/<shortcode>/form
+  var FORM = [
+    { name: 'Personal information', fields: [
+      { id: 'firstname', label: 'First name', required: true, maxLength: 127, type: 'text' },
+      { id: 'lastname', label: 'Last name', required: true, maxLength: 127, type: 'text' },
+      { id: 'email', label: 'Email', required: true, maxLength: 255, type: 'email' },
+      { id: 'headline', label: 'Headline', required: false, maxLength: 255, type: 'text' },
+      { id: 'phone', label: 'Phone', required: true, helper: 'The hiring team may use this number to contact you about this job.', maxLength: 255, type: 'phone' },
+      { id: 'address', label: 'Address', required: true, maxLength: 255, type: 'text' }
+    ] },
+    { name: 'Profile', fields: [
+      { id: 'resume', label: 'Resume', required: true, maxFileSize: 12000000, supportedFileTypes: ['.pdf', '.doc', '.docx', '.odt', '.rtf'], type: 'file' },
+      { id: 'CA_20001', label: 'LinkedIn profile', required: true, type: 'text' }
+    ] },
+    { name: 'Details', fields: [
+      { id: 'cover_letter', label: 'Cover letter', required: false, maxLength: 200000, type: 'paragraph' },
+      { id: 'QA_30001', label: 'How many years of professional React Native experience do you have?', required: true, type: 'text' },
+      { id: 'CA_20002', label: 'Notice period / availability', required: true, singleOption: true, type: 'dropdown', options: [{ name: '400001', value: 'Available immediately' }, { name: '400002', value: '15 days' }, { name: '400003', value: '30 days' }, { name: '400004', value: '60 days' }, { name: '400005', value: '90 days' }] },
+      { id: 'QA_30002', label: 'Current CTC (INR per annum)', required: true, maxLength: 127, type: 'text' },
+      { id: 'CA_20003', label: 'Expected salary', required: true, maxLength: 127, type: 'text' },
+      { id: 'CA_20004', label: 'Are you eligible to work in the country you are applying?', required: true, type: 'boolean' },
+      { id: 'QA_30003', label: 'Are you willing to relocate to Bengaluru?', required: true, type: 'boolean' },
+      { id: 'CA_20005', label: 'How did you hear about us?', required: false, singleOption: true, type: 'dropdown', options: [{ name: '400011', value: 'LinkedIn' }, { name: '400012', value: 'Company website' }, { name: '400013', value: 'Employee referral' }, { name: '400014', value: 'Other' }] },
+      { id: 'QA_30004', label: 'Which platforms have you shipped production apps to?', required: false, type: 'multiple', options: [{ name: '400021', value: 'iOS' }, { name: '400022', value: 'Android' }, { name: '400023', value: 'Web (React Native Web)' }] },
+      { id: 'QA_30005', label: 'Why do you want to join Acme Labs?', required: true, type: 'paragraph' }
+    ] },
+    { fields: [ { id: 'gdpr', onlyTrueAllowed: true, required: true, type: 'boolean', url: '#privacy' } ] }
+  ];
+  var COUNTRIES = [['IN', '+91', 'India'], ['US', '+1', 'United States'], ['GB', '+44', 'United Kingdom'], ['AE', '+971', 'United Arab Emirates'], ['SG', '+65', 'Singapore']];
+  var state = {}, fileNames = {};
+
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      var v = attrs[k];
+      if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v;
+      else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+    });
+    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function lbl(f, forId) {
+    return h('label', { for: forId || f.id, id: f.id + '_label' }, [h('span', { text: f.label }), f.required ? h('span', { class: 'req', 'aria-hidden': 'true', text: '*' }) : null]);
+  }
+  function set(id, v) { state[id] = v; var w = document.querySelector('[data-ui="' + id + '"]'); if (w) { var e = w.querySelector('.err'); if (e) e.remove(); w.querySelectorAll('[aria-invalid]').forEach(function (n) { n.setAttribute('aria-invalid', 'false'); }); } }
+  function wrapper(f, kids) { return h('div', { class: 'styles--3JEd1 styles--' + f.id, 'data-ui': f.id }, kids); }
+
+  function textCtl(f, type, ac) {
+    var inp = h('input', { type: type, id: f.id, name: f.id, maxlength: f.maxLength, required: f.required, 'aria-required': String(!!f.required), 'aria-invalid': 'false', autocomplete: ac || 'off', 'aria-labelledby': f.id + '_label' });
+    inp.addEventListener('input', function () { set(f.id, inp.value); });
+    return wrapper(f, [lbl(f), h('div', { class: 'ctl' }, [inp]), f.helper ? h('div', { class: 'helper', text: f.helper }) : null]);
+  }
+  function areaCtl(f) {
+    var ta = h('textarea', { id: f.id, name: f.id, rows: '5', required: f.required, 'aria-required': String(!!f.required), 'aria-invalid': 'false', 'aria-labelledby': f.id + '_label' });
+    ta.addEventListener('input', function () { set(f.id, ta.value); });
+    return wrapper(f, [lbl(f), h('div', { class: 'ctl' }, [ta])]);
+  }
+  function phoneCtl(f) {
+    var cc = COUNTRIES[0];
+    var btn = h('button', { type: 'button', class: 'cc-btn', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': 'Country code', 'data-ui': 'phone-country', text: cc[0] + ' ' + cc[1] });
+    var tel = h('input', { type: 'tel', id: f.id, name: f.id, required: f.required, 'aria-required': 'true', 'aria-invalid': 'false', autocomplete: 'tel', placeholder: cc[1], 'aria-labelledby': f.id + '_label' });
+    var lb = null;
+    btn.addEventListener('click', function () {
+      if (lb) { lb.remove(); lb = null; btn.setAttribute('aria-expanded', 'false'); return; }
+      lb = h('div', { class: 'listbox', role: 'listbox', 'aria-label': 'Country code' });
+      COUNTRIES.forEach(function (c) {
+        lb.appendChild(h('div', { role: 'option', 'data-ui': 'option', 'aria-selected': String(c === cc), 'data-value': c[0], text: c[2] + ' ' + c[1], onclick: function () { cc = c; btn.textContent = c[0] + ' ' + c[1]; lb.remove(); lb = null; btn.setAttribute('aria-expanded', 'false'); tel.placeholder = c[1]; } }));
+      });
+      btn.parentNode.parentNode.appendChild(lb); btn.setAttribute('aria-expanded', 'true');
+    });
+    tel.addEventListener('input', function () { set(f.id, tel.value); });
+    var w = wrapper(f, [lbl(f), h('div', { class: 'ctl phone-row' }, [btn, tel]), h('div', { class: 'helper', text: f.helper })]);
+    w._cc = function () { return cc; };
+    return w;
+  }
+  function selectCtl(f) {
+    var btn = h('button', { type: 'button', class: 'select-btn', id: f.id, role: 'combobox', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-labelledby': f.id + '_label', 'aria-required': String(!!f.required), 'aria-invalid': 'false', text: 'Select...' });
+    var hidden = h('input', { type: 'hidden', name: f.id, value: '' });
+    var lb = null;
+    function close() { if (lb) { lb.remove(); lb = null; } btn.setAttribute('aria-expanded', 'false'); }
+    btn.addEventListener('click', function () {
+      if (lb) return close();
+      lb = h('div', { class: 'listbox', role: 'listbox', id: f.id + '_listbox' });
+      f.options.forEach(function (o) {
+        lb.appendChild(h('div', { role: 'option', 'data-ui': 'option', id: f.id + '_' + o.name, 'data-value': o.name, 'aria-selected': String(state[f.id] === o.value), text: o.value, onclick: function () { set(f.id, o.value); hidden.value = o.name; btn.textContent = o.value; close(); btn.focus(); } }));
+      });
+      btn.parentNode.appendChild(lb); btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', f.id + '_listbox');
+    });
+    btn.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    return wrapper(f, [lbl(f), h('div', { class: 'ctl' }, [btn, hidden])]);
+  }
+  function yesNoCtl(f) {
+    var group = h('div', { class: 'yesno', role: 'radiogroup', 'aria-labelledby': f.id + '_label', 'aria-required': String(!!f.required) });
+    [['true', 'Yes'], ['false', 'No']].forEach(function (p) {
+      var rid = f.id + '_' + p[0];
+      var radio = h('input', { type: 'radio', name: f.id, value: p[0], id: rid, tabindex: '-1', 'aria-hidden': 'true', required: f.required });
+      var wrap = h('div', { id: 'wrapper_' + rid, role: 'radio', 'aria-checked': 'false', 'aria-required': String(!!f.required), 'aria-labelledby': rid + '_label', tabindex: '0' }, [h('label', {}, [radio, h('span', { id: rid + '_label', 'data-radiolabel': '', text: p[1] })])]);
+      function pick() {
+        group.querySelectorAll('[role=radio]').forEach(function (r) { r.setAttribute('aria-checked', 'false'); });
+        wrap.setAttribute('aria-checked', 'true'); radio.checked = true; set(f.id, p[0] === 'true');
+      }
+      wrap.addEventListener('click', function (e) { e.preventDefault(); pick(); });
+      wrap.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); pick(); } });
+      radio.addEventListener('change', function () { if (radio.checked) pick(); });
+      group.appendChild(wrap);
+    });
+    return wrapper(f, [h('span', { class: 'styles--legend', id: f.id + '_label' }, [f.label, f.required ? h('span', { class: 'req', text: '*' }) : null]), group]);
+  }
+  function multipleCtl(f) {
+    var box = h('div', { role: 'group', 'aria-labelledby': f.id + '_label', 'data-ui': f.id + '-options' });
+    var sel = [];
+    f.options.forEach(function (o) {
+      var c = h('input', { type: 'checkbox', id: f.id + '_' + o.name, name: o.name, value: o.value });
+      c.addEventListener('change', function () { sel = c.checked ? sel.concat(o.value) : sel.filter(function (x) { return x !== o.value; }); set(f.id, sel.slice()); });
+      box.appendChild(h('div', { class: 'styles--3QsA5' }, [c, h('label', { for: c.id, text: ' ' + o.value })]));
+    });
+    return wrapper(f, [h('span', { class: 'styles--legend', id: f.id + '_label', text: f.label }), box]);
+  }
+  function gdprCtl(f) {
+    var c = h('input', { type: 'checkbox', id: 'gdpr', name: 'gdpr', required: true, 'aria-required': 'true', 'aria-invalid': 'false' });
+    c.addEventListener('change', function () { set('gdpr', c.checked); });
+    return h('div', { class: 'styles--1C6Ij', 'data-ui': 'gdpr' }, [c, h('label', { for: 'gdpr' }, [' I have read and agree to the ', h('a', { href: f.url, text: 'Acme Labs privacy notice' }), '.', h('span', { class: 'req', text: '*' })])]);
+  }
+  function fileCtl(f) {
+    var inp = h('input', { type: 'file', id: f.id, name: f.id, accept: f.supportedFileTypes.join(','), hidden: true, 'data-ui': f.id + '-input' });
+    var status = h('div', { class: 'file-status' });
+    var zone = h('div', { class: 'dropzone', role: 'button', tabindex: '0', 'aria-labelledby': f.id + '_label' }, [h('strong', { text: 'Upload a file' }), ' or drag and drop here', status, inp]);
+    function take(file) { if (!file) return; fileNames[f.id] = file.name; set(f.id, file.name); status.innerHTML = ''; status.appendChild(h('span', { 'data-ui': 'file-name', text: file.name })); status.appendChild(h('button', { type: 'button', 'aria-label': 'Delete file', text: '✕', onclick: function (e) { e.stopPropagation(); delete fileNames[f.id]; set(f.id, undefined); status.innerHTML = ''; inp.value = ''; } })); }
+    zone.addEventListener('click', function (e) { if (e.target === inp) return; inp.click(); });
+    zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } });
+    inp.addEventListener('change', function () { take(inp.files && inp.files[0]); });
+    zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('drag'); });
+    zone.addEventListener('dragleave', function () { zone.classList.remove('drag'); });
+    zone.addEventListener('drop', function (e) { e.preventDefault(); zone.classList.remove('drag'); take(e.dataTransfer.files[0]); });
+    var w = wrapper(f, [h('span', { class: 'styles--legend', id: f.id + '_label' }, [f.label, h('span', { class: 'req', text: '*' })]), zone]);
+    w._take = take;
+    w.setAttribute('class', w.getAttribute('class') + ' styles--YBb-N');
+    return w;
+  }
+  function renderField(f) {
+    switch (f.type) {
+      case 'text': return textCtl(f, 'text', { firstname: 'given-name', lastname: 'family-name', address: 'address-level2' }[f.id]);
+      case 'email': return textCtl(f, 'email', 'email');
+      case 'phone': return phoneCtl(f);
+      case 'paragraph': return areaCtl(f);
+      case 'dropdown': return selectCtl(f);
+      case 'boolean': return f.id === 'gdpr' ? gdprCtl(f) : yesNoCtl(f);
+      case 'multiple': return multipleCtl(f);
+      case 'file': return fileCtl(f);
+    }
+  }
+
+  var form = document.getElementById('wk-form');
+  // Autofill box ("form.quickApply")
+  var auto = h('input', { id: 'file-upload', 'data-ui': 'autofill-computer', multiple: true, type: 'file', hidden: true, accept: '.pdf,.doc,.docx,.odt,.rtf' });
+  var autoMsg = h('div', { role: 'status' });
+  form.appendChild(h('div', { class: 'autofill', 'data-ui': 'autofill' }, [
+    h('h3', { text: 'Autofill application' }),
+    h('p', { text: 'Save time by importing your resume in one of the following formats: .pdf, .doc, .docx, .odt, or .rtf.' }),
+    h('div', {}, [h('label', { for: 'file-upload', 'data-ui': 'autofill-button', class: 'cc-btn', text: 'Import resume' }), auto, ' ', h('button', { type: 'button', 'data-ui': 'autofill-dropbox', class: 'cc-btn', text: 'Dropbox' }), ' ', h('button', { type: 'button', 'data-ui': 'autofill-google-drive', class: 'cc-btn', text: 'Google Drive' })]),
+    autoMsg
+  ]));
+  FORM.forEach(function (sec, i) {
+    var s = h('section', { 'data-ui': 'section', class: 'styles--QXNVJ' });
+    if (sec.name) s.appendChild(h('div', { class: 'styles--r7_HT' }, [h('h2', { id: 'section-' + i + '_section_name', text: sec.name })]));
+    var fields = h('div', { class: 'styles--1jc0L' });
+    sec.fields.forEach(function (f) { fields.appendChild(renderField(f)); });
+    s.appendChild(fields);
+    form.appendChild(s);
+  });
+  form.appendChild(h('div', { id: 'turnstile-container', class: 'styles--3c7V7', hidden: true }));
+  form.appendChild(h('button', { type: 'submit', class: 'styles--10XMc', 'data-ui': 'apply-button', text: 'Submit application' }));
+
+  auto.addEventListener('change', function () {
+    var file = auto.files && auto.files[0]; if (!file) return;
+    autoMsg.className = ''; autoMsg.textContent = 'Uploading…';
+    setTimeout(function () {
+      var parsed = { firstname: 'Parsed', lastname: 'Candidate', email: 'parsed.candidate@example.com', phone: '9000000000' };
+      Object.keys(parsed).forEach(function (k) { if (state[k]) return; var el = document.getElementById(k); if (el) el.value = parsed[k]; set(k, parsed[k]); });
+      document.querySelector('[data-ui="resume"]')._take(file);
+      autoMsg.className = 'ok'; autoMsg.textContent = 'Autofill completed! Please review the information we have filled in below.';
+    }, 400);
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var flash = document.getElementById('flash'); flash.innerHTML = '';
+    var bad = [];
+    FORM.forEach(function (sec) { sec.fields.forEach(function (f) {
+      var v = state[f.id];
+      var empty = v === undefined || v === '' || v === null || (Array.isArray(v) && !v.length) || (f.id === 'gdpr' && v !== true);
+      var msg = null;
+      if (f.required && empty) msg = 'This field is required.';
+      else if (f.type === 'email' && v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) msg = 'This must be a valid email.';
+      else if (f.type === 'phone' && v && String(v).replace(/\D/g, '').length < 6) msg = 'The phone number is too short.';
+      if (msg) {
+        bad.push(f.id);
+        var w = document.querySelector('[data-ui="' + f.id + '"]');
+        if (!w.querySelector('.err')) w.appendChild(h('div', { class: 'err', role: 'alert', id: f.id + '_error', text: msg }));
+        var ctl = w.querySelector('#' + CSS.escape(f.id)); if (ctl) ctl.setAttribute('aria-invalid', 'true');
+      }
+    }); });
+    if (bad.length) {
+      flash.appendChild(h('div', { class: 'flash', role: 'alert', 'data-ui': 'system-alert', text: 'There are some issues with your application. Please revisit your data and try again.' }));
+      document.querySelector('[data-ui="' + bad[0] + '"]').scrollIntoView({ block: 'center' });
+      return;
+    }
+    var out = {};
+    Object.keys(state).forEach(function (k) { if (state[k] !== undefined && state[k] !== '') out[k] = state[k]; });
+    var pw = document.querySelector('[data-ui="phone"]'); if (out.phone) out.phone = pw._cc()[1] + ' ' + out.phone;
+    window.__submitted = out;
+    document.getElementById('app').innerHTML = '<main data-ui="careers-page-content"><div data-ui="application-success"><h1>Thank you!</h1><p>Your application has been submitted successfully.</p></div></main>';
+    location.hash = '#success';
+  });
+})();
+</script>
+</body>
+</html>

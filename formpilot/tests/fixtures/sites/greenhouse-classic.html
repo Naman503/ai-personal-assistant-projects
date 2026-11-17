@@ -1,0 +1,345 @@
+<!doctype html>
+<!--
+  Fixture: Greenhouse CLASSIC job board (boards.greenhouse.io/<board>/jobs/<id>, Rails + jQuery).
+  NOTE: as of Nov 2026 every boards.greenhouse.io URL 301-redirects to job-boards.greenhouse.io
+  (the new React board, see greenhouse.html). Classic markup is still worth supporting for cached
+  pages, old embeds and self-hosted copies. This markup is modelled on an archived live page
+  (Jan 2023): form#application_form, #main_fields, job_application[...] names,
+  job_application[answers_attributes][N][...] custom questions, #eeoc_fields, input#submit_app.
+  Behaviour emulated:
+    - plain HTML inputs/selects (.value + change works; no React);
+    - resume "attach-or-paste": "Attach" opens a dynamically created file input
+      (#s3_upload_for_resume inside .s3-upload-form), filename shown in #resume_filename;
+      "or enter manually" reveals textarea#resume_text;
+    - submit is input[type=button]#submit_app (not a submit button) -> validates -> shows
+      #application_confirmation "Thank you for applying." and sets location.hash "#confirmation";
+    - errors: .field gets class "field-error" + span.field-error-msg, #error_message summary.
+  window.__submitted = { name: value } after success.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Job Application for Senior React Native Engineer at Acme Labs</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #fff; color: #333; }
+  #wrapper { max-width: 760px; margin: 0 auto; padding: 24px; }
+  .field { margin: 14px 0; }
+  .field label { display: block; font-weight: bold; font-size: 14px; }
+  .field input[type=text], .field textarea, .field select { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; font: inherit; }
+  .asterisk { color: #b94a48; }
+  .field-error input, .field-error select, .field-error textarea { border: 1px solid #b94a48; }
+  .field-error-msg { color: #b94a48; font-size: 12px; display: block; }
+  #error_message { color: #b94a48; font-weight: bold; }
+  .drop-zone.hidden, .chosen, .paste, .progress-bar { display: none; }
+  .chosen.visible, .paste.visible { display: block; }
+  #dev-fields { display: none; }
+  .link-container a, .link-button { margin-right: 10px; }
+  .unstyled-button { background: none; border: 0; color: #2e6ca5; cursor: pointer; padding: 0; font: inherit; }
+  #submit_app { background: #3a87ad; color: #fff; border: 0; padding: 10px 20px; font-size: 15px; cursor: pointer; }
+  .checkbox-options label { font-weight: normal; display: block; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="app_body">
+    <div id="header">
+      <h1 class="app-title">Senior React Native Engineer</h1>
+      <span class="company-name">at Acme Labs</span>
+      <div class="location">Bengaluru, India</div>
+    </div>
+    <div id="content"><p>Acme Labs builds offline-first field-service apps.</p></div>
+
+    <div id="application">
+      <form id="application_form" enctype="multipart/form-data" action="#" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" />
+        <input type="hidden" name="fingerprint" id="fingerprint" value="0f0e0d0c0b0a" />
+        <input type="hidden" name="render_date" id="render_date" value="2026-11-17 10:00:00 +0000" />
+        <input type="hidden" name="page_load_time" id="page_load_time" value="1794900000" />
+        <div id='main_fields'>
+          <h2 class='heading'>Apply for this Job</h2>
+          <div class='required-fields'><span class='asterisk'>*</span> Required</div>
+          <div class='clear'></div>
+          <div class='field'>
+            <label for='first_name'>First Name <span class='asterisk'>*</span></label>
+            <input type='text' id='first_name' name='job_application[first_name]' aria-required="true" maxlength="255" autocomplete="given-name"/>
+          </div>
+          <div class='field'>
+            <label for='last_name'>Last Name <span class='asterisk'>*</span></label>
+            <input type='text' id='last_name' name='job_application[last_name]' aria-required="true" maxlength="255" autocomplete="family-name" />
+          </div>
+          <div class='field'>
+            <label for='email'>Email <span class='asterisk'>*</span></label>
+            <input type='text' id='email' name='job_application[email]' aria-required="true" maxlength="255" autocomplete="email" />
+          </div>
+          <div class='field'>
+            <label for='phone'>Phone <span class='asterisk'>*</span></label>
+            <input type='text' id='phone' name='job_application[phone]' aria-required="true" maxlength="255" autocomplete="tel" />
+          </div>
+          <div class='field'>
+            <label for='job_application_location'>Location (City) <span class='asterisk'>*</span></label>
+            <input type='text' id='job_application_location' name='job_application[location]' aria-required="true" maxlength="255" autocomplete="off" placeholder="Start typing..." />
+            <input type="hidden" id="job_application_latitude" name="job_application[latitude]" />
+            <input type="hidden" id="job_application_longitude" name="job_application[longitude]" />
+          </div>
+          <div id='dev-fields' aria-hidden="true">
+            <div class='field'><label for='dev-field-1'></label><input type='text' id='dev-field-1' name='dev_field_1' maxlength="255" autocomplete="off"/></div>
+          </div>
+          <div class='field'>
+            <fieldset id='resume_fieldset' aria-describedby="validate_resume">
+              <legend><label aria-label="" id="resume">Resume/CV <span class='asterisk'>*</span></label></legend>
+              <div class="attach-or-paste " data-allow-s3="true" data-field="resume" data-file-types="[&quot;pdf&quot;,&quot;doc&quot;,&quot;docx&quot;,&quot;txt&quot;,&quot;rtf&quot;]" data-model="job_application">
+                <div class="drop-zone hidden">Drop files here</div>
+                <div id="resume_chosen" class="chosen">
+                  &#128196;&nbsp;&nbsp;<span id="resume_filename"></span>
+                  <button name="button" type="button" class="unstyled-button remove" aria-label="Remove attachment">&times;</button>
+                </div>
+                <div class="link-container">
+                  <button name="button" type="button" data-source="attach" class="unstyled-button link-button" aria-describedby="resume-allowable-file-types">Attach</button>
+                  <a data-source="dropbox" href="#">Dropbox</a>
+                  <a data-source="google-drive" href="#">Google Drive</a>
+                  <button name="button" type="button" data-source="paste" class="unstyled-button link-button" aria-pressed="false">or enter manually</button>
+                </div>
+                <div data-messages="uploaders"></div>
+                <div class="validation-anchor" id="validate_resume" style="display: none"></div>
+                <div id="resume-allowable-file-types" class="file-types">(File types: pdf, doc, docx, txt, rtf)</div>
+                <div class="progress-bar"><div class="upload"><div class="progress"><div class="bar" style="width: 0%"></div></div></div><a href="#" class="cancel">Cancel</a></div>
+                <textarea name="job_application[resume_text]" id="resume_text" class="paste" title="Enter manually"></textarea>
+              </div>
+            </fieldset>
+          </div>
+        </div>
+        <hr/>
+        <div id='custom_fields'>
+          <div class="field">
+            <label>LinkedIn Profile<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][0][question_id]" id="job_application_answers_attributes_0_question_id" value="21000001" />
+              <input type="hidden" name="job_application[answers_attributes][0][priority]" id="job_application_answers_attributes_0_priority" value="0" />
+              <input type="text" name="job_application[answers_attributes][0][text_value]" id="job_application_answers_attributes_0_text_value" aria-required="true" maxlength="255" autocomplete="custom-question-linkedin-profile" />
+            </label>
+          </div>
+          <div class="field">
+            <label>Total years of React Native experience<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][1][question_id]" id="job_application_answers_attributes_1_question_id" value="21000002" />
+              <input type="hidden" name="job_application[answers_attributes][1][priority]" id="job_application_answers_attributes_1_priority" value="1" />
+              <input type="text" name="job_application[answers_attributes][1][text_value]" id="job_application_answers_attributes_1_text_value" aria-required="true" maxlength="255" autocomplete="custom-question-total-years-of-react-native-experience" />
+            </label>
+          </div>
+          <div class="field">
+            <label>Notice period<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][2][question_id]" id="job_application_answers_attributes_2_question_id" value="21000003" />
+              <input type="hidden" name="job_application[answers_attributes][2][priority]" id="job_application_answers_attributes_2_priority" value="2" />
+              <select name="job_application[answers_attributes][2][answer_selected_options_attributes][2][question_option_id]" id="job_application_answers_attributes_2_answer_selected_options_attributes_2_question_option_id" aria-required="true" style="width: 200px;"><option value="">Please select</option><option value="31000001">Immediate</option>
+<option value="31000002">15 days or less</option>
+<option value="31000003">30 days</option>
+<option value="31000004">60 days</option>
+<option value="31000005">90 days</option></select>
+            </label>
+          </div>
+          <div class="field">
+            <label>Current CTC (INR per annum)<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][3][question_id]" id="job_application_answers_attributes_3_question_id" value="21000004" />
+              <input type="hidden" name="job_application[answers_attributes][3][priority]" id="job_application_answers_attributes_3_priority" value="3" />
+              <input type="text" name="job_application[answers_attributes][3][text_value]" id="job_application_answers_attributes_3_text_value" aria-required="true" maxlength="255" autocomplete="custom-question-current-ctc-inr-per-annum" />
+            </label>
+          </div>
+          <div class="field">
+            <label>Expected CTC (INR per annum)<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][4][question_id]" id="job_application_answers_attributes_4_question_id" value="21000005" />
+              <input type="hidden" name="job_application[answers_attributes][4][priority]" id="job_application_answers_attributes_4_priority" value="4" />
+              <input type="text" name="job_application[answers_attributes][4][text_value]" id="job_application_answers_attributes_4_text_value" aria-required="true" maxlength="255" autocomplete="custom-question-expected-ctc-inr-per-annum" />
+            </label>
+          </div>
+          <div class="field">
+            <label>Are you legally authorized to work in India?<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][5][question_id]" id="job_application_answers_attributes_5_question_id" value="21000006" />
+              <input type="hidden" name="job_application[answers_attributes][5][priority]" id="job_application_answers_attributes_5_priority" value="5" />
+              <select name="job_application[answers_attributes][5][boolean_value]" id="job_application_answers_attributes_5_boolean_value" aria-required="true"><option value="">--</option>
+<option value="1">Yes</option>
+<option value="0">No</option></select>
+            </label>
+          </div>
+          <div class="field">
+            <label>Are you willing to relocate to Bengaluru?<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][6][question_id]" id="job_application_answers_attributes_6_question_id" value="21000007" />
+              <input type="hidden" name="job_application[answers_attributes][6][priority]" id="job_application_answers_attributes_6_priority" value="6" />
+              <select name="job_application[answers_attributes][6][boolean_value]" id="job_application_answers_attributes_6_boolean_value" aria-required="true"><option value="">--</option>
+<option value="1">Yes</option>
+<option value="0">No</option></select>
+            </label>
+          </div>
+          <div class="field">
+            <label>How did you hear about this job?
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][7][question_id]" id="job_application_answers_attributes_7_question_id" value="21000008" />
+              <input type="hidden" name="job_application[answers_attributes][7][priority]" id="job_application_answers_attributes_7_priority" value="7" />
+              <select name="job_application[answers_attributes][7][answer_selected_options_attributes][7][question_option_id]" id="job_application_answers_attributes_7_answer_selected_options_attributes_7_question_option_id" aria-required="false" style="width: 200px;"><option value="">Please select</option><option value="31000011">LinkedIn</option>
+<option value="31000012">Company website</option>
+<option value="31000013">Employee referral</option>
+<option value="31000014">Other</option></select>
+            </label>
+          </div>
+          <div class="field">
+            <label>Which platforms have you shipped production apps to?<span class="asterisk">&nbsp;*</span></label>
+            <input type="hidden" name="job_application[answers_attributes][8][question_id]" id="job_application_answers_attributes_8_question_id" value="21000009" />
+            <input type="hidden" name="job_application[answers_attributes][8][priority]" id="job_application_answers_attributes_8_priority" value="8" />
+            <div class="checkbox-options" aria-required="true">
+              <label><input type="checkbox" name="job_application[answers_attributes][8][answer_selected_options_attributes][0][question_option_id]" id="job_application_answers_attributes_8_answer_selected_options_attributes_0_question_option_id" value="31000021" /> iOS</label>
+              <label><input type="checkbox" name="job_application[answers_attributes][8][answer_selected_options_attributes][1][question_option_id]" id="job_application_answers_attributes_8_answer_selected_options_attributes_1_question_option_id" value="31000022" /> Android</label>
+              <label><input type="checkbox" name="job_application[answers_attributes][8][answer_selected_options_attributes][2][question_option_id]" id="job_application_answers_attributes_8_answer_selected_options_attributes_2_question_option_id" value="31000023" /> Web (React Native Web)</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Why do you want to join Acme Labs?<span class="asterisk">&nbsp;*</span>
+              <br/>
+              <input type="hidden" name="job_application[answers_attributes][9][question_id]" id="job_application_answers_attributes_9_question_id" value="21000010" />
+              <input type="hidden" name="job_application[answers_attributes][9][priority]" id="job_application_answers_attributes_9_priority" value="9" />
+              <textarea name="job_application[answers_attributes][9][text_value]" id="job_application_answers_attributes_9_text_value" aria-required="true" autocomplete="custom-question-why-do-you-want-to-join-acme-labs"></textarea>
+            </label>
+          </div>
+        </div>
+        <hr/>
+        <div id="eeoc_fields">
+          <h3 id="eeoc_title">Voluntary Self-Identification</h3>
+          <p>For government reporting purposes, we ask candidates to respond to the below self-identification survey. Completion of the form is entirely <strong>voluntary</strong>.</p>
+          <div class="field" id="gender_dropdown_container">
+            <label for="job_application_gender">Gender</label>
+            <select name="job_application[gender]" id="job_application_gender"><option value="">Please select</option><option value="1">Male</option>
+<option value="2">Female</option>
+<option value="3">Decline To Self Identify</option></select>
+          </div>
+          <div class="field" id="hispanic_ethnicity_dropdown_container">
+            <label for="job_application_hispanic_ethnicity">Are you Hispanic/Latino?</label>
+            <select name="job_application[hispanic_ethnicity]" id="job_application_hispanic_ethnicity"><option value="">Please select</option><option value="Yes">Yes</option>
+<option value="No">No</option>
+<option value="Decline To Self Identify">Decline To Self Identify</option></select>
+          </div>
+          <div class="field" id="race_dropdown_container" style="display:none">
+            <label for="job_application_race">Please identify your race</label>
+            <select name="job_application[race]" id="job_application_race"><option value="">Please select</option><option value="1">American Indian or Alaskan Native</option>
+<option value="2">Asian</option>
+<option value="3">Black or African American</option>
+<option hidden="hidden" value="4">Hispanic or Latino</option>
+<option value="5">White</option>
+<option value="6">Native Hawaiian or Other Pacific Islander</option>
+<option value="7">Two or More Races</option>
+<option value="8">Decline To Self Identify</option></select>
+          </div>
+          <a target="_blank" href="#">Race &amp; Ethnicity Definitions</a>
+          <div class="field" id="veteran_status_dropdown_container">
+            <label for="job_application_veteran_status">Veteran Status</label>
+            <select name="job_application[veteran_status]" id="job_application_veteran_status"><option value="">Please select</option><option value="1">I am not a protected veteran</option>
+<option value="2">I identify as one or more of the classifications of a protected veteran</option>
+<option value="3">I don&#39;t wish to answer</option></select>
+          </div>
+          <h3 id="disability_status_header">Voluntary Self-Identification of Disability</h3>
+          <div class="field" id="disability_status_dropdown_container">
+            <label for="job_application_disability_status">Disability Status</label>
+            <select name="job_application[disability_status]" id="job_application_disability_status"><option value="">Please select</option><option value="1">Yes, I have a disability, or have a history/record of having a disability</option>
+<option value="2">No, I don&#39;t have a disability, or a history/record of having a disability</option>
+<option value="3">I don&#39;t wish to answer</option></select>
+          </div>
+        </div>
+        <div id='captcha_container'></div>
+        <hr/>
+        <div id='error_message'></div>
+        <div id='submit_buttons'>
+          <input type='button' value='Submit Application' id='submit_app' class='button'>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="footer"><span>Powered by</span>&nbsp;<a target="_blank" href="#">Greenhouse</a></div>
+  <div class="s3-upload-form" data-presigned-form="resume"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var resumeFile = null;
+  var host = document.querySelector('.s3-upload-form[data-presigned-form="resume"]');
+  // Classic boards build the real file input lazily inside a hidden presigned S3 form.
+  host.innerHTML = '<form method="post" enctype="multipart/form-data" action="#" style="display:none"><input type="file" id="s3_upload_for_resume" name="file" accept=".pdf,.doc,.docx,.txt,.rtf"></form>';
+  var fileInput = document.getElementById('s3_upload_for_resume');
+  var aop = document.querySelector('.attach-or-paste[data-field="resume"]');
+  aop.querySelector('[data-source="attach"]').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    resumeFile = f.name;
+    document.getElementById('resume_filename').textContent = f.name;
+    document.getElementById('resume_chosen').classList.add('visible');
+    aop.querySelector('.link-container').style.display = 'none';
+    clearErr(document.getElementById('resume_fieldset').closest('.field'));
+  });
+  aop.querySelector('.remove').addEventListener('click', function () {
+    resumeFile = null; fileInput.value = '';
+    document.getElementById('resume_chosen').classList.remove('visible');
+    aop.querySelector('.link-container').style.display = '';
+  });
+  aop.querySelector('[data-source="paste"]').addEventListener('click', function (e) {
+    var ta = document.getElementById('resume_text');
+    ta.classList.add('visible'); e.currentTarget.setAttribute('aria-pressed', 'true'); ta.focus();
+  });
+
+  document.getElementById('job_application_hispanic_ethnicity').addEventListener('change', function (e) {
+    document.getElementById('race_dropdown_container').style.display = e.target.value === 'No' ? '' : 'none';
+  });
+
+  function clearErr(field) {
+    if (!field) return;
+    field.classList.remove('field-error');
+    var m = field.querySelector('.field-error-msg'); if (m) m.remove();
+  }
+  function setErr(field, msg) {
+    if (field.classList.contains('field-error')) return;
+    field.classList.add('field-error');
+    var s = document.createElement('span'); s.className = 'field-error-msg'; s.textContent = msg || 'This field is required.';
+    field.appendChild(s);
+  }
+  document.getElementById('application_form').addEventListener('input', function (e) { clearErr(e.target.closest('.field')); });
+  document.getElementById('application_form').addEventListener('change', function (e) { clearErr(e.target.closest('.field')); });
+
+  document.getElementById('submit_app').addEventListener('click', function () {
+    var ok = true;
+    document.querySelectorAll('#application_form [aria-required="true"]').forEach(function (inp) {
+      var field = inp.closest('.field');
+      if (inp.classList.contains('checkbox-options')) {
+        if (!inp.querySelector('input:checked')) { ok = false; setErr(field); }
+        return;
+      }
+      if (!String(inp.value || '').trim()) { ok = false; setErr(field); }
+    });
+    var email = document.getElementById('email').value.trim();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { ok = false; setErr(document.getElementById('email').closest('.field'), 'Invalid email address.'); }
+    if (!resumeFile && !document.getElementById('resume_text').value.trim()) { ok = false; setErr(document.getElementById('resume_fieldset').closest('.field')); }
+    var em = document.getElementById('error_message');
+    if (!ok) { em.textContent = 'Please complete all required fields.'; em.scrollIntoView(); return; }
+    em.textContent = '';
+
+    var out = {};
+    new FormData(document.getElementById('application_form')).forEach(function (v, k) {
+      if (/question_id|priority|utf8|fingerprint|render_date|page_load_time|dev_field/.test(k)) return;
+      if (v === '') return;
+      var node = document.querySelector('[name="' + CSS.escape(k) + '"]');
+      if (node && node.tagName === 'SELECT') v = node.options[node.selectedIndex].text;
+      if (node && node.type === 'checkbox') v = node.parentNode.textContent.trim();
+      out[k] = v;
+    });
+    if (resumeFile) out['job_application[resume]'] = resumeFile;
+    window.__submitted = out;
+
+    document.getElementById('application').innerHTML =
+      '<div id="application_confirmation"><h1>Thank you for applying.</h1><p>Your application has been received. If your application seems like a good fit for the position we will contact you soon.</p></div>';
+    location.hash = '#confirmation';
+  });
+})();
+</script>
+</body>
+</html>

@@ -32,6 +32,8 @@ export interface JobResult {
   outcome: 'sent' | 'dry' | 'skip';
   reason: string;
   pushback?: string;
+  /** An outside form the recruiter asked for (handed to Site Pilot). */
+  formUrl?: string;
   /** The AI couldn't answer (rate limit, quota…): not a skip, the job is tried again later. */
   aiError?: string;
   answers?: { q: string; a: string }[];
@@ -195,7 +197,11 @@ async function runChatbot(ms: number, maxQuestions: number): Promise<JobResult> 
     asked = q;
     // "Please fill this Google Form", a link to another site: only you can do that. Never claim it
     // was done; leave the job.
-    if (OUTSIDE_FORM.test(q)) return { outcome: 'skip', reason: `asks you to fill an outside form ("${q.slice(0, 60)}")`, answers };
+    if (OUTSIDE_FORM.test(q)) {
+      // The link goes to Site Pilot, which fills such forms with the local model.
+      const link = [...d.querySelectorAll<HTMLAnchorElement>('a[href^="http"]')].map((a) => a.href).filter((h) => !/naukri\.com/i.test(h)).pop() ?? q.match(/https?:\/\/[^\s"'<>)]+|forms\.gle\/[\w-]+/i)?.[0];
+      return { outcome: 'skip', reason: `asks you to fill an outside form ("${q.slice(0, 60)}")`, answers, formUrl: link ? (link.startsWith('http') ? link : `https://${link}`) : undefined };
+    }
     if (answers.length >= maxQuestions) return { outcome: 'skip', reason: `more than ${maxQuestions} chatbot questions`, answers };
     const ok = await answerChatbot(d, q, answers);
     if (!ok) return { outcome: 'skip', reason: `no answer for "${q.slice(0, 60)}"`, answers };

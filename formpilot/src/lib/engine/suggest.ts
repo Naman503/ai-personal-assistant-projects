@@ -291,8 +291,12 @@ export class SuggestEngine {
   }
 
   /** Fill many fields with one model call. Facts answer the factual fields directly. */
-  async fillForm(fields: { id: string; field: FieldContext }[], page: PageContext, signal: AbortSignal) {
-    const s = this.settings();
+  /**
+   * Answer a whole form. `override`: settings to use for the model call (Site Pilot passes the
+   * local model as the only provider); facts, rules and memory are always yours.
+   */
+  async fillForm(fields: { id: string; field: FieldContext }[], page: PageContext, signal: AbortSignal, override?: Settings, extra?: { onWait?: (why: string) => void }) {
+    const s = override ?? this.settings();
     const t0 = performance.now();
     const facts = await this.facts();
     const values: Record<string, string> = {};
@@ -341,6 +345,7 @@ export class SuggestEngine {
         thinking: s.generation.thinking,
         stream: s.generation.streaming,
         signal,
+        onWait: extra?.onWait,
       });
       const parsed = parseBatch(r.text);
       for (const f of remaining) {
