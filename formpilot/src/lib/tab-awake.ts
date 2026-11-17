@@ -36,7 +36,7 @@ export async function keepTabAwake(tabId: number): Promise<boolean> {
   try {
     await chrome.debugger.attach({ tabId }, '1.3');
     await emulateFocus(tabId);
-    log.info('keeping the autopilot tab awake while its window is behind others');
+    log.debug('keeping the autopilot tab awake while its window is behind others');
     return true;
   } catch (e) {
     log.warn('could not keep the autopilot tab awake', e);

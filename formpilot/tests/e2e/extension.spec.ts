@@ -922,6 +922,8 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   // for when its window is behind others.
   const attached = () => sw.evaluate(async () => { const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { tabId: number }; return chrome.debugger.sendCommand({ tabId: st.tabId }, 'Runtime.evaluate', { expression: '1' }).then(() => true, () => false); });
   expect(await attached()).toBe(true);
+  // A 30 s alarm re-attaches after Brave stops the idle worker (which drops the session).
+  expect(await sw.evaluate(async () => (await chrome.alarms.get('fp-ap-awake'))?.periodInMinutes)).toBe(0.5);
   expect(await list.evaluate(() => document.hasFocus())).toBe(true);
   // The Autopilot page shows the break and offers to skip it.
   const page = await context.newPage();
@@ -944,6 +946,7 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   await expect.poll(attached, { timeout: 5000 }).toBe(false);
   expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-tick'))).toBeFalsy();
   expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-go'))).toBeFalsy();
+  expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-awake'))).toBeFalsy();
 });
 
 
