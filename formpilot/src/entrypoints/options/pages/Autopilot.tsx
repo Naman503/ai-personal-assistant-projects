@@ -150,13 +150,19 @@ export function Autopilot({ settings, update }: PageProps) {
                 d.autopilot.dailyCap = x.dailyCap;
               } else fn(d.autopilot[p]);
             });
+          const blocked = day?.blocked?.[p];
           return (
             <Row
               key={p}
               label={name}
-              description={`${today ? `Today: ${today.sent} sent · ${today.dry} would apply · ${today.skipped} skipped. ` : ''}${exp !== null ? `Skips jobs asking more than ${exp} years.` : ''}`}
+              description={`${blocked ? `Stopped for today: ${blocked.reason}. ` : ''}${today ? `Today: ${today.sent} sent · ${today.dry} would apply · ${today.skipped} skipped. ` : ''}${exp !== null ? `Skips jobs asking more than ${exp} years.` : ''}`}
             >
               <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
+                {blocked ? (
+                  <Button onClick={() => void call('unblock', p)} title="Let the autopilot try this portal again today">
+                    Try again
+                  </Button>
+                ) : null}
                 <label className="flex items-center gap-1.5">
                   On <Switch checked={enabled} onCheckedChange={(v) => upd((x) => void (x.enabled = v))} />
                 </label>

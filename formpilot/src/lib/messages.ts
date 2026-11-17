@@ -46,7 +46,7 @@ export type RpcRequest =
   | { type: 'autopilot-rec-picked'; picked: { id: string; title: string; company: string; url: string }[] }
   | { type: 'autopilot-rec-done'; result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string; single?: boolean } }
   | { type: 'autopilot-job-done'; result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string; formUrl?: string } }
-  | { type: 'autopilot'; action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now' | 'resume' }
+  | { type: 'autopilot'; action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now' | 'resume' | 'unblock'; platform?: import('./sites').Platform }
   | { type: 'outreach-done'; result: import('@/entrypoints/content/linkedin-outreach').OutreachResult }
   | { type: 'outreach'; action: 'status' | 'run-now' }
   | { type: 'tracker-test'; url?: string }

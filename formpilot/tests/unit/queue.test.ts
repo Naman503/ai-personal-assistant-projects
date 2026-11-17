@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { candidates, closeButton, easyApplyButton, companyFrom, dialogCompany, dialogReady, isSentDialog, jobCards, paneCompany, pushbackNotice, sameCompany, titleSkipped, upsellDecline } from '@/lib/queue';
+import { candidates, closeButton, easyApplyButton, pushbackKind, companyFrom, dialogCompany, dialogReady, isSentDialog, jobCards, paneCompany, pushbackNotice, sameCompany, titleSkipped, upsellDecline } from '@/lib/queue';
 
 const card = (title: string, company: string, extra: string[]) =>
   `<div class="x"><div role="button" componentkey="k"><div>${title} (Verified job)</div><div>${title}</div><div>${company}</div><div>Bengaluru</div>${extra.map((e) => `<div>${e}</div>`).join('')}<button aria-label="Dismiss ${title} job">x</button></div></div>`;
@@ -87,5 +88,19 @@ describe('the Easy Apply control', () => {
     expect(easyApplyButton()?.tagName).toBe('A');
     document.body.innerHTML = `<a aria-label="Easy Apply to this job" aria-disabled="true" href="#">Easy Apply</a>`;
     expect(easyApplyButton()).toBeNull();
+  });
+});
+
+describe('LinkedIn pushback', () => {
+  it('reads the daily Easy Apply limit pop-up (markup captured live, 17 Nov)', () => {
+    document.body.innerHTML = readFileSync('tests/fixtures/linkedin-limit-dialog.html', 'utf8');
+    const msg = pushbackNotice(document, 'https://www.linkedin.com/jobs/search-results/?currentJobId=1');
+    expect(msg).toMatch(/Easy Apply limit/i);
+    expect(pushbackKind(msg)).toBe('limit');
+  });
+  it('a checkpoint or sign-in page is a security stop, not a limit', () => {
+    document.body.innerHTML = '<p>Let’s do a quick security check</p>';
+    expect(pushbackKind(pushbackNotice(document, 'https://www.linkedin.com/feed/'))).toBe('security');
+    expect(pushbackKind(pushbackNotice(document, 'https://www.linkedin.com/checkpoint/challenge'))).toBe('security');
   });
 });

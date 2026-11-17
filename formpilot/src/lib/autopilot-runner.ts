@@ -17,7 +17,7 @@ import { recordInTracker } from './tracker';
 import { keepTabAwake, releaseTab } from './tab-awake';
 import { resumePoint } from './autopilot-resume';
 export { resumePoint };
-import { relevantWords, titleRelevant, titleSkipped } from './queue';
+import { pushbackKind, relevantWords, titleRelevant, titleSkipped } from './queue';
 import { cutshortSearchUrl, founditSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
 
 const log = createLogger('autopilot');
@@ -316,6 +316,7 @@ export class Autopilot {
       const p = PLATFORMS[pi];
       const pp = platformPrefs(ap, p);
       if (!pp.enabled) continue;
+      if (st.day.blocked?.[p]) continue; // stopped for today (its limit or a security wall)
       const counts = st.day.byPlatform[p];
       if (counts.sent + counts.dry >= pp.dailyCap) continue;
       const view: DayState = { ...st.day, sent: counts.sent, dry: counts.dry };
@@ -473,7 +474,7 @@ export class Autopilot {
     }
     if (cur.stage === 'list') {
       const reply = (await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'site-list', platform: p }, { frameId: 0 }).catch(() => null)) as { jobs?: SiteJob[]; pushback?: string } | null;
-      if (reply?.pushback) return this.stop(`${reply.pushback}. Stopped so your account stays safe.`, true);
+      if (reply?.pushback) return this.blockPlatform(st, p, reply.pushback);
       if (!reply?.jobs?.length) return this.notReady(st, `${PLATFORM_NAME[p]} showed no job list (signed out, no results, or the page changed)`, () => this.finishBatch(st, 'no job list', true));
       const rel = this.relevant(ap);
       const seen = new Set(st.day.seen);
@@ -595,7 +596,7 @@ export class Autopilot {
       }
     }
     await save(st, `${PLATFORM_NAME[p]} · ${verb}: ${job?.title ?? '?'} · ${job?.company ?? ''} (${result.reason})${handed}`);
-    if (result.pushback) return this.stop(`${result.pushback}. Stopped so your account stays safe.`, true);
+    if (result.pushback) return this.blockPlatform(st, p, result.pushback);
     cur.i = (cur.i ?? 0) + 1;
     if (cur.i >= (cur.jobs?.length ?? 0) || (cur.done ?? 0) >= cur.batch || counts.sent + counts.dry >= platformPrefs(ap, p).dailyCap) return this.finishBatch(st, 'batch done');
     if (paused) {
@@ -661,7 +662,36 @@ export class Autopilot {
     if (!st.day.exhausted.includes(key)) st.day.exhausted = [...st.day.exhausted, key];
   }
 
-  private async finishBatch(st: ApState, why: string, exhausted = false, exhaustedKey?: string) {
+  /**
+   * A portal pushed back (its daily limit, a sign-in or security wall): stop only that portal for the
+   * rest of today and go on with the others after a short break. Before 1.22.0 any pushback stopped
+   * the whole autopilot (17 Nov: LinkedIn's "You reached today’s Easy Apply limit" also stopped
+   * Naukri and Foundit).
+   */
+  private async blockPlatform(st: ApState, p: Platform, reason: string) {
+    const kind = pushbackKind(reason);
+    st.day.blocked = { ...(st.day.blocked ?? {}), [p]: { reason, at: Date.now(), kind } };
+    const name = PLATFORM_NAME[p];
+    notify(`FormPilot: ${name} stopped for today`, kind === 'limit' ? `${reason}. The other portals carry on; ${name} starts again tomorrow.` : `${reason}. Have a look at ${name} in the autopilot window. The other portals carry on.`);
+    if (kind === 'security') {
+      void chrome.action.setBadgeText({ text: '!' }).catch(() => {});
+      void chrome.action.setBadgeBackgroundColor({ color: '#dc2626' }).catch(() => {});
+    }
+    await save(st, `${name} stopped for today: ${reason}`);
+    if (st.current && (st.current.platform ?? 'linkedin') === p) return this.finishBatch(st, `${name} stopped for today`, false, undefined, rand(1, 3));
+    return save(st);
+  }
+
+  /** Let a portal stopped for today try again (the Autopilot page's "Try again"). */
+  async unblock(p: Platform) {
+    const st = await loadState();
+    if (!st.day.blocked?.[p]) return;
+    const { [p]: _gone, ...rest } = st.day.blocked;
+    st.day.blocked = rest;
+    await save(st, `${PLATFORM_NAME[p]}: trying again today`);
+  }
+
+  private async finishBatch(st: ApState, why: string, exhausted = false, exhaustedKey?: string, gapMin?: number) {
     const ap = this.settings().autopilot;
     const cur = st.current!;
     const p = (cur.platform ?? 'linkedin') as Platform;
@@ -672,7 +702,7 @@ export class Autopilot {
     await Promise.all([GO, NEXT, WATCHDOG].map((a) => chrome.alarms.clear(a)));
     const b = st.day.byPlatform[p];
     if (!st.running) return save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. Paused`);
-    const next = Date.now() + gapMinutes(ap) * 60_000;
+    const next = Date.now() + (gapMin ?? gapMinutes(ap)) * 60_000;
     st.phase = 'waiting';
     st.nextAt = next;
     await at(TICK, next);
@@ -729,7 +759,7 @@ export class Autopilot {
     newDay(st);
     if (result.pushback) {
       await save(st, `Naukri: ${result.reason}`);
-      return this.stop(`${result.pushback}. Stopped so your account stays safe.`, true);
+      return this.blockPlatform(st, 'naukri', result.pushback);
     }
     if (result.aiError && AI_BLOCKING.has(result.aiError)) return st.running ? this.aiPause(st, result.aiError) : save(st);
     if (result.outcome === 'none') return this.finishBatch(st, 'no recommended job fits; job searches next', true, 'naukri:rec');
@@ -779,6 +809,11 @@ export class Autopilot {
     if (result.sent + result.dry === 0 && /done with this list|no job list/i.test(result.reason)) this.exhaust(st, title);
     const cap = platformPrefs(ap, 'linkedin').dailyCap;
     const summary = `LinkedIn "${title}": ${result.sent} sent, ${result.dry} would apply, ${result.skipped} skipped. LinkedIn today ${li.sent + li.dry}/${cap}`;
+    if (paused && result.pushback) {
+      st.day.blocked = { ...(st.day.blocked ?? {}), linkedin: { reason: result.pushback, at: Date.now(), kind: pushbackKind(result.pushback) } };
+      st.current = undefined;
+      return save(st, `${summary}. LinkedIn stopped for today: ${result.pushback} (paused)`);
+    }
     if (paused) {
       // Keep what's left of the batch for Resume; a finished list or batch starts fresh instead.
       const cur = st.current;
@@ -800,7 +835,13 @@ export class Autopilot {
     await chrome.alarms.clear(WATCHDOG);
     if (result.pushback) {
       await save(st, summary);
-      return this.stop(`LinkedIn pushed back: ${result.pushback}. Stopped so your account stays safe.`, true);
+      // LinkedIn only: stop it for today, and the next portal's batch starts in a few minutes.
+      await this.blockPlatform(st, 'linkedin', result.pushback);
+      const soon = Date.now() + rand(1, 3) * 60_000;
+      st.phase = 'waiting';
+      st.nextAt = soon;
+      await at(TICK, soon);
+      return save(st, `Next batch at ${fmt(soon)} on the next portal`);
     }
     if (result.aiError && AI_BLOCKING.has(result.aiError)) {
       await save(st, summary);

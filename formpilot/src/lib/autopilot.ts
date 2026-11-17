@@ -84,6 +84,8 @@ export interface DayState {
   widened?: string[];
   /** When Naukri's Recommended list last had nothing that fits (it refreshes during the day). */
   recEmptyAt?: number;
+  /** Portals stopped for the rest of today (their daily limit, a sign-in or security wall). */
+  blocked?: Partial<Record<'linkedin' | 'naukri' | 'foundit' | 'cutshort', { reason: string; at: number; kind: 'limit' | 'security' }>>;
 }
 
 const zero = () => ({ sent: 0, dry: 0, skipped: 0 });

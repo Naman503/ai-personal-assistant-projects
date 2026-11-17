@@ -109,8 +109,15 @@ export function dialogReady(d: Element | null): boolean {
 export function pushbackNotice(doc: Document = document, href = location.href): string {
   if (/linkedin\.com\/(checkpoint|authwall|login|uas\/login)/.test(href)) return 'LinkedIn wants you to verify or sign in';
   const t = (doc.body?.innerText || '').slice(0, 20000);
-  const m = t.match(/(reached (the|your) (daily )?(easy apply|application|apply) limit|you.ve reached the limit|too many (requests|applications)|unusual activity|let.s do a quick security check)/i);
+  // 17 Nov 2026, live: a <dialog data-testid="dialog"> "You reached today’s Easy Apply limit … Save
+  // this job and continue applying tomorrow." with Got it / Learn more.
+  const m = t.match(/(reached (the|your|today.s) (daily )?(easy apply|application|apply) limit|easy apply limit|continue applying tomorrow|you.ve reached the limit|too many (requests|applications)|unusual activity|let.s do a quick security check)/i);
   return m ? `LinkedIn says: "${m[0]}"` : '';
+}
+
+/** A daily limit (back tomorrow) or a security / sign-in wall (needs you to look). */
+export function pushbackKind(msg: string): 'limit' | 'security' {
+  return /limit|tomorrow|too many applications/i.test(msg) && !/security|verify|sign in|captcha|unusual/i.test(msg) ? 'limit' : 'security';
 }
 
 /**
