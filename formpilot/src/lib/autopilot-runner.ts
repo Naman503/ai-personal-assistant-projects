@@ -25,6 +25,13 @@ const GO = 'fp-ap-go';
 const WATCHDOG = 'fp-ap-watchdog';
 const NEXT = 'fp-ap-next';
 const ALL = [TICK, GO, WATCHDOG, NEXT];
+/**
+ * Every 30 s while the autopilot is on: Brave stops an idle background worker after ~30 s, and
+ * that also drops the debugger session that keeps the autopilot tab awake (lib/tab-awake.ts).
+ * This wakes the worker and re-attaches. Kept out of ALL: resume() treats ALL as "a step is due".
+ */
+const AWAKE = 'fp-ap-awake';
+const awakeAlarm = () => chrome.alarms.create(AWAKE, { periodInMinutes: 0.5 });
 
 export type Phase = 'stopped' | 'loading' | 'batch' | 'waiting' | 'outside-hours' | 'done-today' | 'ai-wait';
 
@@ -127,13 +134,14 @@ export class Autopilot {
     const ap = this.settings().autopilot;
     const on = PLATFORMS.filter((p) => platformPrefs(ap, p).enabled).map((p) => `${PLATFORM_NAME[p]}${platformPrefs(ap, p).dryRun ? ' (dry run)' : ''}`);
     await save(st, `Autopilot started: ${on.join(', ') || 'no platform turned on'}`);
+    await awakeAlarm();
     await this.tick();
   }
 
   async stop(reason = 'Stopped by you', alert = false) {
     const st = await loadState();
     if (st.tabId !== undefined) await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'apply-queue-stop' }, { frameId: 0 }).catch(() => {});
-    await Promise.all(ALL.map((a) => chrome.alarms.clear(a)));
+    await Promise.all([...ALL, AWAKE].map((a) => chrome.alarms.clear(a)));
     await releaseTab(st.tabId);
     try {
       chrome.power?.releaseKeepAwake();
@@ -157,6 +165,8 @@ export class Autopilot {
   async resume() {
     const st = await loadState();
     if (!st.running) return;
+    if (!(await chrome.alarms.get(AWAKE))) await awakeAlarm();
+    if (st.tabId !== undefined) await keepTabAwake(st.tabId);
     const alarms = await Promise.all(ALL.map((a) => chrome.alarms.get(a)));
     if (alarms.some(Boolean)) return;
     st.current = undefined;
@@ -184,6 +194,21 @@ export class Autopilot {
     else if (name === GO) await this.go();
     else if (name === NEXT) await this.nextJob();
     else if (name === WATCHDOG) await this.watchdog();
+    else if (name === AWAKE) await this.stayAwake();
+  }
+
+  private async stayAwake() {
+    const st = await loadState();
+    if (!st.running) return void chrome.alarms.clear(AWAKE);
+    if (st.tabId !== undefined) await keepTabAwake(st.tabId);
+  }
+
+  /** The browser dropped the session on the autopilot's tab (worker stopped, tab crashed, …): reconnect. */
+  async onDetach(tabId: number | undefined, reason: string) {
+    const st = await loadState();
+    if (!st.running || tabId === undefined || tabId !== st.tabId) return;
+    if (reason === 'canceled_by_user') log.warn('the "debugging this browser" bar was closed; the autopilot reconnects at its next step');
+    else if (await keepTabAwake(tabId)) log.debug(`autopilot tab reconnected (${reason})`);
   }
 
   /** Next platform with something left today, and its next title. */

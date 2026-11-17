@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.19.3] - 2026-11-17
+
+### Fixed
+- **The 1.19.2 fix only held for a moment after each step.** Brave stops FormPilot's idle background worker after about 30 seconds, and that drops the session that keeps the autopilot tab running, so the tab went back to hidden during every pause. While the autopilot is on, a 30-second alarm now wakes the worker and reconnects, and a dropped session is reconnected straight away.
+
 ## [1.19.2] - 2026-11-17
 
 ### Fixed
