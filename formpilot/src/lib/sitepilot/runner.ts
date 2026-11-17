@@ -62,6 +62,8 @@ export interface SpState {
   paused?: boolean;
   /** The job that was in progress when you paused: it goes first after Resume. */
   resumeJob?: string;
+  /** A submitted application waiting for you to enter an emailed code in its page. */
+  held?: { jobId: string; tabId?: number };
   /** Last read of the company job boards. */
   boardsAt?: number;
 }
@@ -234,6 +236,17 @@ export class SitePilot {
     if (!st.paused) return;
     st.paused = false;
     st.phase = 'idle';
+    // You entered the emailed code: check that page for the confirmation (no reload).
+    if (st.held && st.tabId !== undefined && st.held.tabId === st.tabId) {
+      const id = st.held.jobId;
+      st.held = undefined;
+      st.cur = { jobId: id, stage: 'apply', startedAt: Date.now(), lastActivity: Date.now(), round: 20, actions: 0, submitted: 1, busy: false, restarts: 0 };
+      st.phase = 'working';
+      await save(st, 'Resumed: checking the application you confirmed with the code');
+      await at(WATCH, Date.now() + 60_000);
+      return this.startRound(st);
+    }
+    st.held = undefined;
     await save(st, 'Resumed');
     await this.tick(true);
   }
@@ -524,6 +537,13 @@ export class SitePilot {
     const st = await loadSpState();
     if (!st.cur || tabId !== st.tabId) return;
     const cur = st.cur;
+    // The page is still working on an earlier round (after a reload): let that one finish.
+    if (r.kind === 'continue' && r.busy) {
+      cur.busy = true;
+      cur.lastActivity = Date.now();
+      await save(st);
+      return;
+    }
     cur.busy = false;
     cur.round++;
     cur.actions += r.actions ?? 0;
@@ -673,6 +693,25 @@ export class SitePilot {
     const st = await loadSpState();
     const cur = st.cur;
     if (!cur) return;
+    // Submitted, and the site emailed a code to confirm (Greenhouse does this): only you can read
+    // it. The page stays open in Site Pilot's window, Site Pilot pauses, and Resume checks it.
+    if (outcome === 'needs-you' && cur.submitted && /\b(verification|security|confirmation) code\b|\bcode (was )?sent\b|\botp\b/i.test(reason)) {
+      const job = await spDb().jobs.get(cur.jobId);
+      await addStep(cur.jobId, 'the site emailed you a code: type it in Site Pilot\'s window and press Submit, then Resume');
+      await Promise.all([LOAD, WATCH, TICK].map((a) => chrome.alarms.clear(a)));
+      st.held = { jobId: cur.jobId, tabId: st.tabId };
+      st.cur = undefined;
+      st.paused = true;
+      st.phase = 'paused';
+      await save(st, `Paused: ${job?.company ?? 'the site'} emailed you a security code. Type it in Site Pilot's window, press Submit, then Resume.`);
+      try {
+        chrome.notifications?.create(`fp-sp-code-${Date.now()}`, { type: 'basic', iconUrl: chrome.runtime.getURL('icon/128.png'), title: 'Site Pilot needs a code', message: `${job?.company ?? 'A company'} emailed you a security code. Type it in Site Pilot's window, press Submit, then press Resume on the Site Pilot page.`, priority: 2, requireInteraction: true });
+      } catch {
+        /* notifications unavailable */
+      }
+      if (st.windowId !== undefined) await chrome.windows.update(st.windowId, { focused: true, drawAttention: true }).catch(() => {});
+      return;
+    }
     await chrome.alarms.clear(LOAD);
     await chrome.alarms.clear(WATCH);
     const job = await spDb().jobs.get(cur.jobId);

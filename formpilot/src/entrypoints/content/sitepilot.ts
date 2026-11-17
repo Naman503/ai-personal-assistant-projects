@@ -844,7 +844,7 @@ export class SitePilotPage {
   }
 
   async round(ctx: RoundContext): Promise<RoundResult> {
-    if (this.busy) return { kind: 'continue', note: 'round already running' };
+    if (this.busy) return { kind: 'continue', busy: true };
     this.busy = true;
     try {
       return await this.run(ctx);
