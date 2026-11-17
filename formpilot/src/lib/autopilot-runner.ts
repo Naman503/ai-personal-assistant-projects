@@ -322,6 +322,7 @@ export class Autopilot {
       const pp = platformPrefs(ap, p);
       if (!pp.enabled) continue;
       if (st.day.blocked?.[p]) continue; // stopped for today (its limit or a security wall)
+      if ((st.day.restUntil?.[p] ?? 0) > Date.now()) continue; // on its break; the others take turns meanwhile
       const counts = st.day.byPlatform[p];
       if (counts.sent + counts.dry >= pp.dailyCap) continue;
       const view: DayState = { ...st.day, sent: counts.sent, dry: counts.dry };
@@ -353,6 +354,32 @@ export class Autopilot {
     return null;
   }
 
+  /** The earliest end of a break among portals that still have something to do today. */
+  private restingUntil(st: ApState, ap: Settings['autopilot']): { p: Platform; at: number } | null {
+    let best: { p: Platform; at: number } | null = null;
+    for (const p of PLATFORMS) {
+      const until = st.day.restUntil?.[p] ?? 0;
+      if (until <= Date.now()) continue;
+      const pp = platformPrefs(ap, p);
+      const c = st.day.byPlatform[p];
+      if (!pp.enabled || st.day.blocked?.[p] || c.sent + c.dry >= pp.dailyCap) continue;
+      if (!best || until < best.at) best = { p, at: until };
+    }
+    return best;
+  }
+
+  /**
+   * A batch on `p` ended: start its break (your gap between batches) and go on with the next
+   * portal after a short pause, instead of everything waiting out one portal's break.
+   * Returns when the next batch (on whichever portal is free) is looked for.
+   */
+  private rest(st: ApState, p: Platform, gapMin?: number): number {
+    const ap = this.settings().autopilot;
+    const until = Date.now() + (gapMin ?? gapMinutes(ap)) * 60_000;
+    st.day.restUntil = { ...(st.day.restUntil ?? {}), [p]: until };
+    return Math.min(until, Date.now() + rand(1, 2) * 60_000);
+  }
+
   private async tick(force = false) {
     const ap = this.settings().autopilot;
     const st = await loadState();
@@ -372,6 +399,14 @@ export class Autopilot {
     }
     const c = this.choose(st, ap);
     if (!c) {
+      // Every portal with work left is on its break: wait for the first one to finish it.
+      const rest = this.restingUntil(st, ap);
+      if (rest) {
+        st.phase = 'waiting';
+        st.nextAt = rest.at;
+        await at(TICK, rest.at);
+        return save(st, `Every portal is on its break; next batch at ${fmt(rest.at)} (${PLATFORM_NAME[rest.p]})`);
+      }
       const next = tomorrowStart(ap).getTime();
       st.phase = 'done-today';
       st.nextAt = next;
@@ -720,11 +755,11 @@ export class Autopilot {
     await Promise.all([GO, NEXT, WATCHDOG].map((a) => chrome.alarms.clear(a)));
     const b = st.day.byPlatform[p];
     if (!st.running) return save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. Paused`);
-    const next = Date.now() + (gapMin ?? gapMinutes(ap)) * 60_000;
+    const next = this.rest(st, p, gapMin);
     st.phase = 'waiting';
     st.nextAt = next;
     await at(TICK, next);
-    await save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. Next batch at ${fmt(next)}`);
+    await save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. ${PLATFORM_NAME[p]} rests until ${fmt(st.day.restUntil![p]!)}; next portal at ${fmt(next)}`);
   }
 
   /** Which recommended jobs were ticked, just before Apply (the result may come from another page). */
@@ -870,11 +905,11 @@ export class Autopilot {
       await save(st, summary);
       return this.aiPause(st, result.aiError);
     }
-    const next = Date.now() + gapMinutes(ap) * 60_000;
+    const next = this.rest(st, 'linkedin');
     st.phase = 'waiting';
     st.nextAt = next;
     await at(TICK, next);
-    await save(st, `${summary}. Next batch at ${fmt(next)}`);
+    await save(st, `${summary}. LinkedIn rests until ${fmt(st.day.restUntil!.linkedin!)}; next portal at ${fmt(next)}`);
   }
 
   /** LinkedIn skipped a job inside its batch: say which and why in the history (Naukri does per job already). */

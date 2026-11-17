@@ -84,6 +84,8 @@ export interface DayState {
   widened?: string[];
   /** When Naukri's Recommended list last had nothing that fits (it refreshes during the day). */
   recEmptyAt?: number;
+  /** Per portal: when it may run its next batch (its break runs while the other portals take turns). */
+  restUntil?: Partial<Record<import('./sites').Platform, number>>;
   /** Portals stopped for the rest of today (their daily limit, a sign-in or security wall). */
   blocked?: Partial<Record<import('./sites').Platform, { reason: string; at: number; kind: 'limit' | 'security' }>>;
 }
