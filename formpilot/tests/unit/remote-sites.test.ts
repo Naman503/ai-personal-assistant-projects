@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hiristJobs, instahyreJobs, openToIndia, platformOf, searchUrlFor, uplersJobs, wellfoundJobs, ycJobs } from '@/lib/sites';
+import { hiristJobs, sentNotice, instahyreJobs, openToIndia, platformOf, searchUrlFor, uplersJobs, wellfoundJobs, ycJobs } from '@/lib/sites';
 import { himalayasLocation, parseWwr } from '@/lib/sitepilot/feeds';
 import { fitting } from '@/lib/sitepilot/boards';
 import { BOARD_JOB, onHop } from '@/lib/sitepilot/runner';
@@ -73,6 +73,11 @@ describe('remote portals: job lists', () => {
     const [j] = instahyreJobs(html(INSTAHYRE));
     expect(j).toMatchObject({ company: 'Kutumb', title: 'Android Engineer', location: 'Bangalore' });
     expect(j.url).toMatch(/#opp-448613$/);
+  });
+  it('Instahyre: "Application Sent!" on the pop-up button counts as sent', () => {
+    const doc = document.implementation.createHTMLDocument('x');
+    doc.body.innerHTML = '<div role="dialog"><button>Not interested</button><button>Application Sent!</button></div>';
+    expect(sentNotice('instahyre', doc, 'https://www.instahyre.com/candidate/opportunities/?matching=true#opp-1')).toBe(true);
   });
   it('knows the hosts and their lists', () => {
     expect(platformOf('https://wellfound.com/jobs')).toBe('wellfound');
