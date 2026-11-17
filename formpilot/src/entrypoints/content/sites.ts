@@ -104,6 +104,9 @@ function lastQuestion(d: HTMLElement): string {
 
 const visible = (el: Element) => (el as HTMLElement).getBoundingClientRect().width > 0;
 
+/** Questions that send you elsewhere (a Google Form, a test link). */
+const OUTSIDE_FORM = /https?:\/\/|forms\.gle|docs\.google\.com\/forms|typeform|(fill|complete|submit) (this|the|our|below) (google )?(form|assessment|test)|form \(mandatory\)/i;
+
 /** Chips that aren't answers. */
 const SKIP_CHIP = /^(skip( this question)?|skip question|not now|later)$/i;
 
@@ -190,6 +193,9 @@ async function runChatbot(ms: number, maxQuestions: number): Promise<JobResult> 
     }
     stuck = 0;
     asked = q;
+    // "Please fill this Google Form", a link to another site: only you can do that. Never claim it
+    // was done; leave the job.
+    if (OUTSIDE_FORM.test(q)) return { outcome: 'skip', reason: `asks you to fill an outside form ("${q.slice(0, 60)}")`, answers };
     if (answers.length >= maxQuestions) return { outcome: 'skip', reason: `more than ${maxQuestions} chatbot questions`, answers };
     const ok = await answerChatbot(d, q, answers);
     if (!ok) return { outcome: 'skip', reason: `no answer for "${q.slice(0, 60)}"`, answers };
