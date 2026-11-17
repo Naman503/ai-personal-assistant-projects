@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerFitsOptions, startDateAnswer } from '@/lib/fields/answers';
+import { answerFitsOptions, noneAnswer, startDateAnswer } from '@/lib/fields/answers';
 import { checkboxGroups } from '@/lib/fields/context';
 import { radioGroupLabel, radioOptionLabel } from '@/lib/fields/radios';
 import { fillCheckboxGroup, splitChoices } from '@/lib/fields/fill';
@@ -70,5 +70,20 @@ describe('typeahead suggestions', () => {
     const opts = [...document.querySelectorAll<HTMLElement>('[role=option]')];
     expect(bestSuggestion('Indore', opts)?.textContent).toBe('Indore, Madhya Pradesh, India');
     expect(bestSuggestion('Indore Cantonment', opts)?.textContent).toBe('Indore Cantonment, India');
+  });
+});
+
+describe('questions whose answer is none', () => {
+  it('variable pay, bonus and stock are 0; expectations are not', () => {
+    expect(noneAnswer({ label: 'Current Variable Compensation' })).toBe('0');
+    expect(noneAnswer({ label: 'Current Unvested Options/RSU value' })).toBe('0');
+    expect(noneAnswer({ label: 'Expected variable pay' })).toBeNull();
+    expect(noneAnswer({ label: 'Current Fixed Compensation' })).toBeNull();
+  });
+  it('"If yes, their names" follow-ups are Not applicable, never your own name', () => {
+    expect(noneAnswer({ label: 'If yes, please provide their name(s).' })).toBe('Not applicable');
+    expect(noneAnswer({ label: 'If yes, who referred you?' })).toBe('Not applicable');
+    expect(noneAnswer({ label: 'If yes, what was the team size?' })).toBeNull();
+    expect(noneAnswer({ label: 'Do you know anyone here?', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] })).toBeNull();
   });
 });

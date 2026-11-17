@@ -260,7 +260,7 @@ export default defineBackground({
           await autopilot.onJobDone(msg.result, sender.tab?.id);
           return null;
         case 'autopilot-skip':
-          await autopilot.onSkip(msg.job, msg.reason, sender.tab?.id);
+          await autopilot.onSkip(msg.job, msg.reason, sender.tab?.id, msg.key);
           return null;
         case 'autopilot-progress':
           await autopilot.onProgress(msg.text, sender.tab?.id);
@@ -270,7 +270,8 @@ export default defineBackground({
           return null;
         case 'autopilot':
           if (msg.action === 'start') await autopilot.start();
-          else if (msg.action === 'stop') await autopilot.stop();
+          else if (msg.action === 'stop' || msg.action === 'pause') await autopilot.pause();
+          else if (msg.action === 'reset') await autopilot.reset();
           else if (msg.action === 'run-now') await autopilot.runNow();
           else if (msg.action === 'resume') await autopilot.resume();
           return autopilot.status();

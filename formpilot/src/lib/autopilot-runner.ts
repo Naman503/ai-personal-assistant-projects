@@ -15,6 +15,8 @@ import { AI_BLOCKING, nextPacificMidnight, batchSize, freshDay, gapMinutes, inAc
 import { createLogger } from './logger';
 import { recordInTracker } from './tracker';
 import { keepTabAwake, releaseTab } from './tab-awake';
+import { resumePoint } from './autopilot-resume';
+export { resumePoint };
 import { relevantWords, titleRelevant, titleSkipped } from './queue';
 import { cutshortSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
 
@@ -33,7 +35,7 @@ const ALL = [TICK, GO, WATCHDOG, NEXT];
 const AWAKE = 'fp-ap-awake';
 const awakeAlarm = () => chrome.alarms.create(AWAKE, { periodInMinutes: 0.5 });
 
-export type Phase = 'stopped' | 'loading' | 'batch' | 'waiting' | 'outside-hours' | 'done-today' | 'ai-wait';
+export type Phase = 'stopped' | 'paused' | 'loading' | 'batch' | 'waiting' | 'outside-hours' | 'done-today' | 'ai-wait';
 
 export interface ApState {
   running: boolean;
@@ -59,6 +61,10 @@ export interface ApState {
     sent?: number;
     dry?: number;
     skipped?: number;
+    /** The page this batch started from (search, Recommended jobs), to reopen it after a pause. */
+    url?: string;
+    /** Set while paused: the batch picks up here on Resume. */
+    pausedAt?: number;
   };
   nextAt?: number;
   /** The last Naukri Recommended batch, so a confirmation that arrives late still counts. */
@@ -94,6 +100,8 @@ const rand = (a: number, b: number) => a + Math.random() * Math.max(0, b - a);
 /** Time to let a page load before acting on it: 30–55 s, never the same twice (alarms can't fire sooner than 30 s). */
 const loadWait = () => Math.round(rand(30, 55) * 1000);
 
+const job0 = (cur: NonNullable<ApState['current']>) => cur.jobs?.[cur.i ?? 0];
+
 function newDay(st: ApState) {
   const today = ist().date;
   if (st.day.date !== today) st.day = freshDay(today);
@@ -128,14 +136,103 @@ export class Autopilot {
 
   async start() {
     const st = await loadState();
+    const before = st.day.date;
     newDay(st);
+    // A batch paused today picks up where it was; one from another day is dropped (its counts reset at midnight).
+    const resumable = st.current?.pausedAt && st.day.date === before && Date.now() - st.current.pausedAt < 12 * 3600_000 ? st.current : undefined;
+    if (!resumable) st.current = undefined;
     st.running = true;
     st.phase = 'waiting';
     const ap = this.settings().autopilot;
     const on = PLATFORMS.filter((p) => platformPrefs(ap, p).enabled).map((p) => `${PLATFORM_NAME[p]}${platformPrefs(ap, p).dryRun ? ' (dry run)' : ''}`);
-    await save(st, `Autopilot started: ${on.join(', ') || 'no platform turned on'}`);
     await awakeAlarm();
+    if (resumable) {
+      await save(st, `Resumed: ${on.join(', ') || 'no platform turned on'}. Picking up at ${resumePoint(resumable)}`);
+      return this.resumeBatch();
+    }
+    await save(st, `Autopilot started: ${on.join(', ') || 'no platform turned on'}`);
     await this.tick();
+  }
+
+  /**
+   * Pause (the Stop / Pause button): everything stops now, and the batch in progress is kept: which
+   * portal, which title, the job list and the position in it. Results that arrive after the pause
+   * (LinkedIn's queue reports when it stops; a Naukri job that was mid-apply) are still counted.
+   */
+  async pause(reason = 'Paused by you') {
+    const st = await loadState();
+    if (!st.running) return;
+    st.running = false;
+    st.phase = 'paused';
+    st.progress = undefined;
+    st.nextAt = undefined;
+    if (st.current) {
+      st.current.pausedAt = Date.now();
+      // LinkedIn: forget the reply-wait; the queue reports what it did when it stops (onBatchDone).
+      if (st.current.stage === 'pause') st.current.stage = 'job';
+    }
+    await save(st, st.current ? `${reason}. Resume picks up at ${resumePoint(st.current)}` : `${reason}. Resume starts the next batch`);
+    if (st.tabId !== undefined) await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'apply-queue-stop' }, { frameId: 0 }).catch(() => {});
+    await Promise.all([...ALL, AWAKE].map((a) => chrome.alarms.clear(a)));
+    await releaseTab(st.tabId);
+    try {
+      chrome.power?.releaseKeepAwake();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Forget a paused batch: the next start begins with a new batch on the next portal. */
+  async reset() {
+    const st = await loadState();
+    if (st.running) return;
+    if (st.current) {
+      const p = (st.current.platform ?? 'linkedin') as Platform;
+      if (st.current.index >= 0) st.lastTitleBy = { ...(st.lastTitleBy ?? {}), [p]: st.current.index };
+      if (p === 'linkedin') st.lastTitle = st.current.index;
+    }
+    st.current = undefined;
+    st.phase = 'stopped';
+    await save(st, 'Paused batch dropped; the next start begins a new batch');
+  }
+
+  /** Reopen the paused batch's page and carry on from the same job. */
+  private async resumeBatch() {
+    const st = await loadState();
+    const cur = st.current;
+    if (!st.running || !cur) return this.tick();
+    const p = (cur.platform ?? 'linkedin') as Platform;
+    cur.pausedAt = undefined;
+    cur.tries = 0;
+    try {
+      chrome.power?.requestKeepAwake('display');
+    } catch {
+      /* ignore */
+    }
+    if (p !== 'linkedin' && (cur.stage === 'job' || cur.stage === 'pause') && cur.jobs?.length) {
+      const i = cur.i ?? 0;
+      if (i >= cur.jobs.length || (cur.done ?? 0) >= cur.batch) return this.finishBatch(st, 'batch done');
+      const tabId = await this.ensureTab(st, cur.jobs[i].url);
+      if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
+      await keepTabAwake(tabId);
+      st.phase = 'batch';
+      return this.openJob(st, true);
+    }
+    if (!cur.url || (p === 'linkedin' && cur.batch <= 0)) {
+      // Nothing to reopen (an older paused state, or the batch was already complete).
+      st.current = undefined;
+      await save(st);
+      return this.tick();
+    }
+    if (p !== 'linkedin' && cur.stage !== 'rec') cur.stage = 'list';
+    const tabId = await this.ensureTab(st, cur.url);
+    if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
+    await keepTabAwake(tabId);
+    st.phase = 'loading';
+    st.progress = { text: `Reopening ${PLATFORM_NAME[p]}: "${cur.title}"`, at: Date.now() };
+    await at(GO, Date.now() + loadWait());
+    await at(WATCHDOG, Date.now() + (p === 'linkedin' ? 35 : 15) * 60_000);
+    await save(st);
   }
 
   async stop(reason = 'Stopped by you', alert = false) {
@@ -224,7 +321,8 @@ export class Autopilot {
       const view: DayState = { ...st.day, sent: counts.sent, dry: counts.dry };
       // Naukri: the Recommended jobs page first (only Naukri-apply jobs, up to 5 per Apply).
       // The Recommended list refreshes during the day: look again 3 hours after it ran dry.
-      if (st.day.exhausted.includes('naukri:rec') && st.day.recEmptyAt && Date.now() - st.day.recEmptyAt > 3 * 3600_000) {
+      // (No timestamp: marked empty by an older version; look again now.)
+      if (st.day.exhausted.includes('naukri:rec') && Date.now() - (st.day.recEmptyAt ?? 0) > 3 * 3600_000) {
         st.day.exhausted = st.day.exhausted.filter((k) => k !== 'naukri:rec');
       }
       if (p === 'naukri' && ap.naukri.mode === 'recommended' && !st.day.exhausted.includes('naukri:rec')) {
@@ -279,7 +377,7 @@ export class Autopilot {
     if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
     await keepTabAwake(tabId);
     st.lastPlatform = c.pi;
-    st.current = { platform: c.platform, title: c.title, index: c.index, batch: c.size, startedAt: Date.now(), tries: 0, ...(c.platform === 'linkedin' ? {} : { stage: c.rec ? ('rec' as const) : ('list' as const), i: 0, done: 0, sent: 0, dry: 0, skipped: 0 }) };
+    st.current = { platform: c.platform, title: c.title, index: c.index, batch: c.size, startedAt: Date.now(), tries: 0, url, ...(c.platform === 'linkedin' ? {} : { stage: c.rec ? ('rec' as const) : ('list' as const), i: 0, done: 0, sent: 0, dry: 0, skipped: 0 }) };
     st.phase = 'loading';
     st.nextAt = undefined;
     st.progress = { text: `Opening the ${PLATFORM_NAME[c.platform]} search`, at: Date.now() };
@@ -352,6 +450,8 @@ export class Autopilot {
               cap: pp.dailyCap,
               relevant: this.relevant(ap),
               skipTitles: ap.skipWords,
+              // Jobs skipped earlier today (needs a test, company mismatch…): not opened again.
+              seen: st.day.seen.filter((k) => k.startsWith('li:')).map((k) => k.slice(3)),
               pauseSec: [ap.pauseMinSec, Math.max(ap.pauseMinSec, ap.pauseMaxSec)],
             },
           },
@@ -424,30 +524,38 @@ export class Autopilot {
     return this.stop(`${why}. Have a look, then start it again.`, true);
   }
 
-  private async openJob(st: ApState) {
+  private async openJob(st: ApState, alreadyOpen = false) {
     const cur = st.current!;
     const job = cur.jobs![cur.i ?? 0];
     cur.stage = 'job';
     cur.tries = 0;
-    st.day.seen = [...st.day.seen, job.url, jobKey(job)].slice(-1500);
+    if (!st.day.seen.includes(job.url)) st.day.seen = [...st.day.seen, job.url, jobKey(job)].slice(-1500);
     st.progress = { text: `Opening ${job.title} · ${job.company}`, at: Date.now() };
-    if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: job.url, active: true }).catch(() => {});
+    if (st.tabId !== undefined && !alreadyOpen) await chrome.tabs.update(st.tabId, { url: job.url, active: true }).catch(() => {});
     await at(GO, Date.now() + loadWait());
     await at(WATCHDOG, Date.now() + 12 * 60_000);
     await save(st);
   }
 
-  /** A Naukri / Cutshort job page finished. */
   /** Jobs the Autopilot can't do itself (company-site applies, outside forms) go to Site Pilot. */
   handOff?: (jobs: import('./sitepilot/db').NewJob[]) => Promise<unknown>;
 
+  /** A Naukri / Cutshort job page finished. */
   async onJobDone(result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string; formUrl?: string }, tabId?: number) {
     const ap = this.settings().autopilot;
     const st = await loadState();
     const cur = st.current;
-    if (!st.running || !cur?.jobs || (tabId !== undefined && tabId !== st.tabId)) return;
+    const paused = !st.running && st.phase === 'paused';
+    if ((!st.running && !paused) || !cur?.jobs || (tabId !== undefined && tabId !== st.tabId)) return;
+    // One result per job: a second report (the job page and Naukri's confirmation page both) is ignored.
+    if (cur.stage !== 'job') return;
     newDay(st);
     const p = cur.platform as Platform;
+    if (paused && result.aiError && AI_BLOCKING.has(result.aiError)) {
+      // Paused anyway: try this job again on Resume.
+      if (job0(cur)) st.day.seen = st.day.seen.filter((u) => u !== job0(cur)!.url);
+      return save(st);
+    }
     const job = cur.jobs[cur.i ?? 0];
     const counts = st.day.byPlatform[p];
     if (result.aiError && AI_BLOCKING.has(result.aiError)) {
@@ -488,6 +596,10 @@ export class Autopilot {
     if (result.pushback) return this.stop(`${result.pushback}. Stopped so your account stays safe.`, true);
     cur.i = (cur.i ?? 0) + 1;
     if (cur.i >= (cur.jobs?.length ?? 0) || (cur.done ?? 0) >= cur.batch || counts.sent + counts.dry >= platformPrefs(ap, p).dailyCap) return this.finishBatch(st, 'batch done');
+    if (paused) {
+      cur.stage = 'job';
+      return save(st);
+    }
     // A person-like pause before the next job (alarms can't fire sooner than 30 s).
     const secs = Math.max(30, rand(ap.pauseMinSec, Math.max(ap.pauseMinSec, ap.pauseMaxSec)));
     cur.stage = 'pause';
@@ -556,11 +668,12 @@ export class Autopilot {
     st.current = undefined;
     st.progress = undefined;
     await Promise.all([GO, NEXT, WATCHDOG].map((a) => chrome.alarms.clear(a)));
+    const b = st.day.byPlatform[p];
+    if (!st.running) return save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. Paused`);
     const next = Date.now() + gapMinutes(ap) * 60_000;
     st.phase = 'waiting';
     st.nextAt = next;
     await at(TICK, next);
-    const b = st.day.byPlatform[p];
     await save(st, `${PLATFORM_NAME[p]} "${cur.title}": ${cur.sent ?? 0} sent, ${cur.dry ?? 0} would apply, ${cur.skipped ?? 0} skipped (${why}). ${PLATFORM_NAME[p]} today ${b.sent + b.dry}/${platformPrefs(ap, p).dailyCap}. Next batch at ${fmt(next)}`);
   }
 
@@ -574,15 +687,25 @@ export class Autopilot {
   }
 
   /** The Recommended jobs batch on Naukri finished (ticked + Apply + chatbot, or a dry run). */
-  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string }, tabId?: number) {
+  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string; single?: boolean }, tabId?: number) {
     const st = await loadState();
     const cur = st.current;
     if (tabId !== undefined && tabId !== st.tabId) return;
+    // A search job's Apply went straight to Naukri's confirmation page (no chatbot): that page
+    // reports instead of the job page, which is gone. Before 1.21.0 this was dropped, the batch sat
+    // until the watchdog ("stopped moving") and the application wasn't counted.
+    if (cur?.stage === 'job' && cur.jobs && (result.single || !result.status)) {
+      const job = cur.jobs[cur.i ?? 0];
+      const outcome = result.outcome === 'sent' ? 'sent' : 'skip';
+      const s = this.settings();
+      if (outcome === 'sent' && job && s.tracker.enabled) await recordInTracker(s, 'applied', { url: job.url, role: job.title, company: job.company, location: job.location ?? '', source: 'Naukri', salary: '', description: '' }, [], 'Autopilot naukri').catch(() => {});
+      return this.onJobDone({ outcome, reason: result.reason }, tabId);
+    }
     // Naukri's confirmation page loaded after the batch was already closed (its first report
     // said "skipped"): count the jobs Naukri says went through.
     if (cur?.stage !== 'rec') {
       const last = st.lastRec;
-      if (!st.running || !last || Date.now() - last.at > 10 * 60_000 || !result.status) return;
+      if ((!st.running && st.phase !== 'paused') || !last || Date.now() - last.at > 10 * 60_000 || !result.status) return;
       newDay(st);
       for (const j of last.jobs) {
         if (result.status[j.id] !== 200 || last.counted.includes(j.id)) continue;
@@ -598,12 +721,13 @@ export class Autopilot {
       }
       return save(st);
     }
+    if (!st.running && st.phase !== 'paused') return;
     newDay(st);
     if (result.pushback) {
       await save(st, `Naukri: ${result.reason}`);
       return this.stop(`${result.pushback}. Stopped so your account stays safe.`, true);
     }
-    if (result.aiError && AI_BLOCKING.has(result.aiError)) return this.aiPause(st, result.aiError);
+    if (result.aiError && AI_BLOCKING.has(result.aiError)) return st.running ? this.aiPause(st, result.aiError) : save(st);
     if (result.outcome === 'none') return this.finishBatch(st, 'no recommended job fits; job searches next', true, 'naukri:rec');
     const counts = st.day.byPlatform.naukri;
     // From the confirmation page the list is empty: use what was ticked.
@@ -636,7 +760,8 @@ export class Autopilot {
   async onBatchDone(result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string; aiError?: string }, tabId?: number) {
     const ap = this.settings().autopilot;
     const st = await loadState();
-    if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
+    const paused = !st.running && st.phase === 'paused';
+    if ((!st.running && !paused) || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
     newDay(st);
     const { title, index } = st.current;
     const li = st.day.byPlatform.linkedin;
@@ -648,12 +773,27 @@ export class Autopilot {
     st.day.skipped += result.skipped;
     st.day.perTitle[title] = (st.day.perTitle[title] ?? 0) + result.sent + result.dry;
     if (result.sent + result.dry === 0 && /done with this list|no job list/i.test(result.reason)) this.exhaust(st, title);
+    const cap = platformPrefs(ap, 'linkedin').dailyCap;
+    const summary = `LinkedIn "${title}": ${result.sent} sent, ${result.dry} would apply, ${result.skipped} skipped. LinkedIn today ${li.sent + li.dry}/${cap}`;
+    if (paused) {
+      // Keep what's left of the batch for Resume; a finished list or batch starts fresh instead.
+      const cur = st.current;
+      cur.batch -= result.sent + result.dry;
+      cur.sent = (cur.sent ?? 0) + result.sent;
+      cur.dry = (cur.dry ?? 0) + result.dry;
+      cur.skipped = (cur.skipped ?? 0) + result.skipped;
+      if (cur.batch <= 0 || /done with this list|no job list/i.test(result.reason)) {
+        st.lastTitle = index;
+        st.lastTitleBy = { ...(st.lastTitleBy ?? {}), linkedin: index };
+        st.current = undefined;
+      }
+      return save(st, `${summary} (paused)`);
+    }
     st.lastTitle = index;
     st.lastTitleBy = { ...(st.lastTitleBy ?? {}), linkedin: index };
     st.current = undefined;
     st.progress = undefined;
     await chrome.alarms.clear(WATCHDOG);
-    const summary = `LinkedIn "${title}": ${result.sent} sent, ${result.dry} would apply, ${result.skipped} skipped. LinkedIn today ${li.sent + li.dry}/${ap.dailyCap}`;
     if (result.pushback) {
       await save(st, summary);
       return this.stop(`LinkedIn pushed back: ${result.pushback}. Stopped so your account stays safe.`, true);
@@ -670,9 +810,11 @@ export class Autopilot {
   }
 
   /** LinkedIn skipped a job inside its batch: say which and why in the history (Naukri does per job already). */
-  async onSkip(job: string, reason: string, tabId?: number) {
+  async onSkip(job: string, reason: string, tabId?: number, key?: string) {
     const st = await loadState();
-    if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
+    if ((!st.running && st.phase !== 'paused') || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
+    // Don't open it again today, unless it only failed to load (worth another try later).
+    if (key && !/didn't (load|open)/i.test(reason) && !st.day.seen.includes(`li:${key}`)) st.day.seen = [...st.day.seen, `li:${key}`].slice(-1500);
     await save(st, `${st.current.platform ? PLATFORM_NAME[st.current.platform] : "LinkedIn"} · Skipped: ${job} (${reason || 'no reason given'})`);
   }
 
@@ -699,7 +841,7 @@ export class Autopilot {
       st.windowId = undefined;
       st.tabId = undefined;
       await save(st);
-      await this.stop('You closed the autopilot window, so it stopped.');
+      await this.pause('You closed the autopilot window, so it paused');
     }
   }
 }

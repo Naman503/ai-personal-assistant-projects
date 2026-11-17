@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { candidates, companyFrom, dialogCompany, dialogReady, jobCards, paneCompany, pushbackNotice, sameCompany, titleSkipped } from '@/lib/queue';
+import { candidates, closeButton, companyFrom, dialogCompany, dialogReady, isSentDialog, jobCards, paneCompany, pushbackNotice, sameCompany, titleSkipped, upsellDecline } from '@/lib/queue';
 
 const card = (title: string, company: string, extra: string[]) =>
   `<div class="x"><div role="button" componentkey="k"><div>${title} (Verified job)</div><div>${title}</div><div>${company}</div><div>Bengaluru</div>${extra.map((e) => `<div>${e}</div>`).join('')}<button aria-label="Dismiss ${title} job">x</button></div></div>`;
@@ -52,5 +52,29 @@ describe('apply queue: reading the LinkedIn job list', () => {
     expect(pushbackNotice(document, 'https://www.linkedin.com/jobs/')).toMatch(/limit/);
     document.body.innerHTML = '<p>Jobs you may like</p>';
     expect(pushbackNotice(document, 'https://www.linkedin.com/jobs/')).toBe('');
+  });
+});
+
+describe('pop-ups over the job list', () => {
+  const dialog = (html: string) => {
+    document.body.innerHTML = `<div role="dialog">${html}</div>`;
+    return document.body.querySelector('[role=dialog]')!;
+  };
+  const SENT = `<button aria-label="Dismiss"><svg></svg></button><h2>Your application was sent to Scoutit!</h2>
+    <p>You can keep track of your application in the "Applied" tab of My Jobs</p>
+    <h3>Turn your resume into a profile that recruiters notice</h3>
+    <button>Not now</button><button>Update profile</button>`;
+
+  it('says "Not now" to the profile offer after a send, never "Update profile"', () => {
+    const d = dialog(SENT);
+    expect(isSentDialog(d)).toBe(true);
+    expect(closeButton(d)?.textContent).toBe('Not now');
+    expect(upsellDecline(d)?.textContent).toBe('Not now');
+  });
+
+  it('declines other offers, falls back to the X, and leaves application forms alone', () => {
+    expect(upsellDecline(dialog(`<h2>Try Premium for ₹0</h2><button>Try now</button><button>No thanks</button>`))?.textContent).toBe('No thanks');
+    expect(upsellDecline(dialog(`<button aria-label="Dismiss"></button><h2>Get job alerts</h2><button>Turn on</button>`))?.getAttribute('aria-label')).toBe('Dismiss');
+    expect(upsellDecline(dialog(`<h2>Apply to Acme</h2><input name="phone"><button aria-label="Dismiss"></button><button>Next</button>`))).toBeNull();
   });
 });
