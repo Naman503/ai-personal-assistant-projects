@@ -40,3 +40,19 @@ describe('site switched off', () => {
     expect(checkEligibility(input, s, true).ok).toBe(true);
   });
 });
+
+import { locationChoiceAnswer } from '@/lib/fields/answers';
+const o = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
+describe('location dropdowns', () => {
+  it('picks your city even when spelled Bangalore (Lever, SmartWorking)', () => {
+    expect(locationChoiceAnswer({ label: 'In which location did you find the job?', options: o(['Select...', 'India', 'Delhi NCR', 'Bangalore', 'Hyderabad', 'Chandigarh', 'Pune', 'Indore']) })).toBe('Bangalore');
+  });
+  it('falls back to Remote, then India', () => {
+    expect(locationChoiceAnswer({ label: 'Preferred location', options: o(['London', 'Remote', 'Berlin']) })).toBe('Remote');
+    expect(locationChoiceAnswer({ label: 'Location', options: o(['India', 'Singapore']) })).toBe('India');
+  });
+  it('leaves non-place lists and other questions alone', () => {
+    expect(locationChoiceAnswer({ label: 'How did you hear about us?', options: o(['LinkedIn', 'Referral']) })).toBeNull();
+    expect(locationChoiceAnswer({ label: 'Location', options: o(['Yes', 'No']) })).toBeNull();
+  });
+});

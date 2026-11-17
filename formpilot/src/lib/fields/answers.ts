@@ -120,3 +120,23 @@ export function remoteAnswer(f: Pick<FieldContext, 'label' | 'options'>): string
   }
   return null;
 }
+
+/**
+ * Location dropdowns ("In which location did you find the job?", "Preferred location", "Which
+ * office?") whose options are places. 18 Nov, a Lever form (SmartWorking): left on "Select…"
+ * because your city is saved as "Bengaluru" and the option said "Bangalore"; the site refused the
+ * application. Pick your city (Bengaluru = Bangalore), else Remote, else India, else Indore.
+ */
+const LOCATION_Q = /\b(location|city|office|based|work from|relocat\w* to|which (place|city|location))\b/i;
+const PLACE = /\b(india|bengaluru|bangalore|delhi|ncr|gurgaon|gurugram|noida|mumbai|pune|hyderabad|chennai|kolkata|indore|chandigarh|ahmedabad|jaipur|kochi|remote|anywhere|apac|asia|emea|europe|united states|usa|uk|london|singapore|dubai)\b/i;
+
+export function locationChoiceAnswer(f: Pick<FieldContext, 'label' | 'options'>): string | null {
+  const opts = (f.options ?? []).map((o) => o.label || o.value).filter((o) => o && !/^(select|choose|--|please)/i.test(o.trim()));
+  if (opts.length < 2 || !LOCATION_Q.test(f.label ?? '')) return null;
+  if (opts.filter((o) => PLACE.test(o)).length < Math.ceil(opts.length / 2)) return null; // not a list of places
+  for (const re of [/\b(bengaluru|bangalore)\b/i, /\bremote\b|\banywhere\b/i, /^india$|\bindia\b/i, /\bindore\b/i]) {
+    const hit = opts.find((o) => re.test(o));
+    if (hit) return hit;
+  }
+  return null;
+}

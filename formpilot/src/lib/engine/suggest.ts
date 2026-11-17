@@ -19,7 +19,7 @@ import { cacheGet, cacheSet } from './cache';
 import { BATCH_SCHEMA, FACTS_SCHEMA, FACTS_SYSTEM, SUGGESTION_SCHEMA, buildBatchPrompt, buildFactsPrompt, buildSuggestPrompt, systemPrompt } from './prompt';
 import { parseBatch, parseFacts, parseSuggestions, parseSuggestionsPartial } from './parse';
 import { redactSecrets } from './redact';
-import { answerFitsOptions, experienceAnswer, keepInAnswer, noneAnswer, remoteAnswer, screenOutAnswer, startDateAnswer } from '../fields/answers';
+import { answerFitsOptions, experienceAnswer, keepInAnswer, locationChoiceAnswer, noneAnswer, remoteAnswer, screenOutAnswer, startDateAnswer } from '../fields/answers';
 import { activeProviders, adapterFor, generateWithFallback, resolveProvider } from '../llm/registry';
 import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
@@ -323,7 +323,7 @@ export class SuggestEngine {
         continue;
       }
       // "Comfortable commuting / relocating / working on-site?": Yes, so you stay in the running.
-      const keep = remoteAnswer(f.field) ?? keepInAnswer(f.field) ?? screenOutAnswer(f.field) ?? noneAnswer(f.field);
+      const keep = locationChoiceAnswer(f.field) ?? remoteAnswer(f.field) ?? keepInAnswer(f.field) ?? screenOutAnswer(f.field) ?? noneAnswer(f.field);
       if (keep) {
         values[f.id] = keep;
         sources[f.id] = 'rule';
