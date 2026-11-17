@@ -219,7 +219,21 @@ export class SitePilot {
     if (st.windowId !== windowId) return;
     st.windowId = undefined;
     st.tabId = undefined;
-    if (st.running) await this.stop('Site Pilot window was closed');
+    this.knownTab = null;
+    if (!st.running) return save(st);
+    // Closed (by you, or by a reload): the job in progress goes back to the queue and Site Pilot
+    // carries on in a new window after a short pause. Stop is the button for stopping.
+    if (st.cur?.jobId) {
+      await spDb().jobs.where('id').equals(st.cur.jobId).modify((j) => {
+        if (j.status === 'working') j.status = 'queued';
+      });
+    }
+    st.cur = undefined;
+    st.phase = 'pause';
+    st.nextAt = Date.now() + 60_000;
+    await Promise.all([LOAD, WATCH].map((a) => chrome.alarms.clear(a)));
+    await save(st, 'Site Pilot window was closed; opening a new one in a minute (use Stop to stop)');
+    await at(TICK, st.nextAt);
   }
 
   /** The page in Site Pilot's tab finished loading. */
