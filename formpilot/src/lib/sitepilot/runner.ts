@@ -229,7 +229,13 @@ export class SitePilot {
    * goes there in its own tab.
    */
   async onTabCreated(tab: chrome.tabs.Tab) {
-    if (tab.openerTabId === undefined || tab.id === undefined) return;
+    if (tab.id === undefined) return;
+    // Chromium doesn't always fill in openerTabId on onCreated: read the tab again shortly after.
+    if (tab.openerTabId === undefined) {
+      await new Promise((r) => setTimeout(r, 400));
+      tab = (await chrome.tabs.get(tab.id).catch(() => null)) ?? tab;
+      if (tab.openerTabId === undefined) return;
+    }
     const st = await loadSpState();
     if (!st.running || tab.openerTabId !== st.tabId) return;
     await new Promise((r) => setTimeout(r, 1500)); // let it get its address
