@@ -735,6 +735,8 @@ function openButtonFor(title: string): HTMLElement | null {
 // ---------------- the round ----------------
 
 export class SitePilotPage {
+  /** "Apply" buttons already pressed on a page (kept across rounds on the same page). */
+  static pressed = new Set<string>();
   private reg = new Map<string, Target>();
   private answers = new Map<string, SpAnswer>();
   private history: string[] = [];
@@ -822,15 +824,27 @@ export class SitePilotPage {
         location.href = emb;
         return this.result({ kind: 'continue' }, ats, actions);
       }
-      const open = openButtonFor(ctx.title);
+      let open = openButtonFor(ctx.title);
+      // Pressed already on this page and no form came: don't press it again, look instead.
+      if (open && SitePilotPage.pressed.has(`${location.href}|${buttonText(open)}`)) open = null;
+      if (open) {
+        const a = open.closest('a');
+        const href = a?.getAttribute('href') ?? '';
+        if (/^mailto:/i.test(href)) return done('needs-you', `applies by email (${href.replace(/^mailto:/i, '').split('?')[0]})`);
+      }
       if (!open && !ctx.submitted && ctx.vision && actions < ctx.actionsLeft) {
         // A careers page with several roles (or none labelled "Apply"): the model picks this job's link.
         this.progress(`looking for "${ctx.title}" on this careers page`);
         const snap = snapshot(document.body, this.reg, ats);
         const a = await rpc<AgentAction>({ type: 'sp-agent', snap, history: [...this.history, `find the role "${ctx.title}" and open its application`] }).catch(() => null);
         actions++;
+        if (a?.do === 'click' && this.reg.get(a.id) && SitePilotPage.pressed.has(`${location.href}|${buttonText(this.reg.get(a.id)!.el)}`)) {
+          await rpc({ type: 'sp-shot', kind: 'stuck' }).catch(() => null);
+          return done('needs-you', `"${buttonText(this.reg.get(a.id)!.el)}" doesn't open a form here; apply on the site yourself`);
+        }
         if (a?.do === 'click' && this.reg.get(a.id)) {
           const el = this.reg.get(a.id)!.el;
+          SitePilotPage.pressed.add(`${location.href}|${buttonText(el)}`);
           this.history.push(`opened "${buttonText(el).slice(0, 60)}"`);
           humanClick(el);
           await settled(document.body, 800, 8000);
@@ -843,6 +857,13 @@ export class SitePilotPage {
       }
       if (!scope && open && !ctx.submitted) {
         this.progress(`pressing "${buttonText(open)}" to open the application form`);
+        SitePilotPage.pressed.add(`${location.href}|${buttonText(open)}`);
+        const link = open.closest('a') as HTMLAnchorElement | null;
+        // A link that opens in a new tab: open it here instead (Site Pilot works in one tab).
+        if (link && /^https?:/i.test(link.href) && link.target === '_blank') {
+          location.href = link.href;
+          return this.result({ kind: 'continue', note: `following "${buttonText(open)}" (${link.href.slice(0, 80)})` }, ats, actions);
+        }
         humanClick(open);
         await settled(document.body, 800, 8000);
         scope = formScope();
