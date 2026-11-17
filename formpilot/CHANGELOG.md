@@ -4,6 +4,14 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Answers that weren't true about you** (audit of the tracker's 677 recorded answers on 17 Nov):
+  - "Years with Ruby on Rails / C# / PHP / Laravel / Beckhoff…" got "3" because of the "unknown years = 3, never 0" rule. Now a skill that isn't in your saved skills or resume gets 0, or the "none" option. Your own skills and your overall experience still get 3 when the number is unknown. The AI is told the same, and Yes/No "have you worked with X" is Yes only for skills you have.
+  - "In how many days can you join?" and "we need immediate joiners: your notice period?" got 10 or 15. They now give your notice period.
+  - "Last working day (if serving notice)" got a date 30 days out, as if you'd resigned. It now stays empty unless your memory says you're serving notice (fact `serving-notice`).
+
 ## [1.22.0] - 2026-11-17
 
 ### Added
