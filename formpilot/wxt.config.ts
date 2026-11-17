@@ -37,6 +37,9 @@ export default defineConfig({
       // and tells you when it stops on a security check or limit.
       'power',
       'notifications',
+      // Autopilot: keeps its own tab running at full speed while its window is behind others
+      // (lib/tab-awake.ts). Used only on the autopilot's tab, only while the autopilot is on.
+      'debugger',
     ],
     host_permissions: ['<all_urls>'],
     action: { default_title: 'FormPilot' },

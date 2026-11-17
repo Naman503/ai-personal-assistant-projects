@@ -918,6 +918,11 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   expect(await sw.evaluate(async () => { const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { tabId: number }; return (await chrome.tabs.get(st.tabId)).active; })).toBe(true);
   expect(await list.evaluate(() => (window as unknown as { __blocked?: number }).__blocked ?? 0)).toBe(0);
   expect(await list.locator('#confirm').count()).toBe(0);
+  // Its tab is kept awake (focus emulation through chrome.debugger: FormPilot's own session is attached)
+  // for when its window is behind others.
+  const attached = () => sw.evaluate(async () => { const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { tabId: number }; return chrome.debugger.sendCommand({ tabId: st.tabId }, 'Runtime.evaluate', { expression: '1' }).then(() => true, () => false); });
+  expect(await attached()).toBe(true);
+  expect(await list.evaluate(() => document.hasFocus())).toBe(true);
   // The Autopilot page shows the break and offers to skip it.
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extId}/options.html#autopilot`);
@@ -935,6 +940,8 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   // Stop: nothing more is scheduled.
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'stop' }));
   await expect.poll(async () => (await state()).phase, { timeout: 5000 }).toBe('stopped');
+  // …and its tab is handed back to normal browser behaviour.
+  await expect.poll(attached, { timeout: 5000 }).toBe(false);
   expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-tick'))).toBeFalsy();
   expect(await sw.evaluate(() => chrome.alarms.get('fp-ap-go'))).toBeFalsy();
 });

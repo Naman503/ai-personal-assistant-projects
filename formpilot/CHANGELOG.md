@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.19.2] - 2026-11-17
+
+### Fixed
+- **Autopilot crawling or stalling while you use other apps.** Brave treats a tab as hidden when its window is behind other windows, even if it's the front tab of that window. A hidden page gets no screen redraws and its timers slow to once a second, then once a minute, so LinkedIn's Easy Apply dialog barely opened (a 12-job batch took 33 minutes for 3 applications) and Naukri jobs sat on one page until the watchdog moved on. FormPilot now turns on Chromium's "emulate a focused page" setting for its own tab only, through the `debugger` permission, so the page runs as if it were in front. It stays on across sites and is switched off when the autopilot stops.
+
 ## [1.17.0] - 2026-11-16
 
 ### Added
