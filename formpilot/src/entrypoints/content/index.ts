@@ -182,8 +182,13 @@ export default defineContentScript({
     if (window === window.top && /\/myapply\/saveApply/i.test(location.href)) {
       setTimeout(() => {
         const status = multiApplyResult(location.href) ?? undefined;
-        void chrome.runtime.sendMessage({ type: 'autopilot-rec-done', result: { picked: [], outcome: 'sent', reason: 'Naukri confirmed', status } }).catch(() => {});
-      }, 1500);
+        // A single job's Apply (applytype=sin, no per-job result) lands here too when the
+        // recruiter asked nothing: the job page that pressed Apply is gone, so this page reports.
+        const single = !status && /applytype=sin/i.test(location.href);
+        const text = (document.body?.innerText ?? '').replace(/\s+/g, ' ');
+        const failed = /already applied|daily (apply )?limit|could not (be )?appl|unable to appl|something went wrong|try again later/i.exec(text)?.[0];
+        void chrome.runtime.sendMessage({ type: 'autopilot-rec-done', result: { picked: [], outcome: failed ? 'skip' : 'sent', reason: failed ? `Naukri said "${failed}"` : 'Naukri confirmed', status, single } }).catch(() => {});
+      }, 2500);
     }
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       // LinkedIn outreach: one task on this page, then report back (top frame only).

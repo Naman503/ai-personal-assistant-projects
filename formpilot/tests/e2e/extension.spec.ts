@@ -1083,6 +1083,56 @@ test('autopilot: Pause keeps the batch and the counts; Resume opens the same job
   await expect(ui.getByText('Resume starts the next batch').first()).toBeVisible();
 });
 
+test('autopilot on Naukri: an Apply that goes straight to the confirmation page counts as sent and the batch moves on', async ({ context, sw, extId }) => {
+  test.setTimeout(240_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false },
+    behavior: { enabled: false },
+    autopilot: {
+      titles: 'React Native Developer',
+      gapMinMin: 30,
+      gapMaxMin: 30,
+      startTime: '00:00',
+      endTime: '24:00',
+      days: [0, 1, 2, 3, 4, 5, 6],
+      skipWords: '',
+      linkedinEnabled: false,
+      naukri: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5, mode: 'search' },
+      cutshort: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5 },
+      searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}',
+    },
+  });
+  const date = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  // A paused batch whose next job applies with no chatbot questions.
+  await sw.evaluate(
+    async ({ date }) => {
+      await chrome.storage.local.set({
+        fpAutopilot: {
+          running: false,
+          phase: 'paused',
+          day: { date, sent: 0, dry: 0, skipped: 0, perTitle: {}, exhausted: [], seen: [], byPlatform: { linkedin: { sent: 0, dry: 0, skipped: 0 }, naukri: { sent: 0, dry: 0, skipped: 0 }, cutshort: { sent: 0, dry: 0, skipped: 0 } } },
+          lastTitle: -1,
+          message: '',
+          history: [],
+          current: { platform: 'naukri', title: 'React Native Developer', index: 0, batch: 1, startedAt: Date.now(), tries: 0, stage: 'job', url: 'http://localhost:4173/naukri-search.html?q=React', jobs: [{ url: 'http://localhost:4173/naukri-job.html?id=5&direct=1', title: 'React Native Developer - Direct', company: 'Direct Co' }], i: 0, done: 0, sent: 0, dry: 0, skipped: 0, pausedAt: Date.now() },
+        },
+      });
+    },
+    { date },
+  );
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  type St = { phase: string; current?: unknown; day: { byPlatform: Record<string, { sent: number; skipped: number }> }; history: { msg: string }[] };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  await expect.poll(() => context.pages().some((p) => /myapply\/saveApply\.html\?strJobsarr/.test(p.url())), { timeout: 120_000 }).toBe(true);
+  // Counted from the confirmation page, and the batch closes at once (not after the 12-minute watchdog).
+  await expect.poll(async () => (await state()).day.byPlatform.naukri.sent, { timeout: 30_000 }).toBe(1);
+  await expect.poll(async () => (await state()).phase, { timeout: 15_000 }).toBe('waiting');
+  expect((await state()).history.map((h) => h.msg).join('\n')).toContain('Naukri · Applied: React Native Developer - Direct · Direct Co (Naukri confirmed)');
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
+});
+
 test('autopilot: when the AI\'s daily quota is used up, it waits for the reset instead of skipping jobs', async ({ context, sw, extId }) => {
   test.setTimeout(180_000);
   await configure(sw, {

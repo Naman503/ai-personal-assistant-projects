@@ -321,7 +321,8 @@ export class Autopilot {
       const view: DayState = { ...st.day, sent: counts.sent, dry: counts.dry };
       // Naukri: the Recommended jobs page first (only Naukri-apply jobs, up to 5 per Apply).
       // The Recommended list refreshes during the day: look again 3 hours after it ran dry.
-      if (st.day.exhausted.includes('naukri:rec') && st.day.recEmptyAt && Date.now() - st.day.recEmptyAt > 3 * 3600_000) {
+      // (No timestamp: marked empty by an older version; look again now.)
+      if (st.day.exhausted.includes('naukri:rec') && Date.now() - (st.day.recEmptyAt ?? 0) > 3 * 3600_000) {
         st.day.exhausted = st.day.exhausted.filter((k) => k !== 'naukri:rec');
       }
       if (p === 'naukri' && ap.naukri.mode === 'recommended' && !st.day.exhausted.includes('naukri:rec')) {
@@ -543,6 +544,8 @@ export class Autopilot {
     const cur = st.current;
     const paused = !st.running && st.phase === 'paused';
     if ((!st.running && !paused) || !cur?.jobs || (tabId !== undefined && tabId !== st.tabId)) return;
+    // One result per job: a second report (the job page and Naukri's confirmation page both) is ignored.
+    if (cur.stage !== 'job') return;
     newDay(st);
     const p = cur.platform as Platform;
     if (paused && result.aiError && AI_BLOCKING.has(result.aiError)) {
@@ -671,10 +674,20 @@ export class Autopilot {
   }
 
   /** The Recommended jobs batch on Naukri finished (ticked + Apply + chatbot, or a dry run). */
-  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string }, tabId?: number) {
+  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string; single?: boolean }, tabId?: number) {
     const st = await loadState();
     const cur = st.current;
     if (tabId !== undefined && tabId !== st.tabId) return;
+    // A search job's Apply went straight to Naukri's confirmation page (no chatbot): that page
+    // reports instead of the job page, which is gone. Before 1.21.0 this was dropped, the batch sat
+    // until the watchdog ("stopped moving") and the application wasn't counted.
+    if (cur?.stage === 'job' && cur.jobs && (result.single || !result.status)) {
+      const job = cur.jobs[cur.i ?? 0];
+      const outcome = result.outcome === 'sent' ? 'sent' : 'skip';
+      const s = this.settings();
+      if (outcome === 'sent' && job && s.tracker.enabled) await recordInTracker(s, 'applied', { url: job.url, role: job.title, company: job.company, location: job.location ?? '', source: 'Naukri', salary: '', description: '' }, [], 'Autopilot naukri').catch(() => {});
+      return this.onJobDone({ outcome, reason: result.reason }, tabId);
+    }
     // Naukri's confirmation page loaded after the batch was already closed (its first report
     // said "skipped"): count the jobs Naukri says went through.
     if (cur?.stage !== 'rec') {

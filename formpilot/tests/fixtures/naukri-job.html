@@ -15,6 +15,9 @@ const QS = [
 let step = 0;
 document.getElementById('apply-button').addEventListener('click', () => {
   if (!window.__trusted) window.__untrusted = true;
+  // ?direct=1: the recruiter asked nothing, so Naukri applies at once and loads its confirmation
+  // page for a single job (applytype=sin, no per-job result), as seen live on 17 Nov.
+  if (/direct=1/.test(location.search)) return void (location.href = '/myapply/saveApply.html?strJobsarr=[5]&applytype=sin');
   const c = document.createElement('div');
   c.className = '_chatBotContainer';
   c.innerHTML = `<div class="chatbot_Drawer chatbot_right"><div class="chatbot_DrawerContentWrapper"><div class="chatbot_MessageContainer"><ul class="list">
