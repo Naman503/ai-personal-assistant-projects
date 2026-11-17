@@ -355,8 +355,8 @@ export class SuggestEngine {
           values[f.id] = fitLength(v, f.field.maxLength);
           sources[f.id] = 'ai';
         }
-        // Years of experience the AI didn't know (blank or 0): 3 years.
-        const yrs = experienceAnswer(f.field, values[f.id]);
+        // Years of experience the AI didn't know (blank or 0): 3 years (not in truthful mode).
+        const yrs = s.generation.claims === 'truthful' ? null : experienceAnswer(f.field, values[f.id]);
         if (yrs) {
           values[f.id] = yrs;
           sources[f.id] = 'rule';

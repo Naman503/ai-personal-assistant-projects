@@ -41,6 +41,8 @@ export const DEFAULT_BOARDS = [
   'greenhouse:agoda',
   'greenhouse:druva',
   'greenhouse:twilio',
+  'greenhouse:stage',
+  'workable:seekho',
   'ashby:supabase',
   'ashby:sarvam',
   'ashby:snowflake',
@@ -125,6 +127,7 @@ const getJson = async (f: Fetch, url: string, init?: RequestInit) => {
   if (!r.ok) throw new Error(`${r.status}`);
   return r.json();
 };
+const decodeEntities = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
 const clip = (s: unknown, n = 3000) => String(s ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const nice = (token: string) => token.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -133,8 +136,8 @@ export async function fetchBoard(b: Board, f: Fetch = fetch): Promise<BoardJob[]
   const co = nice(b.token);
   switch (b.kind) {
     case 'greenhouse': {
-      const j = (await getJson(f, `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.token)}/jobs`)) as { jobs?: { id: number; title: string; location?: { name?: string }; updated_at?: string; company_name?: string }[] };
-      return (j.jobs ?? []).map((x) => ({ title: x.title, company: x.company_name || co, location: x.location?.name ?? '', url: `https://job-boards.greenhouse.io/${b.token}/jobs/${x.id}`, postedAt: x.updated_at ? Date.parse(x.updated_at) : undefined }));
+      const j = (await getJson(f, `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.token)}/jobs?content=true`)) as { jobs?: { id: number; title: string; location?: { name?: string }; updated_at?: string; company_name?: string; content?: string }[] };
+      return (j.jobs ?? []).map((x) => ({ title: x.title, company: x.company_name || co, location: x.location?.name ?? '', url: `https://job-boards.greenhouse.io/${b.token}/jobs/${x.id}`, postedAt: x.updated_at ? Date.parse(x.updated_at) : undefined, description: clip(decodeEntities(x.content ?? '')) }));
     }
     case 'lever': {
       const j = (await getJson(f, `https://api.lever.co/v0/postings/${encodeURIComponent(b.token)}?mode=json`)) as { text: string; hostedUrl: string; createdAt?: number; workplaceType?: string; categories?: { location?: string; allLocations?: string[] }; descriptionPlain?: string }[];
@@ -193,8 +196,32 @@ export async function fetchBoard(b: Board, f: Fetch = fetch): Promise<BoardJob[]
   }
 }
 
-/** Jobs from a board that fit: your titles, your level, India or open remote, posted in the last `days`. */
-export function fitting(jobs: BoardJob[], o: { relevant: string[]; skipWords: string; days: number; now?: number }): BoardJob[] {
+/** Roles in another specialism: their title alone rules them out for a JS/TS/RN/Python profile. */
+const OFF_STACK = /\b(security|kubernetes|k8s|infrastructure|infra|sre|site reliability|reliability|devops|data (platform|engineer|engineering|infrastructure)|database|storage|networking|network|compiler|runtime|kernel|embedded|firmware|hardware|ml|machine learning|research|golang|go\b|ruby|rails|java\b|scala|c\+\+|rust|\.net|c#|salesforce|sap|netsuite|servicenow|ios\b|swift|test|qa|sdet|support|solutions engineer|sales)\b/i;
+
+/** Does the job sit in your stack: a stack word in the title, or (for general titles) in the description? */
+export function stackFits(job: Pick<BoardJob, 'title' | 'description'>, stack: string): boolean {
+  const words = stack.split(/[,\n]+/).map((w) => w.trim().toLowerCase()).filter(Boolean);
+  if (!words.length) return true;
+  const title = job.title.toLowerCase();
+  if (OFF_STACK.test(title) && !/react|mobile|front|full/.test(title)) return false;
+  if (words.some((w) => title.includes(w))) return true;
+  const desc = (job.description ?? '').toLowerCase();
+  if (!desc) return /\b(software (engineer|developer)|sde|developer)\b/.test(title);
+  const hits = words.filter((w) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(desc)).length;
+  return hits >= 2;
+}
+
+/** Jobs from a board that fit: your titles, your level, your stack, India or open remote, posted in the last `days`. */
+export function fitting(jobs: BoardJob[], o: { relevant: string[]; skipWords: string; days: number; now?: number; senior?: boolean; stack?: string }): BoardJob[] {
   const since = (o.now ?? Date.now()) - o.days * 86400_000;
-  return jobs.filter((j) => j.url && titleFits(j.title, o.relevant, o.skipWords) && locationOk(j.location) && (!j.postedAt || j.postedAt >= since));
+  return jobs.filter(
+    (j) =>
+      j.url &&
+      titleFits(j.title, o.relevant, o.skipWords) &&
+      (o.senior !== false || !/\b(senior|sr\.?|iii|iv|l5|l6)\b/i.test(j.title)) &&
+      (o.stack === undefined || stackFits(j, o.stack)) &&
+      locationOk(j.location) &&
+      (!j.postedAt || j.postedAt >= since),
+  );
 }

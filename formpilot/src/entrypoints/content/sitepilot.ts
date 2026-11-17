@@ -411,6 +411,26 @@ async function uploadResume(scope: Element): Promise<string> {
   return `resume uploaded (${resumeCache?.name})`;
 }
 
+/** Link boxes (website, portfolio, GitHub, LinkedIn) that ended up with something that isn't a link: emptied. */
+const LINK_Q = /\b(website|portfolio|personal site|blog|github|gitlab|linkedin|url|link to)\b/i;
+const LOOKS_LINK = /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/\S*)?$/i;
+function cleanLinks(scope: HTMLElement): SpAnswer[] {
+  const out: SpAnswer[] = [];
+  for (const el of scope.querySelectorAll<HTMLInputElement>('input[type=text], input[type=url], input:not([type])')) {
+    if (!isVisible(el) || !el.value.trim()) continue;
+    const label = resolveLabel(el);
+    if (!LINK_Q.test(label) || /\b(username|handle|user ?name)\b/i.test(label)) continue;
+    const v = el.value.trim();
+    const wrongSite = (/linkedin/i.test(label) && !/linkedin\.com/i.test(v)) || (/github/i.test(label) && !/github\.com/i.test(v));
+    if (LOOKS_LINK.test(v) && !wrongSite) continue;
+    fillElement(el, '', 'replace', label);
+    el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    log.info(`cleared "${label.slice(0, 60)}": ${JSON.stringify(v.slice(0, 40))} is not a ${wrongSite ? 'link to that site' : 'link'}`);
+    out.push({ q: label, a: '', src: 'rule: not a link, left empty' });
+  }
+  return out;
+}
+
 /** "Link to your resume" boxes: your saved link (never a guess). */
 function fillResumeLink(scope: HTMLElement, link: string | undefined): SpAnswer[] {
   if (!link?.trim()) return [];
@@ -781,6 +801,8 @@ export class SitePilotPage {
   constructor(private fill: FillFn) {}
 
   private repairTries = new WeakMap<HTMLElement, number>();
+  /** Unusable model answers on this page so far. */
+  private invalid = 0;
 
   /** Fix rejected values by rule (digits only, the stated length or range). Returns how many changed. */
   private repairErrors(scope: HTMLElement): number {
@@ -957,6 +979,7 @@ export class SitePilotPage {
           this.progress(`fill error: ${r.error}`);
         } else this.progress(`filled ${r.filled} of ${r.total} fields`);
         this.note(await fillCustom(scope));
+        this.note(cleanLinks(scope));
         this.note(tickConsent(scope));
         await settled(document.body, 500, 3000);
         if (ctx.round === 0 && filledSteps.size === 1) await rpc({ type: 'sp-shot', kind: 'form' }).catch(() => null);
@@ -1013,6 +1036,11 @@ export class SitePilotPage {
           this.history.push(`the model had nothing to fix (${action.do}); the form is complete`);
           action = { do: 'submit' };
         }
+      }
+      // The model named a control that isn't there or used it wrongly: tell it and ask again.
+      if (action.do === 'stop' && /^(bad fill|bad choice|unknown control|unknown action)/.test(action.why) && ++this.invalid <= 3) {
+        this.history.push(`your last answer was not usable (${action.why}); use an id from CONTROLS that fits the action`);
+        continue;
       }
       if (action.do === 'stop') {
         this.collect(scope, ats);

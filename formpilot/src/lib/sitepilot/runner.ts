@@ -20,7 +20,7 @@ import { generateWithFallback } from '../llm/registry';
 import { userActive, localRun } from '../llm/local-run';
 import { keepTabAwake, releaseTab } from '../tab-awake';
 import { addShot, addStep, companyCount, companyWall, counts, enqueue, nextQueued, spDb, type NewJob, type SpJob } from './db';
-import { ACTION_SCHEMA, AGENT_SYSTEM, buildAgentPrompt, describeAction, parseAction } from './agent';
+import { ACTION_SCHEMA, agentSystem, buildAgentPrompt, describeAction, parseAction } from './agent';
 import { ATS_NAME, detectAts, needsAccount, type Ats } from './detect';
 import { boardFromUrl, fetchBoard, fitting, parseBoards, type Board } from './boards';
 import type { AgentAction, PageSnapshot, RoundContext, RoundResult, SpOutcome } from './types';
@@ -117,7 +117,17 @@ export function siteSettings(s: Settings): Settings {
     ...s,
     providers: [siteProvider(s.sitePilot)],
     privacy: { ...s.privacy, localOnly: false },
-    generation: { ...s.generation, fallback: false, streaming: false, maxRetries: 1, thinking: 'off', timeoutMs: Math.max(s.generation.timeoutMs, 240_000) },
+    generation: {
+      ...s.generation,
+      fallback: false,
+      streaming: false,
+      maxRetries: 1,
+      thinking: 'off',
+      timeoutMs: Math.max(s.generation.timeoutMs, 240_000),
+      claims: s.sitePilot.answerStyle,
+      // The brief comes first, every time: who the candidate is and how to answer for them.
+      customInstructions: [s.sitePilot.brief.trim() && `CANDIDATE BRIEF:\n${s.sitePilot.brief.trim()}`, s.generation.customInstructions.trim()].filter(Boolean).join('\n\n'),
+    },
   };
 }
 
@@ -573,7 +583,7 @@ export class SitePilot {
     const t0 = Date.now();
     try {
       const r = await generateWithFallback(s, {
-        system: AGENT_SYSTEM,
+        system: agentSystem(this.s.sitePilot.answerStyle, this.s.sitePilot.brief),
         prompt,
         schema: ACTION_SCHEMA,
         temperature: 0.1,
@@ -665,7 +675,7 @@ export class SitePilot {
     let failed = 0;
     for (const b of boards) {
       const jobs = await fetchBoard(b).catch(() => (failed++, []));
-      const fit = fitting(jobs, { relevant, skipWords: ap.skipWords, days: sp.boardDays });
+      const fit = fitting(jobs, { relevant, skipWords: ap.skipWords, days: sp.boardDays, senior: sp.seniorRoles, stack: sp.stack });
       found += fit.length;
       if (fit.length) added += (await enqueue(fit.map((j) => ({ url: j.url, title: j.title, company: j.company, location: j.location, description: j.description, source: 'board' as const })))).added;
       await new Promise((r) => setTimeout(r, 400 + Math.random() * 600)); // one board at a time, politely

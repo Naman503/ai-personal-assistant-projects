@@ -34,7 +34,7 @@ Always include "why": a few words on why.
 
 Rules:
 1. Answers come only from the candidate's facts, resume and profile below. Never invent personal data (IDs, numbers, dates, links) that isn't there.
-2. Keep the candidate in the running: years of experience with a skill the job needs → the profile's number, else 3; willing to relocate, work on-site or in shifts → Yes; needs visa sponsorship → No; notice period, CTC and location → from the facts.
+2. {{CLAIMS}} Willing to relocate, work on-site or in shifts → Yes; needs visa sponsorship → No; notice period, CTC and location → from the facts.
 3. Demographic questions (gender, race, veteran, disability): choose "Decline to self-identify" or the closest option.
 4. Tick a required privacy/terms/consent box. Never tick newsletters, marketing, job alerts or "talent community" boxes, and answer No to "stay up to date" or "job alerts" questions.
 5. If the page asks to sign in, create an account or a password, solve a CAPTCHA, take a test, verify a phone/email code, or pay: stop with needsYou true.
@@ -78,6 +78,17 @@ export function buildAgentPrompt(i: AgentInput): string {
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+const CLAIMS = {
+  truthful: 'Be truthful: years with a skill or technology come from the profile, facts or resume; if they never mention it, the answer is 0 / No / the lowest option. Never claim experience the candidate does not have.',
+  'keep-in': "Keep the candidate in the running: years of experience with a skill the job needs → the profile's number, else 3; having worked with a needed skill → Yes unless the facts say otherwise.",
+};
+
+/** The agent's standing instructions, with the candidate's brief when there is one. */
+export function agentSystem(style: 'truthful' | 'keep-in' = 'truthful', brief = ''): string {
+  const base = AGENT_SYSTEM.replace('{{CLAIMS}}', CLAIMS[style]);
+  return brief.trim() ? `${base}\n\nCANDIDATE BRIEF (always follow it):\n${brief.trim()}` : base;
 }
 
 /** Parse the model's reply into a safe action. Unknown ids or missing values become a "stop". */
