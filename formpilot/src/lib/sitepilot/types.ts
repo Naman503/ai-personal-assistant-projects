@@ -49,7 +49,7 @@ export interface SpAnswer {
 
 /** What one round in the page ended with. */
 export type RoundResult =
-  | { kind: 'continue'; note?: string; answers?: SpAnswer[]; ats?: string; actions?: number }
+  | { kind: 'continue'; note?: string; answers?: SpAnswer[]; ats?: string; actions?: number; busy?: boolean }
   | { kind: 'done'; outcome: SpOutcome; reason: string; answers?: SpAnswer[]; ats?: string; actions?: number };
 
 /** What the runner tells the page at the start of a round. */
