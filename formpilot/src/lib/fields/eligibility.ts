@@ -75,6 +75,9 @@ export function checkEligibility(target: Element, s: Settings, forced = false): 
   if (kind0 === 'contenteditable') el = editableRoot(el as HTMLElement);
   const kind = kind0;
   if (!kind) return { ...NO, reason: 'not a text field' };
+  // Switched off for this site (popup → "On for <site>"): nothing opens by itself and no AI call is
+  // made. Your own shortcut (Alt+J) still works there.
+  if (!forced && !siteAllowed(target.ownerDocument?.location?.hostname ?? '', s)) return { ...NO, reason: 'FormPilot is off on this site' };
 
   const h = el as HTMLInputElement;
   if (h.disabled || h.readOnly || el.getAttribute('aria-readonly') === 'true' || el.getAttribute('aria-disabled') === 'true')

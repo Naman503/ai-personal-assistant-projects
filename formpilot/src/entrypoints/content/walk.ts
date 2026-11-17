@@ -3,6 +3,7 @@
  * and the like), press Next/Review for the user, fill the next step, and stop at the Submit
  * button, highlighted. It never presses Submit, and it stops the moment a step needs the user.
  */
+import { reviewBeforeSend, reviewStepsOn } from './sites';
 import { consentBoxes, decideStep, fieldErrors, firstEmptyField, isUnchosen, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
 import { createLogger } from '@/lib/logger';
 import { quietFocus } from '@/lib/automation';
@@ -82,6 +83,18 @@ export class ApplyWalker {
           log.info(`walk: ticked "${label.slice(0, 100)}"${box.checked ? '' : ' (did not stay ticked)'}`);
         }
         if (consent.length) await settled(scope.getRootNode(), 300, 1500);
+        // Unattended (the autopilot): the AI reads this step's answers again and fixes what's
+        // wrong or badly shaped before Next / Submit. If the check can't run, the job is left.
+        if (reviewStepsOn()) {
+          try {
+            await reviewBeforeSend(scope as HTMLElement, 'linkedin');
+            await settled(scope.getRootNode(), 200, 1200);
+          } catch (e) {
+            this.lastReason = `the answer check failed (${(e as Error).message})`;
+            log.info(`walk stopped: ${this.lastReason}`);
+            return 'blocked';
+          }
+        }
         const d = decideStep(scope, { ignoreErrors: repaired });
         repaired = false;
         if (d.kind === 'blocked') {

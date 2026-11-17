@@ -381,6 +381,8 @@ export default defineBackground({
           if (Object.keys(bySource).length) void usage.once('first_fill');
           return out;
         }
+        case 'review-answers':
+          return engine.reviewAnswers(msg.items, msg.job, AbortSignal.timeout(Math.max(settings.generation.timeoutMs, 90_000)));
         case 'test-provider': {
           // The options page sends the live (possibly unsaved) config so "Test" works right after typing a key.
           const p = msg.provider ?? settings.providers.find((x) => x.id === msg.providerId);

@@ -20,6 +20,11 @@ createServer(async (req, res) => {
 }).listen(PAGE_PORT, () => console.log(`fixtures on http://localhost:${PAGE_PORT}/form.html`));
 
 function answerFor(prompt) {
+  // The answer check before an unattended send: everything is fine (a real model fixes what's wrong).
+  if (prompt.includes('ANSWERS TO CHECK:')) {
+    const ids = [...prompt.matchAll(/^- id: (\S+)$/gm)].map((m) => m[1]);
+    return JSON.stringify({ items: ids.map((id) => ({ id, ok: true })) });
+  }
   // Site Pilot's look-and-act step: submit when nothing is missing, else stop for the user.
   if (prompt.includes('Your one next action as JSON')) {
     if (/MISSING: none/.test(prompt) && /ERRORS SHOWN: none/.test(prompt)) return JSON.stringify({ do: 'submit', why: 'all filled' });

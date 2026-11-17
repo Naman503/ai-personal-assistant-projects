@@ -146,13 +146,21 @@ export function humanClick(el: HTMLElement) {
 export const between = (a: number, b: number) => Math.round((a + Math.random() * (b - a)) * 1000);
 
 /** "Engineering Manager, Director" → true for titles containing any of them. */
+/**
+ * A skip word matches as a whole word ("Java" doesn't skip "JavaScript", "SAP" doesn't skip
+ * "Sapient"; 18 Nov: Naukri JavaScript jobs were skipped for "JAVA"). Words with symbols
+ * (".Net", "C#") match as written.
+ */
 export function titleSkipped(title: string, skip: string): boolean {
   const t = title.toLowerCase();
   return skip
     .split(/[,\n]+/)
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
-    .some((s) => t.includes(s));
+    .some((s) => {
+      if (/[^a-z0-9 ]/.test(s)) return t.includes(s);
+      return new RegExp(`(^|[^a-z0-9])${s.replace(/\s+/g, '\\s+')}([^a-z0-9]|$)`).test(t);
+    });
 }
 
 /** Cards worth opening: Easy Apply, not applied, not skipped by title, not already tried. */
@@ -167,7 +175,10 @@ const norm = (s: string) =>
   s
     .toLowerCase()
     .replace(/full[\s-]?stack/g, 'full stack')
-    .replace(/react\.?js/g, 'react')
+    .replace(/react[\s.]?js\b/g, 'react')
+    .replace(/node[\s.]?js\b/g, 'node')
+    .replace(/front[\s-]?end/g, 'frontend')
+    .replace(/back[\s-]?end/g, 'backend')
     .replace(/[^a-z0-9+#]+/g, ' ')
     .trim();
 
@@ -176,9 +187,21 @@ const norm = (s: string) =>
  * Mobile Engineer" → "react native", "full stack", "mobile". A job title matches a phrase only
  * as a whole ("AI-Native Developer" is not "react native").
  */
+/**
+ * Close relatives of your phrases that mean the same job (18 Nov: "React JS + Node JS Developer"
+ * on Naukri's Recommended list was left out for not saying "React Native" or "Full Stack").
+ */
+const RELATED: Record<string, string[]> = {
+  'react native': ['react', 'expo'],
+  'full stack': ['mern', 'mean', 'node', 'frontend', 'react', 'typescript', 'javascript'],
+  python: ['fastapi', 'django', 'flask'],
+  fastapi: ['python'],
+  mobile: ['react native', 'expo'],
+};
+
 export function relevantWords(titles: string[]): string[] {
   const out = titles.map((t) => norm(t).split(' ').filter((w) => w && !GENERIC.has(w)).join(' ')).filter(Boolean);
-  return [...new Set(out)];
+  return [...new Set(out.flatMap((p) => [p, ...(RELATED[p] ?? [])]))];
 }
 
 /** A job title matches when it contains one of your phrases (no phrases: everything matches). */

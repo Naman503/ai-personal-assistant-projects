@@ -22,6 +22,7 @@ export type PortEvent =
 // ---- One-shot RPC (runtime.sendMessage) ----
 export type RpcRequest =
   | { type: 'fill-form'; fields: { id: string; field: FieldContext }[]; page: PageContext; trigger?: FillTrigger; engine?: 'local' }
+  | { type: 'review-answers'; items: import('./engine/review').ReviewItem[]; job: string }
   | { type: 'accept'; field: FieldContext; text: string; host: string; source: string; method?: InsertMethod; rank?: number; kind?: string }
   | { type: 'learn'; field: FieldContext; text: string; host: string; trigger?: LearnTrigger }
   | { type: 'test-provider'; providerId: string; provider?: ProviderConfig }

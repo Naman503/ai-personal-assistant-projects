@@ -24,3 +24,19 @@ describe('remote job answers', () => {
     expect(remoteAnswer({ label: 'Expected salary', options: [] })).toBeNull();
   });
 });
+
+import { checkEligibility } from '@/lib/fields/eligibility';
+import { DEFAULTS } from '@/lib/settings-core';
+
+describe('site switched off', () => {
+  it('no suggestions on a blocked site, except your own shortcut', () => {
+    const input = document.createElement('input');
+    input.setAttribute('aria-label', 'Your bio');
+    document.body.appendChild(input);
+    const s = structuredClone(DEFAULTS);
+    s.behavior.blockedSites = [location.hostname || 'localhost'];
+    expect(checkEligibility(input, s).ok).toBe(false);
+    expect(checkEligibility(input, s).reason).toMatch(/off on this site/);
+    expect(checkEligibility(input, s, true).ok).toBe(true);
+  });
+});

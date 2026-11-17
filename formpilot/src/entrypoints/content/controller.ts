@@ -583,6 +583,19 @@ export class Controller {
     this.store.set({ anchor: el, field: null, instant: [], ai: [], status: 'idle', error: undefined, meta: undefined, active: -1, refineOpen: false });
   }
 
+  /** FormPilot was switched off for this site: close the panel and stop any request now (no learning, no AI). */
+  siteOff() {
+    if (!this.field && !this.store.get().open && !this.store.get().iconVisible) return;
+    this.eng = null;
+    this.convoObserver?.disconnect();
+    this.convoObserver = null;
+    clearTimeout(this.questionTimer);
+    this.cancel();
+    clearTimeout(this.closeTimer);
+    this.field = null;
+    this.store.set({ open: false, iconVisible: false, anchor: null, field: null, refineOpen: false });
+  }
+
   detach() {
     this.maybeLearn('blur');
     this.eng = null;

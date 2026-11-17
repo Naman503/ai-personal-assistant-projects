@@ -63,6 +63,8 @@ describe('remote portals: job lists', () => {
     const [j] = hiristJobs(html(HIRIST));
     expect(j).toMatchObject({ company: 'Servify', title: 'Mobile Application Developer - React Native', expMin: 2, location: 'Hyderabad' });
     expect(j.url).toMatch(/\/j\/servify-mobile-application-developer-react-native-1679200$/);
+    const [k] = hiristJobs(html(HIRIST.replace('Servify - Mobile Application Developer - React Native', 'Senior Software Engineer - React Native')));
+    expect(k).toMatchObject({ company: '', title: 'Senior Software Engineer - React Native' });
   });
   it('Uplers: id, title, company, experience, remote', () => {
     const [j] = uplersJobs(html(UPLERS));

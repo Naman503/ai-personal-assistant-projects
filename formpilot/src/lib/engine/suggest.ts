@@ -12,6 +12,7 @@ import type { Settings } from '../settings';
 import { db, memoryVersion, bumpMemoryVersion, type Fact } from '../memory/db';
 import { MemoryIndex, fieldQuery, type RetrievedChunk } from '../memory/retrieval';
 import { canonicalKey, factsBlock, matchFacts } from '../memory/facts';
+import { buildReviewPrompt, parseReview, REVIEW_SCHEMA, REVIEW_SYSTEM, type ReviewFix, type ReviewItem } from './review';
 import { matchHistory, recordAccepted, invalidateHistoryCache, questionText } from './history';
 import { updateDocumentText, addDocument } from '../memory/ingest';
 import { cacheGet, cacheSet } from './cache';
@@ -414,6 +415,28 @@ export class SuggestEngine {
     invalidateHistoryCache();
     log.info(`learned answer for "${question}" → ${savedAs.join(' + ')}`);
     return { savedAs, label: question };
+  }
+
+  /** Re-read answers against memory and the job before an unattended send; returns fixes. */
+  async reviewAnswers(items: ReviewItem[], job: string, signal: AbortSignal): Promise<{ fixes: ReviewFix[]; provider: string }> {
+    const s = this.settings();
+    if (!items.length) return { fixes: [], provider: '' };
+    const facts = await this.facts();
+    const { chunks } = await this.retrieve({ label: items.map((i) => i.question).join(' ').slice(0, 400), description: '', placeholder: '', section: '', semantic: 'text' } as unknown as FieldContext, job.slice(0, 300));
+    const docs = chunks.map((c) => c.text).join('\n---\n').slice(0, 12000);
+    const r = await generateWithFallback(s, {
+      system: REVIEW_SYSTEM,
+      prompt: this.prepare(buildReviewPrompt(items, job, factsBlock(facts), docs)),
+      schema: REVIEW_SCHEMA,
+      temperature: 0,
+      maxTokens: 2048,
+      thinking: 'off',
+      stream: false,
+      signal,
+    });
+    const fixes = parseReview(r.text);
+    log.info(`review: ${items.length} answers checked via ${r.provider.label}, ${fixes.filter((f) => !f.ok).length} to fix`);
+    return { fixes, provider: r.provider.label };
   }
 
   /** LLM-extract key facts from a document and upsert them. */

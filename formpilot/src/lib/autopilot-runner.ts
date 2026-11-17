@@ -397,6 +397,8 @@ export class Autopilot {
       await at(TICK, next);
       return save(st, `Outside active hours; next batch at ${fmt(next)}`);
     }
+    // "Run now" / "Skip break": every portal's break ends now.
+    if (force && st.day.restUntil) st.day.restUntil = {};
     const c = this.choose(st, ap);
     if (!c) {
       // Every portal with work left is on its break: wait for the first one to finish it.
