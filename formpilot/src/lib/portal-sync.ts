@@ -11,7 +11,13 @@ import { importToTracker, type ImportItem } from './tracker';
 const log = createLogger('portal-sync');
 const KEY = 'fpPortalSync';
 const ALARM = 'fp-ps-tick';
-const EVERY_MIN = 120;
+/**
+ * A check, not the source of truth: FormPilot records each application in the tracker the moment
+ * it's sent. This compares the portals' own lists with the tracker every 3 days (adds what was
+ * applied on the site itself, updates recruiter statuses, flags mismatches). See the tracker's
+ * docs/backend-design.md.
+ */
+const EVERY_MIN = 3 * 24 * 60;
 
 export interface PortalSyncState {
   at?: number;
@@ -103,7 +109,9 @@ export class PortalSync {
   /** Keep the alarm in step with the setting; sync now if the last one is old. */
   async sync() {
     if (!this.on()) { await chrome.alarms?.clear(ALARM); return; }
-    if (!(await chrome.alarms?.get(ALARM))) chrome.alarms?.create(ALARM, { delayInMinutes: 1, periodInMinutes: EVERY_MIN });
+    // (Re)create it when missing or still on the old 2-hour period.
+    const a = await chrome.alarms?.get(ALARM);
+    if (!a || a.periodInMinutes !== EVERY_MIN) chrome.alarms?.create(ALARM, { delayInMinutes: a ? EVERY_MIN : 1, periodInMinutes: EVERY_MIN });
     const st = await this.state();
     if (!st.at || Date.now() - st.at > EVERY_MIN * 60_000) void this.run();
   }

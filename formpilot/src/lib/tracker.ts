@@ -119,14 +119,32 @@ export async function outreachNext(url: string) {
 }
 export interface ImportItem { url: string; role: string; company: string; location: string; logo: string; appliedAt: string; events: { status: string; at: string }[] }
 /** Portal sync: your applied list from a job site (POST /api/import); the tracker adds what it's missing. */
+/**
+ * A portal's applied list, in batches of 100 with one run id; the last batch says `final`, and the
+ * tracker then flags applications FormPilot recorded that the portal doesn't list.
+ */
 export async function importToTracker(url: string, portal: string, items: ImportItem[]) {
-  return call<{ added: number; updated: number; total: number }>(baseUrl(url) + '/api/import', { method: 'POST', body: JSON.stringify({ portal, items }) });
+  const runId = `${portal}-${Date.now()}`;
+  const total = { added: 0, updated: 0, total: 0, flagged: 0 };
+  for (let i = 0; i === 0 || i < items.length; i += 100) {
+    const batch = items.slice(i, i + 100);
+    const final = i + 100 >= items.length;
+    const r = await call<{ added: number; updated: number; total: number; flagged?: number }>(baseUrl(url) + '/api/import', { method: 'POST', body: JSON.stringify({ portal, items: batch, runId, final }) });
+    total.added += r.added;
+    total.updated += r.updated;
+    total.total += r.total;
+    total.flagged += r.flagged ?? 0;
+  }
+  return total;
 }
 export async function outreachResult(url: string, body: Record<string, unknown>) {
   return call<{ ok: boolean }>(baseUrl(url) + '/api/outreach/result', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export async function testTracker(url: string): Promise<{ applications: number; people: number }> {
+  // The tracker's small health check (counts only); older trackers only have the full state.
+  const h = await call<{ ok?: boolean; rows?: { applications?: number; contacts?: number } }>(baseUrl(url) + '/api/health').catch(() => null);
+  if (h?.ok && h.rows) return { applications: h.rows.applications ?? 0, people: h.rows.contacts ?? 0 };
   const st = await call<{ applications?: unknown[]; contacts?: unknown[] }>(baseUrl(url) + '/api/state');
   if (!Array.isArray(st.applications)) throw new TrackerError("That address answered, but it doesn't look like a job tracker.");
   return { applications: st.applications.length, people: Array.isArray(st.contacts) ? st.contacts.length : 0 };
