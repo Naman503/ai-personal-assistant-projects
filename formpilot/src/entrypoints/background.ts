@@ -116,6 +116,7 @@ export default defineBackground({
       if (a.name.startsWith('fp-or-')) void ready.then(() => outreach.onAlarm(a.name));
     });
     chrome.windows?.onRemoved.addListener((id) => void ready.then(() => { void autopilot.onWindowRemoved(id); void outreach.onWindowRemoved(id); }));
+    chrome.tabs?.onCreated.addListener((tab) => void ready.then(() => autopilot.onTabCreated(tab)));
     chrome.debugger?.onDetach.addListener((src, reason) => void ready.then(() => autopilot.onDetach(src.tabId, reason)));
     void ready.then(() => autopilot.resume()).catch(() => {});
     void ready.then(() => outreach.sync()).catch(() => {});

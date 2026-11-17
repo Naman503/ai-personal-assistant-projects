@@ -10,6 +10,7 @@ All notable changes to FormPilot are documented here. The format is based on
 - **Foundit in the autopilot** (Settings → Autopilot → Platforms, off by default, dry run first). It searches foundit.in for your job titles across India and takes only **Quick Apply** jobs (they apply on Foundit; "Apply Now" jobs come from LinkedIn or the company's own site and are left out). On each job page it presses the Quick Apply button in the page header, never the "Apply Now" buttons of the similar jobs below. If recruiter questions pop up, it answers them with your usual answer rules, step by step, and presses Submit; "Applied" on the button counts as sent. Dry run stops before Quick Apply, because one click can send. Same filters as Naukri: your job-title phrases, skip words, and at most N years asked. Batches take turns LinkedIn → Naukri → Foundit → Cutshort.
 
 ### Fixed
+- **Tabs piling up in the autopilot window.** A tab the autopilot's own page opens (a job's outside "Apply" link, a company site) is now closed straight away, and the autopilot tab comes back to the front.
 - **LinkedIn: every job skipped with "the job pane didn't load it within 30 s"** from the evening of 17 Nov. LinkedIn now renders Easy Apply as a link (`<a aria-label="Easy Apply to this job">`) instead of a button; both are recognised.
 
 ## [1.21.0] - 2026-11-17
