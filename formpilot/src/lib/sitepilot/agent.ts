@@ -71,6 +71,9 @@ export function buildAgentPrompt(i: AgentInput): string {
     i.snap.missing.length ? `MISSING (required, empty): ${i.snap.missing.join('; ')}` : 'MISSING: none',
     i.snap.errors.length ? `ERRORS SHOWN: ${i.snap.errors.join('; ')}` : 'ERRORS SHOWN: none',
     i.history.length ? `YOUR LAST ACTIONS (most recent last):\n${i.history.slice(-8).join('\n')}` : '',
+    i.snap.submitReady
+      ? 'STATUS: the form looks COMPLETE: every required field has a value, no error is shown, and the Submit button is on the page. Unless one of the values above is wrong for this candidate, answer {"do":"submit","why":"complete"}. Do not re-type fields that already hold the right value.'
+      : '',
     'Your one next action as JSON:',
   ]
     .filter(Boolean)

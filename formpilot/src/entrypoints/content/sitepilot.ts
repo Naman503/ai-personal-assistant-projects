@@ -428,6 +428,26 @@ function fillResumeLink(scope: HTMLElement, link: string | undefined): SpAnswer[
   return out;
 }
 
+/** "Position you're applying for": the option that matches this job's title (never a guess). */
+const POSITION_RE = /\b(position|role|job|post|opening|vacancy|designation)\b[^?]{0,30}\b(apply|applying|applied|interested)\b|\bapplying for\b|\bwhich (role|position|job)\b/i;
+async function chooseOwnPosition(scope: HTMLElement, reg: Map<string, Target>, title: string): Promise<SpAnswer[]> {
+  if (!title.trim()) return [];
+  const snap = snapshot(scope, reg, '');
+  const out: SpAnswer[] = [];
+  for (const c of snap.controls) {
+    if (c.value || !c.options?.length || !POSITION_RE.test(c.label)) continue;
+    const opts = c.options.map((o) => ({ label: o, value: o }));
+    const pick = bestOption(title, opts);
+    const t = reg.get(c.id);
+    if (!t) continue;
+    if (pick && (await chooseIn(t, pick.label))) {
+      out.push({ q: c.label, a: pick.label, src: 'rule: the job you are applying for' });
+      t.el.setAttribute('data-fp-handled', '1');
+    }
+  }
+  return out;
+}
+
 /** Demographic questions: "Decline to self-identify" when the question offers it. */
 async function declineDemographics(scope: HTMLElement, reg: Map<string, Target>): Promise<SpAnswer[]> {
   const snap = snapshot(scope, reg, '');
@@ -910,6 +930,7 @@ export class SitePilotPage {
         const up = await uploadResume(scope);
         if (up) this.progress(up);
         this.note(fillResumeLink(scope, ctx.resumeLink));
+        this.note(await chooseOwnPosition(scope, this.reg, ctx.title));
         this.note(await declineDemographics(scope, this.reg));
         this.note(await fillCombos(scope));
         this.note(await pickFromSuggestions(scope));
@@ -965,6 +986,17 @@ export class SitePilotPage {
         actions++;
       }
 
+      // The form is complete and the model only re-types a field that already has a value (or
+      // scrolls): it found nothing to fix, so that's a yes to Submit.
+      if (snap.submitReady && submit) {
+        const tid = 'id' in action ? action.id : undefined;
+        const target = tid ? snap.controls.find((c) => c.id === tid) : undefined;
+        const redo = (action.do === 'fill' || action.do === 'choose') && target?.value && target.value.trim().toLowerCase() === (action.do === 'fill' ? action.value : action.option).trim().toLowerCase();
+        if (redo || action.do === 'scroll' || (action.do === 'next' && !nextButton(scope))) {
+          this.history.push(`the model had nothing to fix (${action.do}); the form is complete`);
+          action = { do: 'submit' };
+        }
+      }
       if (action.do === 'stop') {
         this.collect(scope, ats);
         if (/confirm/i.test(action.why) && confirmed()) return done('sent', 'confirmed');
