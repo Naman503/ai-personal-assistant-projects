@@ -925,6 +925,12 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   // A 30 s alarm re-attaches after Brave stops the idle worker (which drops the session).
   expect(await sw.evaluate(async () => (await chrome.alarms.get('fp-ap-awake'))?.periodInMinutes)).toBe(0.5);
   expect(await list.evaluate(() => document.hasFocus())).toBe(true);
+  // A tab its page opens (an outside Apply link) is closed, so tabs don't pile up in its window.
+  const opened = await sw.evaluate(async () => {
+    const st = (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { tabId: number; windowId: number };
+    return (await chrome.tabs.create({ windowId: st.windowId, url: 'http://localhost:4173/form.html', openerTabId: st.tabId, active: false })).id!;
+  });
+  await expect.poll(() => sw.evaluate(async (id) => !!(await chrome.tabs.get(id).catch(() => null)), opened), { timeout: 10_000 }).toBe(false);
   // The Autopilot page shows the break and offers to skip it.
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extId}/options.html#autopilot`);

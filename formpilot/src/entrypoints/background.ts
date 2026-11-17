@@ -128,6 +128,7 @@ export default defineBackground({
     chrome.windows?.onRemoved.addListener((id) => void ready.then(() => { void autopilot.onWindowRemoved(id); void outreach.onWindowRemoved(id); void sitePilot.onWindowRemoved(id); }));
     chrome.tabs?.onUpdated.addListener((tabId, info, tab) => void ready.then(() => sitePilot.onTabUpdated(tabId, info, tab)).catch(() => {}));
     chrome.tabs?.onCreated.addListener((tab) => void ready.then(() => sitePilot.onTabCreated(tab)).catch(() => {}));
+    chrome.tabs?.onCreated.addListener((tab) => void ready.then(() => autopilot.onTabCreated(tab)).catch(() => {}));
     void ready.then(() => sitePilot.resume()).catch(() => {});
     chrome.debugger?.onDetach.addListener((src, reason) => void ready.then(() => autopilot.onDetach(src.tabId, reason)));
     void ready.then(() => autopilot.resume()).catch(() => {});

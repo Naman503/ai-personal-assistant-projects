@@ -837,6 +837,26 @@ export class Autopilot {
     await this.onBatchDone({ sent: 0, dry: 0, skipped: 0, reason: 'stopped moving (page left or stuck); moved on' }, st.tabId);
   }
 
+  /**
+   * A tab the autopilot's own page opened (a job's outside "Apply" link, a company site, a new-tab
+   * link): close it. The autopilot never works in those, and they pile up in its window.
+   */
+  async onTabCreated(created: chrome.tabs.Tab) {
+    if (created.id === undefined) return;
+    const st = await loadState();
+    if (!st.running || st.tabId === undefined || created.id === st.tabId) return;
+    // The opener isn't always filled in yet when the tab is announced: look again a moment later.
+    let tab: chrome.tabs.Tab | null = created;
+    if (tab.openerTabId === undefined) {
+      await new Promise((r) => setTimeout(r, 400));
+      tab = await chrome.tabs.get(created.id).catch(() => null);
+    }
+    if (!tab || tab.id === undefined || tab.openerTabId !== st.tabId) return;
+    await chrome.tabs.remove(tab.id).catch(() => {});
+    log.info(`closed a tab the autopilot's page opened (${(tab.pendingUrl || tab.url || '').slice(0, 80)})`);
+    if (st.tabId !== undefined) await this.front(st.tabId);
+  }
+
   async onWindowRemoved(windowId: number) {
     const st = await loadState();
     if (st.running && windowId === st.windowId) {
