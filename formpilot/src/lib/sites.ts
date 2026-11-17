@@ -319,8 +319,9 @@ export function uplersSearchUrl(): string {
 export function wellfoundSearchUrl(): string {
   return 'https://wellfound.com/jobs';
 }
+/** YC's remote software engineering jobs (30 newest, with locations; read live 18 Nov). */
 export function ycSearchUrl(): string {
-  return 'https://www.workatastartup.com/companies?role=eng&sortBy=created_desc&layout=list-compact';
+  return 'https://www.workatastartup.com/jobs/r/software-engineer';
 }
 
 /** The list page for a portal and title. */
@@ -403,7 +404,26 @@ export function wellfoundJobs(doc: ParentNode = document): SiteJob[] {
   });
 }
 
+/**
+ * workatastartup.com/jobs/r/software-engineer (read live 18 Nov): per job a[target=company]
+ * ("Instawork (S15) • …"), a[target=job] /jobs/<id> (title) and a <p> with spans "Full-time",
+ * "Bengaluru, KA, IN / …", "Full stack".
+ */
+function ycRoleJobs(doc: ParentNode): SiteJob[] {
+  const seen = new Set<string>();
+  return [...doc.querySelectorAll<HTMLAnchorElement>('a[target=job][href*="/jobs/"]')].flatMap((a) => {
+    if (!/\/jobs\/\d+$/.test(a.getAttribute('href') ?? '') || seen.has(a.href)) return [];
+    seen.add(a.href);
+    let c: HTMLElement | null = a.parentElement;
+    while (c && !c.querySelector('a[target=company]')) c = c.parentElement;
+    const co = clean(c?.querySelector('a[target=company] span span')?.textContent ?? c?.querySelector('a[target=company]')?.textContent).replace(/\s*\([A-Z]\d{2}\)\s*$/, '');
+    const spans = [...(a.parentElement?.nextElementSibling?.querySelectorAll('span') ?? [])].map((x) => clean(x.textContent));
+    return [{ url: a.href, title: clean(a.textContent), company: co, location: spans[1] ?? '' }];
+  });
+}
+
 export function ycJobs(doc: ParentNode = document): SiteJob[] {
+  if (doc.querySelector('a[target=job][href*="/jobs/"]')) return ycRoleJobs(doc);
   const seen = new Set<string>();
   return [...doc.querySelectorAll<HTMLAnchorElement>('a[href*="/jobs/"]')].flatMap((a) => {
     if (!/\/jobs\/\d+$/.test(a.getAttribute('href') ?? '') || a.getAttribute('aria-label') || seen.has(a.href)) return [];
@@ -429,7 +449,8 @@ export function openToIndia(p: Platform, j: Pick<SiteJob, 'location'>): boolean 
   if (p === 'yc') {
     const where = loc.split('·')[0] ?? '';
     if (/\b(india|bengaluru|bangalore|remote \(?(in|india|apac|asia)|anywhere|worldwide)\b/i.test(where)) return true;
-    return /\bremote\b/i.test(where) && /visa not required/i.test(loc) && !/remote \((us|ca|uk|eu)\b/i.test(where);
+    if (/visa not required/i.test(loc)) return /\bremote\b/i.test(where) && !/remote \((us|ca|uk|eu)\b/i.test(where);
+    return locationOk(where.replace(/\s*\/\s*/g, ' · '));
   }
   if (p === 'wellfound') return /india|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurugram|gurgaon|noida|chennai|indore|remote/i.test(loc);
   if (p === 'uplers' || p === 'hirist' || p === 'instahyre') return true; // India portals

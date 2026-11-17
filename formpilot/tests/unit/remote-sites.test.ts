@@ -49,6 +49,16 @@ describe('remote portals: job lists', () => {
     expect(openToIndia('yc', jobs[0])).toBe(true);
     expect(openToIndia('yc', jobs[1])).toBe(false);
   });
+  it('YC remote jobs page: company, title, location', () => {
+    const jobs = ycJobs(
+      html(`<div><div><div><div><a href="/companies/instawork" target="company"><span><span>Instawork&nbsp;(S15)</span><span>•</span><span>Hourly work app</span></span></a></div></div>
+      <div><a href="/jobs/95530" target="job">Senior Software Engineer - E3</a></div><div><p><span>Full-time</span><span>Bengaluru, KA, IN / Bengaluru, Karnataka, IN</span><span>Full stack</span></p></div></div>
+      <div><div><div><a href="/companies/acme" target="company"><span><span>Acme (W24)</span></span></a></div></div><div><a href="/jobs/1" target="job">Backend Engineer</a></div><div><p><span>Full-time</span><span>Remote (US)</span></p></div></div></div>`),
+    );
+    expect(jobs.map((j) => [j.company, j.title])).toEqual([['Instawork', 'Senior Software Engineer - E3'], ['Acme', 'Backend Engineer']]);
+    expect(openToIndia('yc', jobs[0])).toBe(true);
+    expect(openToIndia('yc', jobs[1])).toBe(false);
+  });
   it('Hirist: company and role split, experience, location', () => {
     const [j] = hiristJobs(html(HIRIST));
     expect(j).toMatchObject({ company: 'Servify', title: 'Mobile Application Developer - React Native', expMin: 2, location: 'Hyderabad' });
