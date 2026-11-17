@@ -167,7 +167,9 @@ export function sentNotice(p: Platform, doc: Document = document, href = locatio
   if (p === 'naukri' && /\/myapply\/(saveApply|)/i.test(href)) return true;
   const t = (doc.body?.innerText ?? '').slice(0, 30000);
   if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted))/i.test(t)) return true;
-  if (p === 'foundit') return /^applied$/i.test(clean(doc.querySelector('#jdPageHeader #applyBtn, .jobMainInfoCard #applyBtn')?.textContent));
+  // Foundit: Quick Apply lands on foundit.in/srp/applied-success?id=<job> (seen 17 Nov), or the
+  // header button turns into "Applied".
+  if (p === 'foundit') return /\/srp\/applied-success/i.test(href) || /^applied$/i.test(clean(doc.querySelector('#jdPageHeader #applyBtn, .jobMainInfoCard #applyBtn')?.textContent));
   return p === 'naukri' ? /^applied$/i.test(clean(doc.querySelector('button#apply-button')?.textContent)) : !!buttonByText(/^applied$/i, doc);
 }
 

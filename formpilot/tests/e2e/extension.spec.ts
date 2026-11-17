@@ -1180,6 +1180,39 @@ test('autopilot on Foundit (live): only Quick Apply jobs, the header button, rec
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
 });
 
+test('autopilot on Foundit: Quick Apply that lands on the success page counts as sent', async ({ context, sw, extId }) => {
+  test.setTimeout(240_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false },
+    behavior: { enabled: false },
+    autopilot: { titles: 'React Native Developer', gapMinMin: 30, gapMaxMin: 30, startTime: '00:00', endTime: '24:00', days: [0, 1, 2, 3, 4, 5, 6], skipWords: '', linkedinEnabled: false, naukri: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5, mode: 'search' }, foundit: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5 }, cutshort: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5 }, searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}' },
+  });
+  const date = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  await sw.evaluate(
+    async ({ date }) => {
+      await chrome.storage.local.set({
+        fpAutopilot: {
+          running: false,
+          phase: 'paused',
+          day: { date, sent: 0, dry: 0, skipped: 0, perTitle: {}, exhausted: [], seen: [], byPlatform: { linkedin: { sent: 0, dry: 0, skipped: 0 }, naukri: { sent: 0, dry: 0, skipped: 0 }, foundit: { sent: 0, dry: 0, skipped: 0 }, cutshort: { sent: 0, dry: 0, skipped: 0 } } },
+          lastTitle: -1,
+          message: '',
+          history: [],
+          current: { platform: 'foundit', title: 'React Native Developer', index: 0, batch: 1, startedAt: Date.now(), tries: 0, stage: 'job', url: 'http://localhost:4173/foundit-search.html?q=React', jobs: [{ url: 'http://localhost:4173/foundit-job.html?id=104&direct=1', title: 'React Native Developer', company: 'Direct Co' }], i: 0, done: 0, sent: 0, dry: 0, skipped: 0, pausedAt: Date.now() },
+        },
+      });
+    },
+    { date },
+  );
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { phase: string; day: { byPlatform: Record<string, { sent: number }> } });
+  await expect.poll(async () => (await state()).day.byPlatform.foundit.sent, { timeout: 150_000 }).toBe(1);
+  await expect.poll(async () => (await state()).phase, { timeout: 15_000 }).toBe('waiting');
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
+});
+
 test('autopilot: when the AI\'s daily quota is used up, it waits for the reset instead of skipping jobs', async ({ context, sw, extId }) => {
   test.setTimeout(180_000);
   await configure(sw, {

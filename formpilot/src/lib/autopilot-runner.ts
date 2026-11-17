@@ -680,14 +680,16 @@ export class Autopilot {
     const st = await loadState();
     const cur = st.current;
     if (tabId !== undefined && tabId !== st.tabId) return;
-    // A search job's Apply went straight to Naukri's confirmation page (no chatbot): that page
+    // A search job's Apply went straight to a confirmation page (Naukri's saveApply with no chatbot,
+    // Foundit's /srp/applied-success after Quick Apply): that page
     // reports instead of the job page, which is gone. Before 1.21.0 this was dropped, the batch sat
     // until the watchdog ("stopped moving") and the application wasn't counted.
     if (cur?.stage === 'job' && cur.jobs && (result.single || !result.status)) {
       const job = cur.jobs[cur.i ?? 0];
       const outcome = result.outcome === 'sent' ? 'sent' : 'skip';
       const s = this.settings();
-      if (outcome === 'sent' && job && s.tracker.enabled) await recordInTracker(s, 'applied', { url: job.url, role: job.title, company: job.company, location: job.location ?? '', source: 'Naukri', salary: '', description: '' }, [], 'Autopilot naukri').catch(() => {});
+      const p = (cur.platform ?? 'naukri') as Platform;
+      if (outcome === 'sent' && job && s.tracker.enabled) await recordInTracker(s, 'applied', { url: job.url, role: job.title, company: job.company, location: job.location ?? '', source: PLATFORM_NAME[p], salary: '', description: '' }, [], `Autopilot ${p}`).catch(() => {});
       return this.onJobDone({ outcome, reason: result.reason }, tabId);
     }
     // Naukri's confirmation page loaded after the batch was already closed (its first report
