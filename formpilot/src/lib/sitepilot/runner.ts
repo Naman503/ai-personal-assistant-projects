@@ -19,7 +19,7 @@ import { naukriSearchUrl, type SiteJob } from '../sites';
 import { generateWithFallback } from '../llm/registry';
 import { userActive, localRun } from '../llm/local-run';
 import { keepTabAwake, releaseTab } from '../tab-awake';
-import { addShot, addStep, companyCount, counts, enqueue, nextQueued, spDb, type NewJob, type SpJob } from './db';
+import { addShot, addStep, companyCount, companyWall, counts, enqueue, nextQueued, spDb, type NewJob, type SpJob } from './db';
 import { ACTION_SCHEMA, AGENT_SYSTEM, buildAgentPrompt, describeAction, parseAction } from './agent';
 import { ATS_NAME, detectAts, needsAccount, type Ats } from './detect';
 import { boardFromUrl, fetchBoard, fitting, parseBoards, type Board } from './boards';
@@ -342,6 +342,9 @@ export class SitePilot {
     if (job.title && titleSkipped(job.title, ap.skipWords)) return this.finishQuick(st, job, 'skipped', `title has a skip word ("${job.title}")`);
     if (job.company && (await companyCount(job.company, job.id)) >= sp.perCompany) return this.finishQuick(st, job, 'skipped', `already ${sp.perCompany} applications to ${job.company} in 30 days`);
     if (needsAccount(job.url)) return this.finishQuick(st, job, 'needs-you', 'this site needs an account (sign in and apply yourself)');
+    // Another job at this company already hit a CAPTCHA or a sign-in wall: don't open this one.
+    const wall = job.company ? await companyWall(job.company, job.id) : null;
+    if (wall) return this.finishQuick(st, job, 'needs-you', `same company as an earlier job: ${wall}`);
 
     // Known company link from an earlier try: go straight there.
     const naukri = /naukri\.com\/job-listings/i.test(job.url) && !job.applyUrl;

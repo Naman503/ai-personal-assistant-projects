@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { blockerIn, CLOSED_RE, companyKey, consentToTick, declineOption, detectAts, isResumeField, linkKey, needsAccount } from '@/lib/sitepilot/detect';
+import { OPT_IN_RE, blockerIn, CLOSED_RE, companyKey, consentToTick, declineOption, detectAts, isResumeField, linkKey, needsAccount } from '@/lib/sitepilot/detect';
 import { buildAgentPrompt, parseAction } from '@/lib/sitepilot/agent';
 import { isLive, siteSettings } from '@/lib/sitepilot/runner';
 import { enqueue, nextQueued, companyCount, spDb } from '@/lib/sitepilot/db';
@@ -36,6 +36,11 @@ describe('detect', () => {
     expect(consentToTick('Send me job alerts and newsletters', true)).toBe(false);
     expect(consentToTick('Join our talent community for future opportunities', false)).toBe(false);
     expect(consentToTick('I agree to the privacy policy', false)).toBe(false); // optional: left alone
+  });
+  it('spots opt-in questions', () => {
+    expect(OPT_IN_RE.test('Would you like to stay up to date with MongoDB?')).toBe(true);
+    expect(OPT_IN_RE.test('Receive alerts for similar jobs?')).toBe(true);
+    expect(OPT_IN_RE.test('Are you willing to relocate?')).toBe(false);
   });
   it('declines demographic questions when it can', () => {
     expect(declineOption('Gender', ['Male', 'Female', 'Decline to self-identify'])).toBe('Decline to self-identify');

@@ -23,7 +23,7 @@ import { CONFIRMATION_URL_RE, deepText, isConfirmation, looksLikeSubmit } from '
 import { humanClick } from '@/lib/queue';
 import { quietFocus } from '@/lib/automation';
 import { rpc } from '@/lib/messages';
-import { blockerIn, CLOSED_RE, consentToTick, declineOption, detectAts, EEO_RE, isResumeField, MARKETING_RE, OPEN_FORM_RE } from '@/lib/sitepilot/detect';
+import { blockerIn, CLOSED_RE, consentToTick, declineOption, detectAts, EEO_RE, isResumeField, MARKETING_RE, OPEN_FORM_RE, OPT_IN_RE } from '@/lib/sitepilot/detect';
 import type { AgentAction, PageSnapshot, RoundContext, RoundResult, SnapControl, SpAnswer } from '@/lib/sitepilot/types';
 import type { FieldContext } from '@/lib/types';
 
@@ -443,6 +443,22 @@ async function chooseOwnPosition(scope: HTMLElement, reg: Map<string, Target>, t
     if (pick && (await chooseIn(t, pick.label))) {
       out.push({ q: c.label, a: pick.label, src: 'rule: the job you are applying for' });
       t.el.setAttribute('data-fp-handled', '1');
+    }
+  }
+  return out;
+}
+
+/** "Stay up to date / job alerts?" asked as a choice: No. */
+async function declineOptIns(scope: HTMLElement, reg: Map<string, Target>): Promise<SpAnswer[]> {
+  const snap = snapshot(scope, reg, '');
+  const out: SpAnswer[] = [];
+  for (const c of snap.controls) {
+    if (!c.options?.length || !OPT_IN_RE.test(c.label) || /^no\b/i.test(c.value ?? '')) continue;
+    const no = c.options.find((o) => /^(no|nope|don'?t|do not|not now|no,? thanks?)\b/i.test(o.trim()));
+    const t = reg.get(c.id);
+    if (no && t && (await chooseIn(t, no))) {
+      t.el.setAttribute('data-fp-handled', '1');
+      out.push({ q: c.label, a: no, src: 'rule: no marketing opt-ins' });
     }
   }
   return out;
@@ -932,6 +948,7 @@ export class SitePilotPage {
         this.note(fillResumeLink(scope, ctx.resumeLink));
         this.note(await chooseOwnPosition(scope, this.reg, ctx.title));
         this.note(await declineDemographics(scope, this.reg));
+        this.note(await declineOptIns(scope, this.reg));
         this.note(await fillCombos(scope));
         this.note(await pickFromSuggestions(scope));
         const r = await this.fill(scope);

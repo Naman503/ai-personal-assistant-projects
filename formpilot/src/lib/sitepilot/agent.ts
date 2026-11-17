@@ -36,7 +36,7 @@ Rules:
 1. Answers come only from the candidate's facts, resume and profile below. Never invent personal data (IDs, numbers, dates, links) that isn't there.
 2. Keep the candidate in the running: years of experience with a skill the job needs → the profile's number, else 3; willing to relocate, work on-site or in shifts → Yes; needs visa sponsorship → No; notice period, CTC and location → from the facts.
 3. Demographic questions (gender, race, veteran, disability): choose "Decline to self-identify" or the closest option.
-4. Tick a required privacy/terms/consent box. Never tick newsletters, marketing, job alerts or "talent community" boxes.
+4. Tick a required privacy/terms/consent box. Never tick newsletters, marketing, job alerts or "talent community" boxes, and answer No to "stay up to date" or "job alerts" questions.
 5. If the page asks to sign in, create an account or a password, solve a CAPTCHA, take a test, verify a phone/email code, or pay: stop with needsYou true.
 6. "submit" only when every required field is filled, no error message is visible, and the resume is attached (if the form has a resume field).
 7. Fix errors first: a field marked with an error or listed under MISSING comes before anything else.
