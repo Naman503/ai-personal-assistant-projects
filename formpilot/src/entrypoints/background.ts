@@ -3,6 +3,7 @@ import { Outreach } from '@/lib/outreach-runner';
 import { SitePilot, siteSettings } from '@/lib/sitepilot/runner';
 import { setLocalRun } from '@/lib/llm/local-run';
 import { factsBlock } from '@/lib/memory/facts';
+import { PortalSync } from '@/lib/portal-sync';
 import { parseWorkHistory } from '@/lib/fields/workdates';
 import { addLogSink, configureLogger, createLogger, LogRing , type LogEntry } from '@/lib/logger';
 import { DEFAULT_SETTINGS, loadSettings, watchSettings, patchSettings, type Settings } from '@/lib/settings';
@@ -50,6 +51,7 @@ export default defineBackground({
     let settings: Settings = DEFAULT_SETTINGS;
     const autopilot = new Autopilot(() => settings);
     const outreach = new Outreach(() => settings);
+    const portalSync = new PortalSync(() => settings);
     const usage = new UsageReporter(() => settings);
     const engine = new SuggestEngine(() => settings, usage);
     const sitePilot = new SitePilot({
@@ -112,6 +114,7 @@ export default defineBackground({
       const outreachWas = settings.tracker.enabled && settings.tracker.outreach;
       applySettings(s);
       if (outreachWas !== (s.tracker.enabled && s.tracker.outreach)) void outreach.sync();
+      void portalSync.sync();
       if (wasSharing && !s.privacy.shareUsage) void usage.turnedOff();
       else if (!wasSharing && s.privacy.shareUsage) void usage.turnedOn();
     });
@@ -124,6 +127,7 @@ export default defineBackground({
       if (a.name.startsWith('fp-ap-')) void ready.then(() => autopilot.onAlarm(a.name));
       if (a.name.startsWith('fp-or-')) void ready.then(() => outreach.onAlarm(a.name));
       if (a.name.startsWith('fp-sp-')) void ready.then(() => sitePilot.onAlarm(a.name));
+      if (a.name.startsWith('fp-ps-')) void ready.then(() => portalSync.onAlarm(a.name));
     });
     chrome.windows?.onRemoved.addListener((id) => void ready.then(() => { void autopilot.onWindowRemoved(id); void outreach.onWindowRemoved(id); void sitePilot.onWindowRemoved(id); }));
     chrome.tabs?.onUpdated.addListener((tabId, info, tab) => void ready.then(() => sitePilot.onTabUpdated(tabId, info, tab)).catch(() => {}));
@@ -133,6 +137,7 @@ export default defineBackground({
     chrome.debugger?.onDetach.addListener((src, reason) => void ready.then(() => autopilot.onDetach(src.tabId, reason)));
     void ready.then(() => autopilot.resume()).catch(() => {});
     void ready.then(() => outreach.sync()).catch(() => {});
+    void ready.then(() => portalSync.sync()).catch(() => {});
     self.addEventListener('error', (e) => void usage.error((e as ErrorEvent).error, true));
     self.addEventListener('unhandledrejection', (e) => {
       if (!isAbort((e as PromiseRejectionEvent).reason)) void usage.error((e as PromiseRejectionEvent).reason);
@@ -305,6 +310,8 @@ export default defineBackground({
         case 'outreach-done':
           await outreach.done(msg.result, sender.tab?.id);
           return null;
+        case 'portal-sync':
+          return msg.action === 'run-now' ? portalSync.run() : portalSync.state();
         case 'outreach':
           if (msg.action === 'run-now') await outreach.runNow();
           return outreach.status();

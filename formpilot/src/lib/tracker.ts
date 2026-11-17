@@ -7,6 +7,7 @@
  *        -> {ok, id, created, status}
  *   GET  /api/state                -> used by "Test connection"
  *   GET  /api/outreach/next, POST /api/outreach/result  -> LinkedIn outreach tasks (when turned on)
+ *   POST /api/import {portal, items}  -> your applied lists from Naukri/Cutshort (portal sync, when on)
  * Only what's listed above is sent, and only to the URL you set.
  */
 import type { Settings } from './settings';
@@ -115,6 +116,11 @@ export async function trackerSummary(url: string): Promise<TrackerSummary> {
 /** LinkedIn outreach: the next task the tracker wants done (it writes any note right before answering). */
 export async function outreachNext(url: string) {
   return call<import('@/entrypoints/content/linkedin-outreach').OutreachTask | { task: 'none'; reason?: string; retry?: boolean }>(baseUrl(url) + '/api/outreach/next');
+}
+export interface ImportItem { url: string; role: string; company: string; location: string; logo: string; appliedAt: string; events: { status: string; at: string }[] }
+/** Portal sync: your applied list from a job site (POST /api/import); the tracker adds what it's missing. */
+export async function importToTracker(url: string, portal: string, items: ImportItem[]) {
+  return call<{ added: number; updated: number; total: number }>(baseUrl(url) + '/api/import', { method: 'POST', body: JSON.stringify({ portal, items }) });
 }
 export async function outreachResult(url: string, body: Record<string, unknown>) {
   return call<{ ok: boolean }>(baseUrl(url) + '/api/outreach/result', { method: 'POST', body: JSON.stringify(body) });
