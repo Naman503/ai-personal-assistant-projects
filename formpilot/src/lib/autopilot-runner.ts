@@ -205,6 +205,8 @@ export class Autopilot {
     const cur = st.current;
     if (!st.running || !cur) return this.tick();
     const p = (cur.platform ?? 'linkedin') as Platform;
+    // Its portal was switched off while paused: drop the batch instead of carrying on.
+    if (!platformPrefs(this.settings().autopilot, p).enabled) return this.finishBatch(st, `${PLATFORM_NAME[p]} was turned off`);
     cur.pausedAt = undefined;
     cur.tries = 0;
     try {
@@ -653,6 +655,8 @@ export class Autopilot {
   private async nextJob() {
     const st = await loadState();
     if (!st.running || !st.current?.jobs) return;
+    const p = (st.current.platform ?? 'linkedin') as Platform;
+    if (!platformPrefs(this.settings().autopilot, p).enabled) return this.finishBatch(st, `${PLATFORM_NAME[p]} was turned off`);
     await this.openJob(st);
   }
 
