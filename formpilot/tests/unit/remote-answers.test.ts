@@ -56,3 +56,14 @@ describe('location dropdowns', () => {
     expect(locationChoiceAnswer({ label: 'Location', options: o(['Yes', 'No']) })).toBeNull();
   });
 });
+
+import { consentToTick } from '@/lib/sitepilot/detect';
+describe('consent boxes', () => {
+  it('ticks a required privacy consent that also mentions future opportunities', () => {
+    expect(consentToTick('Required. By submitting this application, I agree that I have read the Privacy Policy and confirm that the COOL company store my personal details to be able to process my job application and future opportunities', false)).toBe(true);
+  });
+  it('never ticks an optional marketing box', () => {
+    expect(consentToTick('I agree to receive newsletters and future opportunities', false)).toBe(false);
+    expect(consentToTick('Keep me informed about future opportunities (talent community)', false)).toBe(false);
+  });
+});

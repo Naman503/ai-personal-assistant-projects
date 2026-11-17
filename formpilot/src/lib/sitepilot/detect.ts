@@ -70,8 +70,13 @@ export const MARKETING_RE = /\b(newsletter|marketing|promotional|offers|updates?
 export const OPT_IN_RE = /\b(stay up to date|keep (me )?(informed|updated|in touch)|(job )?alerts?( for similar)?|newsletter|marketing (emails?|communications?)|future (job )?(opportunities|openings|roles)|talent (community|pool|network)|subscribe|contact me about other)\b/i;
 
 export function consentToTick(label: string, required: boolean): boolean {
-  if (MARKETING_RE.test(label)) return false;
-  return CONSENT_RE.test(label) && (required || /\*\s*$/.test(label.trim()) || /\b(required|mandatory)\b/i.test(label));
+  if (!CONSENT_RE.test(label)) return false;
+  const mustTick = required || /\*\s*$/.test(label.trim()) || /\b(required|mandatory)\b/i.test(label);
+  // A required privacy / terms box can't be left unticked even if it also mentions future
+  // opportunities (18 Nov, The COOL Company: "stuck: still missing Required. By submitting this
+  // application, I agree … Privacy Policy …"). Optional marketing boxes stay unticked.
+  if (MARKETING_RE.test(label)) return mustTick && /\b(privacy (policy|notice|statement)|terms|process(ing)? my|my (job )?application)\b/i.test(label);
+  return mustTick;
 }
 
 /** Voluntary self-identification questions: answered "decline" when that option exists. */

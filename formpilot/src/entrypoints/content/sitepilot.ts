@@ -16,7 +16,7 @@ import { classifyField } from '@/lib/fields/classify';
 import { fillElement, bestOption, fillRadioGroup, fillCheckboxGroup } from '@/lib/fields/fill';
 import { pickSuggestion } from '@/lib/fields/typeahead';
 import { repairValue, specOf } from '@/lib/fields/adapt';
-import { extractField, isVisible, readValue, resolveLabel, radioGroups, checkboxGroups, type FillableElement } from '@/lib/fields/context';
+import { extractField, isVisible, isVisibleControl, readValue, resolveLabel, radioGroups, checkboxGroups, type FillableElement } from '@/lib/fields/context';
 import { radioGroupLabel, radioOptionLabel } from '@/lib/fields/radios';
 import { buttonText, fieldErrors, settled, STEP_RE, visibleError, isUnchosen } from '@/lib/walk';
 import { CONFIRMATION_URL_RE, deepText, isConfirmation, looksLikeSubmit } from '@/lib/job';
@@ -502,7 +502,7 @@ function tickConsent(scope: HTMLElement): SpAnswer[] {
   const out: SpAnswer[] = [];
   // Each box on its own (a consent box often sits next to a marketing one in the same group).
   for (const box of scope.querySelectorAll<HTMLInputElement>('input[type=checkbox]')) {
-    if (box.checked || !(isVisible(box) || isVisible(box.parentElement!))) continue;
+    if (box.checked || !(isVisible(box) || isVisible(box.parentElement!) || isVisibleControl(box))) continue;
     const label = radioOptionLabel(box, [box]) || resolveLabel(box);
     if (!consentToTick(label, box.required || box.getAttribute('aria-required') === 'true')) continue;
     humanClick(box);
@@ -656,6 +656,41 @@ function suggestBox(input: HTMLElement): HTMLElement | null {
  * location box clears itself on blur otherwise): type the answer with key events, pick the
  * closest suggestion.
  */
+/**
+ * Lever's "Current location" (jobs.lever.co): a search box whose picked place goes into a hidden
+ * #selected-location; on blur without a pick it clears itself and the form is refused ("Please
+ * select a location from the dropdown menu", 18 Nov: SmartWorking, CSC Generation). Its search
+ * list never finished loading with typed key events, so ask Lever's own search (same origin,
+ * /searchLocations?text=…) for your city and set both fields the way its picker does.
+ */
+async function leverLocation(scope: HTMLElement): Promise<SpAnswer[]> {
+  const input = scope.querySelector<HTMLInputElement>('input.location-input');
+  const hidden = document.getElementById('selected-location') as HTMLInputElement | null;
+  if (!input || !hidden || hidden.value || !/lever\.co$/i.test(location.hostname)) return [];
+  const field = extractField(input);
+  const page = { url: location.href, host: location.hostname, title: document.title, formTitle: '', pageText: '', otherFields: [] } as unknown as import('@/lib/types').PageContext;
+  const res = await rpc<{ values: Record<string, string> }>({ type: 'fill-form', fields: [{ id: 'loc', field: { ...(field as FieldContext), label: 'Current location (city)', currentValue: '' } }], page, engine: 'local' }).catch(() => ({ values: {} as Record<string, string> }));
+  const answer = clean(res.values.loc || '');
+  const city = answer.split(',')[0].trim();
+  const tries = [...new Set([city, /bengaluru/i.test(city) ? 'Bangalore' : /bangalore/i.test(city) ? 'Bengaluru' : '', answer].filter(Boolean))];
+  for (const q of tries) {
+    const list = (await fetch(`/searchLocations?text=${encodeURIComponent(q)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => [])) as { name: string; id: string }[];
+    const pick = list.find((x) => /\b(IND|India)\b/.test(x.name)) ?? list[0];
+    if (!pick) continue;
+    const dd = input.closest('li, .application-question')?.querySelector<HTMLElement>('.dropdown-container');
+    if (dd) dd.style.display = 'none'; // so blur doesn't clear the pick
+    input.value = pick.name;
+    hidden.value = JSON.stringify(pick);
+    input.setAttribute('data-fp-handled', '1');
+    log.info(`Lever location: "${q}" → ${pick.name}`);
+    return [{ q: clean(resolveLabel(input)).replace(/\s*[✱*]\s*$/, '') || 'Current location', a: pick.name, src: 'Lever location search' }];
+  }
+  log.info(`Lever location: nothing found for ${JSON.stringify(tries)}`);
+  return [];
+}
+
 async function pickFromSuggestions(scope: HTMLElement): Promise<SpAnswer[]> {
   const boxes = [...scope.querySelectorAll<HTMLInputElement>('input[type=text], input:not([type])')]
     .filter((i) => isVisible(i) && i.getAttribute('role') !== 'combobox' && !i.hasAttribute('data-fp-handled'))
@@ -992,6 +1027,7 @@ export class SitePilotPage {
         this.note(await declineDemographics(scope, this.reg));
         this.note(await declineOptIns(scope, this.reg));
         this.note(await fillCombos(scope));
+        this.note(await leverLocation(scope));
         this.note(await pickFromSuggestions(scope));
         const r = await this.fill(scope);
         if (r.error) {
