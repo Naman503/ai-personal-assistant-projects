@@ -304,6 +304,16 @@ function ProviderCard({
                   onInstall={p.kind === 'ollama' ? (tag) => (location.hash = `local?install=${encodeURIComponent(tag)}`) : undefined}
                 />
               </Row>
+              {p.kind !== 'ollama' && (
+                <Row label="When this model is busy, also use" description="More models on the same key (comma separated). Free tiers give each model its own limits, so these add capacity without another account. Example for Gemini: gemini-3.5-flash-lite">
+                  <Input className="w-80 font-mono text-[13px]" placeholder="gemini-3.5-flash-lite" defaultValue={p.altModels ?? ''} onBlur={(e) => onChange((d) => void (d.altModels = e.target.value.trim()))} />
+                </Row>
+              )}
+              {p.kind !== 'ollama' && (
+                <Row label="Requests per minute" description={`FormPilot stays under this many calls a minute per model and waits or moves on instead of getting rate-limited. 0 = ${p.kind === 'gemini' ? 'automatic (14 for Gemini free tier)' : 'no limit'}.`}>
+                  <Input type="number" min={0} max={1000} className="w-24" value={String(p.rpm ?? 0)} onChange={(e) => onChange((d) => void (d.rpm = Math.max(0, Math.min(1000, Number(e.target.value) || 0))))} />
+                </Row>
+              )}
               {p.kind === 'openai' && (
                 <Row label="JSON mode" description="Ask for strict JSON output. FormPilot retries without it automatically if the model rejects it.">
                   <Switch checked={p.jsonMode} onCheckedChange={(v) => onChange((d) => void (d.jsonMode = v))} />

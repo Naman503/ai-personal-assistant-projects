@@ -33,7 +33,7 @@ import {
 } from '@/lib/queue';
 import { decideStep, settled } from '@/lib/walk';
 import { AI_BLOCKING } from '@/lib/autopilot';
-import { dialogAnchor } from '@/lib/fields/context';
+import { dialogAnchor, openDialogs } from '@/lib/fields/context';
 import { createLogger } from '@/lib/logger';
 import { quietFocus } from '@/lib/automation';
 import type { WalkOutcome } from './walk';
@@ -88,6 +88,15 @@ export interface QueueResult {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A visible "Discard" button in any open dialog. */
+function discardButton(): HTMLElement | null {
+  for (const d of openDialogs()) {
+    const b = [...d.querySelectorAll<HTMLElement>('button')].find((x) => /^(discard|don.t save)$/i.test((x.textContent || '').trim()));
+    if (b) return b;
+  }
+  return null;
+}
 
 export class ApplyQueue {
   private running = false;
@@ -331,6 +340,7 @@ export class ApplyQueue {
     if (this.stopRequested) return false;
     const company = paneCompany() || card.company;
     const jobId = currentJobId(location.href);
+    await this.clearLeftovers();
     // Press Easy Apply; if nothing opens, press it once more (the first press can land mid-render).
     let dialog = false;
     for (let attempt = 0; attempt < 2 && !dialog && !this.stopRequested; attempt++) {
@@ -488,10 +498,34 @@ export class ApplyQueue {
     const x = [...d.querySelectorAll<HTMLElement>('button')].find((b) => /^dismiss|^close/i.test(b.getAttribute('aria-label') || ''));
     if (x) humanClick(x);
     await sleep(800);
-    const confirm = applyDialog();
-    const discardBtn = confirm && [...confirm.querySelectorAll<HTMLElement>('button')].find((b) => /^discard$/i.test((b.textContent || '').trim()));
-    if (discardBtn) humanClick(discardBtn);
-    await this.until(() => !applyDialog(), 4000);
+    // LinkedIn then asks "Save this application?" in a second dialog (no form in it, so
+    // applyDialog() doesn't see it). Left open, it covers the page and every later Easy Apply
+    // press does nothing (live, 17 Nov). Press Discard wherever it is.
+    await this.pressDiscard();
+    await this.until(() => !applyDialog() && !discardButton(), 4000);
+  }
+
+  /** "Discard" in any open dialog (LinkedIn's "Save this application?"). */
+  private async pressDiscard(): Promise<boolean> {
+    const b = discardButton();
+    if (!b) return false;
+    humanClick(b);
+    await sleep(600);
+    return true;
+  }
+
+  /** Before opening a job: close whatever an earlier job (or you) left open. */
+  private async clearLeftovers() {
+    if (await this.pressDiscard()) trace('closed a leftover "Save this application?" dialog');
+    const d = applyDialog();
+    if (d && !isSentDialog(d)) {
+      trace('closing a leftover application dialog');
+      await this.discard(d);
+    } else if (d && isSentDialog(d)) {
+      const close = closeButton(d);
+      if (close) humanClick(close);
+      await sleep(600);
+    }
   }
 
   /** Which step the dialog is on: its field names and its buttons. */

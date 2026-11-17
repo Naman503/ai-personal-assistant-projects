@@ -55,7 +55,10 @@ function select(j) {
     pane.innerHTML = `<a href="/jobs/view/${j.id}/">${j.title}</a><p><a href="https://www.linkedin.com/company/${j.company.toLowerCase()}/life">${j.company} Pvt Ltd</a></p>` +
       (j.applied ? '<h2>Application status</h2>' : j.easy ? `<button type="button" aria-label="Easy Apply to this job" componentkey="ea">Easy Apply</button>` : '<button type="button">Apply</button>');
     const b = pane.querySelector('[aria-label="Easy Apply to this job"]');
-    if (b) b.onclick = () => { history.pushState(null, '', '/jobs/view/' + j.id + '/?companyName=' + encodeURIComponent(j.company + ' Private Limited') + '&applicantTrackingSystemName=LinkedIn'); openDialog(j); };
+    if (b) b.onclick = () => {
+      // Live LinkedIn (17 Nov): while "Save this application?" is open, Easy Apply does nothing.
+      if (document.getElementById('confirm')) { window.__blocked = (window.__blocked || 0) + 1; return; }
+      history.pushState(null, '', '/jobs/view/' + j.id + '/?companyName=' + encodeURIComponent(j.company + ' Private Limited') + '&applicantTrackingSystemName=LinkedIn'); openDialog(j); };
   }, 1500);
 }
 const css = `<style>.fb-form-element__checkbox{position:absolute;opacity:0;width:1px;height:1px}
@@ -104,7 +107,16 @@ function wire(j, r, body, native) {
       dlg.querySelector('button').onclick = () => { r.innerHTML = ''; };
     }, 300);
   };
-  q('#x').onclick = () => { r.innerHTML = ''; };
+  q('#x').onclick = () => {
+    r.innerHTML = '';
+    // Live LinkedIn: closing asks "Save this application?" in a second dialog.
+    if (!window.__confirmOnDismiss) return;
+    const c = document.createElement('dialog');
+    c.id = 'confirm'; c.setAttribute('data-testid', 'dialog'); c.open = true;
+    c.innerHTML = '<h2>Save this application?</h2><p>Save to return to this application later.</p><button type="button" aria-label="Dismiss">×</button><button type="button" id="discard">Discard</button><button type="button">Save</button>';
+    document.body.appendChild(c);
+    c.querySelector('#discard').onclick = () => c.remove();
+  };
 }
 list.addEventListener('scroll', () => {
   if (shown < jobs.length && list.scrollTop + list.clientHeight >= list.scrollHeight - 30) setTimeout(() => { shown = jobs.length; const t = list.scrollTop; renderList(); list.scrollTop = t; }, 400);

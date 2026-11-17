@@ -80,6 +80,10 @@ export interface DayState {
   byPlatform: Record<'linkedin' | 'naukri' | 'cutshort', { sent: number; dry: number; skipped: number }>;
   /** Naukri / Cutshort job pages already tried today. */
   seen: string[];
+  /** Titles whose last-N-days search ran out today: searched over the past week from then on. */
+  widened?: string[];
+  /** When Naukri's Recommended list last had nothing that fits (it refreshes during the day). */
+  recEmptyAt?: number;
 }
 
 const zero = () => ({ sent: 0, dry: 0, skipped: 0 });
