@@ -219,10 +219,38 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
         <Switch checked={t.outreach} disabled={!t.enabled} onCheckedChange={(v) => set('outreach', v)} />
       </Row>
       {t.outreach && <OutreachStatus />}
+      <Row label="Sync applications from Naukri and Cutshort" description="Every 2 hours FormPilot reads your own “applied” lists on Naukri and Cutshort (using your signed-in session) and adds anything missing to the tracker, with each one’s recruiter status: viewed, shortlisted, not shortlisted. Catches applications you made on the site itself. Read-only on the sites; the list goes only to your tracker.">
+        <Switch checked={t.portalSync} disabled={!t.enabled} onCheckedChange={(v) => set('portalSync', v)} />
+      </Row>
+      {t.enabled && t.portalSync && <PortalSyncStatus />}
     </Card>
   );
 }
 
+
+/** Last sync per site, with a Sync now button. */
+function PortalSyncStatus() {
+  type St = { at?: number; results: Record<string, { at: number; items?: number; added?: number; error?: string }> };
+  const [st, setSt] = useState<St | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => void rpc<St>({ type: 'portal-sync', action: 'status' }).then(setSt).catch(() => {}), []);
+  const time = (ms: number) => new Date(ms).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="px-4 pb-4 text-xs text-muted-foreground space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="text-foreground">{st?.at ? `Last sync ${time(st.at)}` : 'Not synced yet'}</span>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setBusy(true); void rpc<St>({ type: 'portal-sync', action: 'run-now' }).then(setSt).finally(() => setBusy(false)); }}>
+          {busy ? 'Syncing…' : 'Sync now'}
+        </Button>
+      </div>
+      {Object.entries(st?.results ?? {}).map(([k, r]) => (
+        <div key={k}>
+          {k}: {r.error ? `couldn't read (${r.error}). Sign in to ${k} in this browser.` : `${r.items} applications, ${r.added} new`}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Live line under the outreach switch: what it did last and when it checks next. */
 function OutreachStatus() {

@@ -177,6 +177,8 @@ const TrackerSchema = z.object({
   queueAutoSubmit: z.boolean().catch(false),
   /** LinkedIn outreach: ask the tracker for tasks (find the hiring team, connect, message) and do them. */
   outreach: z.boolean().catch(false),
+  /** Portal sync: every 2 hours, read your applied lists on Naukri and Cutshort and add them to the tracker. */
+  portalSync: z.boolean().catch(true),
 });
 
 /** Autopilot: applies on its own in a separate window, in small batches, within limits. */

@@ -4,6 +4,11 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Portal sync.** Every 2 hours FormPilot reads your own "applied" lists on Naukri and Cutshort with your signed-in session and sends them to the job tracker (`POST /api/import`). Applications you made on the site itself now show up in the tracker, along with each one's recruiter status (application viewed, resume viewed, shortlisted, contacted, not shortlisted). It's read-only on the sites, and the list goes only to your tracker. Turn it on or off in Settings → Behavior → Job tracker → Sync applications, which also has a Sync now button and the last result for each site.
+
 ## [1.22.0] - 2026-11-17
 
 ### Added

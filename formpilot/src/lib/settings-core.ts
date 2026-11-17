@@ -206,7 +206,7 @@ export const DEFAULTS: Settings = {
     numberShortcuts: true,
     tabAccepts: false,
   },
-  tracker: { enabled: false, url: '', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 30, queueDelaySec: 6, queueSkipTitles: '', queueAutoSubmit: false, outreach: false },
+  tracker: { enabled: false, url: '', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 30, queueDelaySec: 6, queueSkipTitles: '', queueAutoSubmit: false, outreach: false, portalSync: true },
   autopilot: {
     titles: 'React Native Developer, React Native Engineer, Mobile Engineer, Full Stack Engineer, Software Engineer',
     location: 'india',
