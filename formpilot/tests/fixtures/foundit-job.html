@@ -15,6 +15,8 @@ const [main, other] = document.querySelectorAll('#applyBtn');
 other.addEventListener('click', () => { window.__other = true; });
 main.addEventListener('click', () => {
   if (main.textContent === 'Applied') return;
+  // ?direct=1: no questions; Foundit applies and loads its success page (seen live 17 Nov).
+  if (/direct=1/.test(location.search)) return void (location.href = '/srp/applied-success.html?id=104');
   const m = document.createElement('div');
   m.className = 'modal'; m.setAttribute('role', 'dialog');
   m.innerHTML = `<div><h3>Recruiter questions</h3>

@@ -93,6 +93,7 @@ describe('Foundit', () => {
     doc.querySelector('#jdPageHeader #applyBtn')!.textContent = 'Applied';
     expect(jobPageState('foundit', doc).applied).toBe(true);
     expect(sentNotice('foundit', doc, 'https://www.foundit.in/job/101')).toBe(true);
+    expect(sentNotice('foundit', load('foundit-search.html'), 'https://www.foundit.in/srp/applied-success?id=69656636&utm_source=platformreco_jdpage')).toBe(true);
   });
   it('knows the site and the search link', () => {
     expect(platformOf('https://www.foundit.in/srp/results?query=x')).toBe('foundit');

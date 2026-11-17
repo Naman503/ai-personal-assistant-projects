@@ -193,6 +193,11 @@ export default defineContentScript({
         void chrome.runtime.sendMessage({ type: 'autopilot-rec-done', result: { picked: [], outcome: failed ? 'skip' : 'sent', reason: failed ? `Naukri said "${failed}"` : 'Naukri confirmed', status, single } }).catch(() => {});
       }, 2500);
     }
+    // Foundit's page after a Quick Apply (foundit.in/srp/applied-success?id=<job>): the job page
+    // that pressed it is gone, so this page reports the job as sent, like Naukri's above.
+    if (window === window.top && /\/srp\/applied-success/i.test(location.pathname) && /foundit|localhost/i.test(location.hostname)) {
+      setTimeout(() => void chrome.runtime.sendMessage({ type: 'autopilot-rec-done', result: { picked: [], outcome: 'sent', reason: 'Foundit confirmed', single: true } }).catch(() => {}), 2500);
+    }
     const onMessage = (msg: TabCommand, _sender: chrome.runtime.MessageSender, reply: (r: unknown) => void) => {
       // LinkedIn outreach: one task on this page, then report back (top frame only).
       if (msg?.type === 'outreach-run') {
