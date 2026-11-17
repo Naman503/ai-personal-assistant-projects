@@ -229,13 +229,20 @@ export class SitePilot {
    * goes there in its own tab.
    */
   async onTabCreated(tab: chrome.tabs.Tab) {
-    if (tab.openerTabId === undefined || tab.id === undefined) return;
+    const id = tab.id;
+    if (id === undefined) return;
+    // Chromium doesn't always fill in openerTabId on onCreated: read the tab again shortly after.
+    if (tab.openerTabId === undefined) {
+      await new Promise((r) => setTimeout(r, 400));
+      tab = (await chrome.tabs.get(id).catch(() => null)) ?? tab;
+      if (tab.openerTabId === undefined) return;
+    }
     const st = await loadSpState();
     if (!st.running || tab.openerTabId !== st.tabId) return;
     await new Promise((r) => setTimeout(r, 1500)); // let it get its address
-    const t = await chrome.tabs.get(tab.id).catch(() => null);
+    const t = await chrome.tabs.get(id).catch(() => null);
     const url = t?.pendingUrl || t?.url || '';
-    await chrome.tabs.remove(tab.id).catch(() => {});
+    await chrome.tabs.remove(id).catch(() => {});
     if (!st.cur || !/^https?:/i.test(url)) return;
     await addStep(st.cur.jobId, `closed a tab the page opened (${url.slice(0, 100)})`);
     if (st.cur.stage === 'resolve' && !/naukri\.com/i.test(url)) return this.resolved({ url });
