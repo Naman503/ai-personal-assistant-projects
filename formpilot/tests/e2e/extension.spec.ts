@@ -886,7 +886,7 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   await configure(sw, {
     tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: true, includeAnswers: true, walkToSubmit: false, queueDailyCap: 10, queueDelaySec: 0, queueSkipTitles: 'Engineering Manager' },
     behavior: { enabled: false },
-    autopilot: { titles: 'Mobile Engineer', dryRun: true, batchMin: 1, batchMax: 1, pauseMinSec: 1, pauseMaxSec: 2, skipWords: '', startTime: '00:00', endTime: '24:00', days: [0, 1, 2, 3, 4, 5, 6], searchUrl: 'http://localhost:4173/linkedin-list.html?q={title}' },
+    autopilot: { titles: 'Mobile Engineer', dryRun: true, batchMin: 2, batchMax: 2, pauseMinSec: 1, pauseMaxSec: 2, skipWords: '', startTime: '00:00', endTime: '24:00', days: [0, 1, 2, 3, 4, 5, 6], searchUrl: 'http://localhost:4173/linkedin-list.html?q={title}' },
   });
   await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot', 'fpQueueDay']));
   const ui = await context.newPage();
@@ -902,11 +902,16 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
   });
   expect(win.focused).toBe(false);
   const list = context.pages().find((p) => p.url().includes('linkedin-list.html?q=Mobile'))!;
+  // Closing a form asks "Save this application?" (live LinkedIn); it must be discarded, or every
+  // later Easy Apply press does nothing.
+  await list.evaluate(() => Object.assign(window, { __confirmOnDismiss: true }));
   // One dry-run batch: one job filled to Submit, recorded as "would apply", nothing sent.
   const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as { day: { dry: number; sent: number }; phase: string; message: string });
   // While it works, the live status says what it's doing in that window.
   await expect.poll(async () => ((await state()) as { progress?: { text: string } }).progress?.text ?? '', { timeout: 90_000 }).toMatch(/Reading|Filling|Opening/);
-  await expect.poll(async () => (await state()).day.dry, { timeout: 120_000 }).toBe(1);
+  await expect.poll(async () => (await state()).day.dry, { timeout: 150_000 }).toBe(2);
+  expect(await list.evaluate(() => (window as unknown as { __blocked?: number }).__blocked ?? 0)).toBe(0);
+  expect(await list.locator('#confirm').count()).toBe(0);
   // The Autopilot page shows the break and offers to skip it.
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extId}/options.html#autopilot`);
@@ -996,7 +1001,10 @@ test('autopilot: when the AI\'s daily quota is used up, it waits for the reset i
   const st = await state();
   expect(st.message).toMatch(/daily quota is used up/);
   // Waits until after the next midnight in California, and skipped nothing.
-  expect(st.nextAt! - Date.now()).toBeGreaterThan(60 * 60_000);
+  // …which is the next midnight in California plus a few minutes (can be soon, depending on when the test runs).
+  const reset = await sw.evaluate(() => { const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date()); const h = +f.find((x) => x.type === 'hour')!.value % 24, m = +f.find((x) => x.type === 'minute')!.value; return Date.now() + ((24 * 60 - (h * 60 + m)) % (24 * 60)) * 60_000; });
+  expect(Math.abs(st.nextAt! - reset)).toBeLessThan(17 * 60_000);
+  expect(st.nextAt!).toBeGreaterThan(Date.now());
   expect(st.day.skipped).toBe(0);
   expect(st.day.dry).toBe(0);
   await fetch(`${LLM}/reset`);

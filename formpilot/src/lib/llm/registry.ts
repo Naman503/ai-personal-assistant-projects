@@ -63,8 +63,47 @@ export interface ChainResult extends LLMResult {
   attempts: { provider: string; error?: string; ms: number }[];
 }
 
+/** Recent request times per provider+model, to stay under a requests-per-minute limit. */
+const recent = new Map<string, number[]>();
+const rpmOf = (p: ProviderConfig) => (p.rpm ?? 0) || (p.kind === 'gemini' ? 14 : 0);
+
+/**
+ * Wait for a free slot under the provider's per-minute limit. Returns false when the wait would be
+ * long (then the next model / provider is tried instead).
+ */
+async function pace(p: ProviderConfig, signal: AbortSignal, maxWaitMs = 20_000): Promise<boolean> {
+  const rpm = rpmOf(p);
+  if (!rpm) return true;
+  const key = `${p.id}:${p.model}`;
+  for (;;) {
+    const now = Date.now();
+    const times = (recent.get(key) ?? []).filter((t) => now - t < 60_000);
+    recent.set(key, times);
+    if (times.length < rpm) {
+      times.push(now);
+      return true;
+    }
+    const wait = 60_000 - (now - times[0]) + 250;
+    if (wait > maxWaitMs) return false;
+    log.debug(`${p.label} · ${p.model}: ${rpm}/min reached, waiting ${Math.round(wait / 1000)} s`);
+    await sleep(wait, signal);
+  }
+}
+
+/** A provider, then the same provider with each of its extra models (same key, separate quota). */
+function withAltModels(chain: ProviderConfig[]): ProviderConfig[] {
+  return chain.flatMap((p) => [
+    p,
+    ...(p.altModels ?? '')
+      .split(/[,\s]+/)
+      .map((m) => m.trim())
+      .filter((m) => m && m !== p.model)
+      .map((m) => ({ ...p, model: m, label: `${p.label} (${m})` })),
+  ]);
+}
+
 export async function generateWithFallback(s: Settings, req: LLMRequest, only?: string): Promise<ChainResult> {
-  const chain = only ? s.providers.filter((p) => p.id === only) : activeProviders(s);
+  const chain = withAltModels(only ? s.providers.filter((p) => p.id === only) : activeProviders(s));
   if (!chain.length) {
     throw new LLMError('no-provider', 'No AI provider is configured.', {
       hint: s.privacy.localOnly
@@ -74,10 +113,11 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
   }
   const attempts: ChainResult['attempts'] = [];
   let lastErr: unknown;
-  const tryList = s.generation.fallback || only ? chain : chain.slice(0, 1);
+  const tryList = s.generation.fallback || only ? chain : chain.slice(0, 1 + chain.filter((x, i) => i > 0 && x.id === chain[0].id).length);
 
   for (const p of tryList) {
-    const until = cooldown.get(p.id);
+    const ck = `${p.id}:${p.model}`;
+    const until = cooldown.get(ck) ?? cooldown.get(p.id);
     if (!only && until && until > Date.now() && tryList.length > 1) {
       log.debug(`skipping ${p.label} (cooling down for ${Math.round((until - Date.now()) / 1000)}s)`);
       continue;
@@ -92,6 +132,11 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
         });
         continue;
       }
+    }
+    // Stay under the per-minute limit; if the wait is long, try the next model / provider now.
+    if (tryList.length > 1 && !(await pace(p, req.signal))) {
+      log.info(`${p.label} · ${p.model} is at its per-minute limit; trying the next one`);
+      continue;
     }
     for (let attempt = 0; attempt <= s.generation.maxRetries; attempt++) {
       const t0 = performance.now();
@@ -112,6 +157,8 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
         attempts.push({ provider: p.label, error: `${err.code}: ${err.message}`, ms });
         // Info, not warn: falling back is normal. The engine logs a real error only if the whole chain fails.
         log.info(`✗ ${p.label} failed [${err.code}] after ${ms}ms: ${err.message}`);
+        // Out of today's quota for this model: skip it until tomorrow-ish; other models may still work.
+        if (err.code === 'quota') cooldown.set(`${p.id}:${p.model}`, Date.now() + 3 * 3600_000);
         if (['auth', 'cors', 'no-provider'].includes(err.code)) {
           cooldown.set(p.id, Date.now() + 5 * 60_000);
         } else if (err.code === 'unavailable' && p.kind === 'chrome-ai') {
@@ -121,7 +168,7 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
         if (!err.retryable || attempt >= s.generation.maxRetries) break;
         const wait = err.retryAfterMs ?? 600 * 2 ** attempt + Math.random() * 300;
         if (wait > 8000) {
-          if (err.code === 'rate-limit') cooldown.set(p.id, Date.now() + wait);
+          if (err.code === 'rate-limit') cooldown.set(`${p.id}:${p.model}`, Date.now() + wait);
           break; // too long: fall through to the next provider
         }
         await sleep(wait, req.signal);

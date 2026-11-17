@@ -196,6 +196,10 @@ export class Autopilot {
       if (counts.sent + counts.dry >= pp.dailyCap) continue;
       const view: DayState = { ...st.day, sent: counts.sent, dry: counts.dry };
       // Naukri: the Recommended jobs page first (only Naukri-apply jobs, up to 5 per Apply).
+      // The Recommended list refreshes during the day: look again 3 hours after it ran dry.
+      if (st.day.exhausted.includes('naukri:rec') && st.day.recEmptyAt && Date.now() - st.day.recEmptyAt > 3 * 3600_000) {
+        st.day.exhausted = st.day.exhausted.filter((k) => k !== 'naukri:rec');
+      }
       if (p === 'naukri' && ap.naukri.mode === 'recommended' && !st.day.exhausted.includes('naukri:rec')) {
         const size = Math.min(5, batchSize({ ...ap, dailyCap: pp.dailyCap, perTitleCap: 100 }, view, '__rec'));
         if (size > 0) return { platform: p, pi, title: 'Recommended jobs', index: -1, size, dryRun: pp.dryRun, rec: true };
@@ -241,7 +245,9 @@ export class Autopilot {
       /* ignore */
     }
     const custom = ap.searchUrl.includes('{title}') ? ap.searchUrl.replace('{title}', encodeURIComponent(c.title)).replace('{platform}', c.platform) : '';
-    const url = c.rec ? ap.naukri.recUrl || NAUKRI_REC_URL : custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, ap) : c.platform === 'naukri' ? naukriSearchUrl(c.title, ap.postedDays) : cutshortSearchUrl(c.title));
+    // A title whose recent search ran out today is searched over the past week instead.
+    const days = (st.day.widened ?? []).includes(titleKey(c.platform, c.title)) ? Math.max(7, ap.postedDays) : ap.postedDays;
+    const url = c.rec ? ap.naukri.recUrl || NAUKRI_REC_URL : custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, { ...ap, postedDays: days }) : c.platform === 'naukri' ? naukriSearchUrl(c.title, days) : cutshortSearchUrl(c.title));
     const tabId = await this.ensureTab(st, url);
     if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
     st.lastPlatform = c.pi;
@@ -253,7 +259,7 @@ export class Autopilot {
     // A batch that stops moving is closed early: LinkedIn runs a whole batch in one page (35 min),
     // Naukri / Cutshort re-arm this for every job (see openJob).
     await at(WATCHDOG, Date.now() + (c.platform === 'linkedin' ? 35 : 15) * 60_000);
-    await save(st, `${PLATFORM_NAME[c.platform]}: searching "${c.title}" (batch of ${c.size}${c.dryRun ? ', dry run' : ''})`);
+    await save(st, `${PLATFORM_NAME[c.platform]}: searching "${c.title}"${!c.rec && days !== ap.postedDays ? ` (past ${days} days)` : ''} (batch of ${c.size}${c.dryRun ? ', dry run' : ''})`);
   }
 
   private async ensureTab(st: ApState, url: string): Promise<number | undefined> {
@@ -462,11 +468,31 @@ export class Autopilot {
     await this.openJob(st);
   }
 
+  /**
+   * A search ran out. The first time today (searching only recent jobs), widen that title to the
+   * past week; after that, it's done for today. Naukri's Recommended list is looked at again later.
+   */
+  private exhaust(st: ApState, key: string) {
+    const ap = this.settings().autopilot;
+    if (key === 'naukri:rec') {
+      st.day.recEmptyAt = Date.now();
+      if (!st.day.exhausted.includes(key)) st.day.exhausted = [...st.day.exhausted, key];
+      return;
+    }
+    const widened = st.day.widened ?? [];
+    if (ap.postedDays < 7 && !widened.includes(key)) {
+      st.day.widened = [...widened, key];
+      log.info(`"${key}": nothing left in the last ${ap.postedDays} day(s); searching the past week next time`);
+      return;
+    }
+    if (!st.day.exhausted.includes(key)) st.day.exhausted = [...st.day.exhausted, key];
+  }
+
   private async finishBatch(st: ApState, why: string, exhausted = false, exhaustedKey?: string) {
     const ap = this.settings().autopilot;
     const cur = st.current!;
     const p = (cur.platform ?? 'linkedin') as Platform;
-    if (exhausted) st.day.exhausted = [...st.day.exhausted, exhaustedKey ?? titleKey(p, cur.title)];
+    if (exhausted) this.exhaust(st, exhaustedKey ?? titleKey(p, cur.title));
     if (cur.index >= 0) st.lastTitleBy = { ...(st.lastTitleBy ?? {}), [p]: cur.index };
     st.current = undefined;
     st.progress = undefined;
@@ -562,7 +588,7 @@ export class Autopilot {
     st.day.dry += result.dry;
     st.day.skipped += result.skipped;
     st.day.perTitle[title] = (st.day.perTitle[title] ?? 0) + result.sent + result.dry;
-    if (result.sent + result.dry === 0 && /done with this list|no job list/i.test(result.reason)) st.day.exhausted = [...st.day.exhausted, title];
+    if (result.sent + result.dry === 0 && /done with this list|no job list/i.test(result.reason)) this.exhaust(st, title);
     st.lastTitle = index;
     st.lastTitleBy = { ...(st.lastTitleBy ?? {}), linkedin: index };
     st.current = undefined;

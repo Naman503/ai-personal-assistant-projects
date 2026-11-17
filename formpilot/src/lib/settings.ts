@@ -32,6 +32,10 @@ const ProviderSchema = z.object({
   jsonMode: z.boolean().catch(true),
   /** Optional per-provider extra headers, e.g. OpenRouter attribution. */
   headers: z.record(z.string(), z.string()).catch({}),
+  /** More models to try with the same key when this one is rate-limited or out of quota (comma separated). Each model has its own free allowance. */
+  altModels: z.string().catch(''),
+  /** Requests per minute to stay under (0 = no pacing). Gemini's free tier allows 15 per model. */
+  rpm: z.number().int().min(0).max(1000).catch(0),
 });
 export type ProviderConfig = z.infer<typeof ProviderSchema>;
 

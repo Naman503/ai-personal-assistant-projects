@@ -117,8 +117,11 @@ export function providerFromPreset(presetId: string, overrides: Partial<Provider
     model: p.model,
     jsonMode: true,
     headers: p.presetId === 'openrouter' ? { 'X-Title': 'FormPilot' } : {},
+    // Gemini's free tier gives each model its own allowance: a second Flash Lite doubles it.
+    altModels: p.kind === 'gemini' ? 'gemini-3.5-flash-lite' : '',
+    rpm: 0,
     ...overrides,
-  };
+  } as ProviderConfig;
 }
 
 
