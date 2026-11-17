@@ -4,7 +4,7 @@ import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Swi
 import { rpc } from '@/lib/messages';
 import { ATS, ATS_NAME, type Ats } from '@/lib/sitepilot/detect';
 import { spDb, type SpJob, type SpShot, type SpStatus } from '@/lib/sitepilot/db';
-import type { SpState } from '@/lib/sitepilot/runner';
+import { learnedBoards, type SpState } from '@/lib/sitepilot/runner';
 import type { PageProps } from '../App';
 
 type Status = SpState & { counts: Record<SpStatus, number> };
@@ -173,6 +173,9 @@ export function SitePilot({ settings, update }: PageProps) {
   const [model, setModel] = useState(sp.model);
   const [light, setLight] = useState(la.lightModel);
   const [link, setLink] = useState(sp.resumeLink);
+  const [boards, setBoards] = useState(sp.boards);
+  const [learned, setLearned] = useState<string[]>([]);
+  useEffect(() => void learnedBoards().then(setLearned).catch(() => {}), []);
   const [installed, setInstalled] = useState<string[]>([]);
   const version = useMemo(() => JSON.stringify([st?.counts, st?.cur?.jobId, st?.message]), [st]);
   const [bump, setBump] = useState(0);
@@ -301,6 +304,12 @@ export function SitePilot({ settings, update }: PageProps) {
         </Row>
         <Row label="Look at the page (screenshots)" description="The model sees each page before Submit and fixes what the normal fill missed. Slower, but it's what makes unknown sites work.">
           <Switch checked={sp.vision} onCheckedChange={(v) => set('vision', v)} />
+        </Row>
+        <Row label="Read company job boards" description="When the queue is empty (every 4 hours at most), reads the public job boards companies publish on Greenhouse, Lever, Ashby, Workable, Recruitee and SmartRecruiters, and queues jobs that fit your titles and level, in India or remote and open to India.">
+          <Switch checked={sp.harvestBoards} onCheckedChange={(v) => set('harvestBoards', v)} />
+        </Row>
+        <Row label="Job boards" description={`"system:company", comma separated. Boards Site Pilot meets on the way are added by itself${learned.length ? ` (learned so far: ${learned.join(', ')})` : ''}. Posted within ${sp.boardDays} days.`} stacked>
+          <Textarea rows={3} value={boards} onChange={(e) => setBoards(e.target.value)} onBlur={() => set('boards', boards)} />
         </Row>
         <Row label="Find jobs on Naukri" description="When the queue is empty, searches Naukri for your Autopilot job titles (newest first) and queues the ones that apply on the company site.">
           <Switch checked={sp.harvestNaukri} onCheckedChange={(v) => set('harvestNaukri', v)} />

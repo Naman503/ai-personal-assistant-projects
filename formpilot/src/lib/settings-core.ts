@@ -3,6 +3,7 @@
  * every page, so it must stay small). The zod schema in settings.ts is the
  * validator. DEFAULTS here must match `parseSettings({})`, and a unit test enforces that.
  */
+import { DEFAULT_BOARDS } from './sitepilot/boards';
 import type { ProviderConfig, ProviderKind, Settings } from './settings';
 
 export interface ProviderPreset {
@@ -243,6 +244,9 @@ export const DEFAULTS: Settings = {
     perCompany: 2,
     vision: true,
     harvestNaukri: true,
+    harvestBoards: true,
+    boards: DEFAULT_BOARDS,
+    boardDays: 21,
     fromAutopilot: true,
     resumeLink: '',
     maxActions: 30,
