@@ -229,6 +229,7 @@ export const DEFAULTS: Settings = {
     linkedinEnabled: true,
     naukri: { enabled: false, dailyCap: 20, dryRun: true, maxExpMin: 5, mode: 'recommended', recUrl: '' },
     cutshort: { enabled: false, dailyCap: 10, dryRun: true, maxExpMin: 5 },
+    foundit: { enabled: false, dailyCap: 15, dryRun: true, maxExpMin: 5 },
     searchUrl: '',
   },
   debug: { logLevel: 'info', console: true },

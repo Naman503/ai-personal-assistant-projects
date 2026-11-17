@@ -369,6 +369,58 @@ async function applyCutshort(dryRun: boolean, fill: (anchor: HTMLElement) => Pro
   return ok && (sentNotice('cutshort') || !openDialog()) ? { outcome: 'sent', reason: 'Cutshort confirmed' } : { outcome: 'skip', reason: 'no confirmation after Apply' };
 }
 
+// ------------------------------------------------------------------ Foundit
+
+/**
+ * Foundit job page: "Quick Apply" in the page header applies on Foundit. It may apply at once,
+ * or open recruiter questions in a pop-up (one or more steps). Dry run stops before pressing it,
+ * because one click can send. Every pop-up is logged so the first live runs show its shape.
+ */
+async function applyFoundit(dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>): Promise<JobResult> {
+  const st = jobPageState('foundit');
+  if (st.applied) return { outcome: 'skip', reason: 'already applied' };
+  if (st.external) return { outcome: 'skip', reason: 'applies on another site ("Apply Now")' };
+  if (!st.apply) return { outcome: 'skip', reason: 'no Quick Apply button' };
+  if (dryRun) return { outcome: 'dry', reason: 'would press Quick Apply' };
+  st.apply.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  await sleep(between(0.6, 1.2));
+  humanClick(st.apply);
+  for (let step = 0; step < 6; step++) {
+    await until(() => sentNotice('foundit') || !!openDialog() || !!sitePushback('foundit'), 15_000);
+    const push = sitePushback('foundit');
+    if (push) return { outcome: 'skip', reason: push, pushback: push };
+    if (sentNotice('foundit')) return { outcome: 'sent', reason: step ? 'Foundit confirmed after the questions' : 'Foundit applied in one click' };
+    const d = openDialog();
+    if (!d) return { outcome: 'skip', reason: 'nothing happened after Quick Apply' };
+    await sleep(between(1, 2));
+    log.info(`foundit: pop-up after Quick Apply (step ${step + 1})`, describeDialog(d));
+    const first = d.querySelector<HTMLElement>('input:not([type=hidden]), textarea, select, [contenteditable=true]');
+    if (first) {
+      const f = await fill(first);
+      if (f.error && AI_BLOCKING.has(f.error)) {
+        await closeDialog(d);
+        return { outcome: 'skip', reason: `the AI isn't answering (${f.error})`, aiError: f.error };
+      }
+    }
+    await sleep(between(0.8, 1.6));
+    const missing = emptyRequired(d);
+    if (missing.length) {
+      await closeDialog(d);
+      return { outcome: 'skip', reason: `${missing.length} required question(s) FormPilot couldn't answer` };
+    }
+    const next = buttonByText(/^(submit|apply|send|submit application|apply now|confirm|done|next|continue|save (and|&) (continue|apply))$/i, d);
+    if (!next) {
+      log.info('foundit: no button to go on in the pop-up', describeDialog(d));
+      await closeDialog(d);
+      return { outcome: 'skip', reason: 'the pop-up has no Submit/Next button' };
+    }
+    humanClick(next);
+    await until(() => sentNotice('foundit') || openDialog() !== d || !d.isConnected, 15_000);
+    if (sentNotice('foundit')) return { outcome: 'sent', reason: 'Foundit confirmed' };
+  }
+  return { outcome: 'skip', reason: 'no confirmation after Quick Apply' };
+}
+
 /** Apply to the job on this page; reports back to the autopilot. */
 export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>): Promise<JobResult> {
   await until(() => !!jobPageState(p).apply || jobPageState(p).applied || jobPageState(p).external || !!sitePushback(p), 15_000);
@@ -380,7 +432,7 @@ export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTM
   log.info(`${p}: ${dryRun ? 'dry run on' : 'applying to'} ${job.role} at ${job.company}`);
   let r: JobResult;
   try {
-    r = p === 'naukri' ? await applyNaukri(dryRun) : await applyCutshort(dryRun, fill);
+    r = p === 'naukri' ? await applyNaukri(dryRun) : p === 'foundit' ? await applyFoundit(dryRun, fill) : await applyCutshort(dryRun, fill);
   } catch (e) {
     if (!(e instanceof AiUnavailable)) throw e;
     // Mid-chatbot on Naukri: the half-done application stays as it is; Naukri keeps it for later.

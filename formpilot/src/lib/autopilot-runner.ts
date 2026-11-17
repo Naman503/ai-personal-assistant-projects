@@ -18,7 +18,7 @@ import { keepTabAwake, releaseTab } from './tab-awake';
 import { resumePoint } from './autopilot-resume';
 export { resumePoint };
 import { relevantWords, titleRelevant, titleSkipped } from './queue';
-import { cutshortSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
+import { cutshortSearchUrl, founditSearchUrl, jobKey, NAUKRI_REC_URL, naukriSearchUrl, PLATFORM_NAME, PLATFORMS, type Platform, type SiteJob } from './sites';
 
 const log = createLogger('autopilot');
 export const AP_KEY = 'fpAutopilot';
@@ -372,7 +372,7 @@ export class Autopilot {
     const custom = ap.searchUrl.includes('{title}') ? ap.searchUrl.replace('{title}', encodeURIComponent(c.title)).replace('{platform}', c.platform) : '';
     // A title whose recent search ran out today is searched over the past week instead.
     const days = (st.day.widened ?? []).includes(titleKey(c.platform, c.title)) ? Math.max(7, ap.postedDays) : ap.postedDays;
-    const url = c.rec ? ap.naukri.recUrl || NAUKRI_REC_URL : custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, { ...ap, postedDays: days }) : c.platform === 'naukri' ? naukriSearchUrl(c.title, days) : cutshortSearchUrl(c.title));
+    const url = c.rec ? ap.naukri.recUrl || NAUKRI_REC_URL : custom || (c.platform === 'linkedin' ? linkedInSearchUrl(c.title, { ...ap, postedDays: days }) : c.platform === 'naukri' ? naukriSearchUrl(c.title, days) : c.platform === 'foundit' ? founditSearchUrl(c.title) : cutshortSearchUrl(c.title));
     const tabId = await this.ensureTab(st, url);
     if (tabId === undefined) return this.stop("Couldn't open the autopilot window", true);
     await keepTabAwake(tabId);
@@ -481,6 +481,8 @@ export class Autopilot {
       // Naukri lists some jobs twice under different links: one try per company + title.
       const fresh = reply.jobs.filter((j) => {
         const k = jobKey(j);
+        // Foundit: only "Quick Apply" jobs apply on Foundit; "Apply Now" ones go to another site.
+        if (p === 'foundit' && j.quick === false) return false;
         const ok = !j.applied && !seen.has(j.url) && !seen.has(k) && !keys.has(k) && titleRelevant(j.title, rel) && !titleSkipped(j.title, ap.skipWords) && (j.expMin === undefined || j.expMin <= pp.maxExpMin);
         if (ok) keys.add(k);
         return ok;

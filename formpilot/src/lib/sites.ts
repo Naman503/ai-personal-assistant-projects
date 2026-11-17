@@ -8,13 +8,19 @@
  *    recruiter chatbot drawer (.chatbot_Drawer) asking one question at a time.
  *  - Cutshort search: cards with h3 › a[href*="/job/"], "at <a>Company</a>", "1 - 3 yrs",
  *    and a button "Apply now".
+ *  - Foundit (read live 2026-11-17, signed in): search foundit.in/srp/results?query=…; cards
+ *    div.cardContainer[id=<job id>] › #jobCardTitle, .companyName, .details ("5 - 10 Years"),
+ *    .details.location, a "Quick Apply" tag (.cardApplyLabel) and a tick box on Quick Apply jobs.
+ *    Job page foundit.in/job/<id>: the real button is #jdPageHeader #applyBtn, "Quick Apply"
+ *    (applies on Foundit) or "Apply Now" (the job comes from elsewhere: LinkedIn, the company's
+ *    site). The other #applyBtn buttons on that page belong to similar jobs: never press those.
  */
 
 import { isVisible } from './fields/context';
 
-export type Platform = 'linkedin' | 'naukri' | 'cutshort';
-export const PLATFORMS: Platform[] = ['linkedin', 'naukri', 'cutshort'];
-export const PLATFORM_NAME: Record<Platform, string> = { linkedin: 'LinkedIn', naukri: 'Naukri', cutshort: 'Cutshort' };
+export type Platform = 'linkedin' | 'naukri' | 'foundit' | 'cutshort';
+export const PLATFORMS: Platform[] = ['linkedin', 'naukri', 'foundit', 'cutshort'];
+export const PLATFORM_NAME: Record<Platform, string> = { linkedin: 'LinkedIn', naukri: 'Naukri', foundit: 'Foundit', cutshort: 'Cutshort' };
 
 export interface SiteJob {
   url: string;
@@ -24,6 +30,8 @@ export interface SiteJob {
   expMin?: number;
   location?: string;
   applied?: boolean;
+  /** Foundit: applies on the site in one go ("Quick Apply"); the others apply elsewhere. */
+  quick?: boolean;
 }
 
 const clean = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
@@ -39,6 +47,7 @@ export function platformOf(href: string): Platform | null {
   if (h.endsWith('linkedin.com')) return 'linkedin';
   if (h.endsWith('naukri.com')) return 'naukri';
   if (h.endsWith('cutshort.io')) return 'cutshort';
+  if (h.endsWith('foundit.in')) return 'foundit';
   return null;
 }
 
@@ -48,6 +57,11 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 export function naukriSearchUrl(title: string, days: number, years = 3): string {
   const p = new URLSearchParams({ k: title, jobAge: String(Math.max(1, Math.min(30, days))), experience: String(years) });
   return `https://www.naukri.com/${slug(title)}-jobs?${p}`;
+}
+
+/** Foundit search across India. */
+export function founditSearchUrl(title: string): string {
+  return `https://www.foundit.in/srp/results?${new URLSearchParams({ query: title, locations: 'India' })}`;
 }
 
 export function cutshortSearchUrl(title: string): string {
@@ -93,8 +107,29 @@ export function cutshortJobs(doc: ParentNode = document): SiteJob[] {
   });
 }
 
+export function founditJobs(doc: ParentNode = document): SiteJob[] {
+  return [...doc.querySelectorAll<HTMLElement>('div.cardContainer[id]')].flatMap((c) => {
+    const id = c.id.trim();
+    const title = clean(c.querySelector('#jobCardTitle, .jobTitle')?.textContent);
+    if (!/^\d+$/.test(id) || !title) return [];
+    const text = clean(c.innerText || c.textContent);
+    return [
+      {
+        // foundit.in/job/<id> opens the job page (test pages: foundit-job.html?id=<id> next to the list).
+        url: typeof location !== 'undefined' && !/(^|\.)foundit\.in$/.test(location.hostname) ? `${location.origin}/foundit-job.html?id=${id}` : `https://www.foundit.in/job/${id}`,
+        title,
+        company: clean(c.querySelector('.companyName')?.textContent),
+        expMin: expMinOf(clean(c.querySelector('.experienceSalary .details, .details')?.textContent)),
+        location: clean(c.querySelector('.details.location')?.textContent),
+        applied: /\bapplied\b/i.test(text) && !/quick apply|apply now/i.test(clean(c.querySelector('.jobTags')?.textContent)),
+        quick: /quick apply/i.test(clean(c.querySelector('.cardApplyLabel, .jobTags')?.textContent)) || !!c.querySelector('input#quick-apply-check'),
+      },
+    ];
+  });
+}
+
 export function siteJobs(p: Platform, doc: ParentNode = document): SiteJob[] {
-  return p === 'naukri' ? naukriJobs(doc) : p === 'cutshort' ? cutshortJobs(doc) : [];
+  return p === 'naukri' ? naukriJobs(doc) : p === 'cutshort' ? cutshortJobs(doc) : p === 'foundit' ? founditJobs(doc) : [];
 }
 
 /** A button or link whose own text is exactly one of these (case-insensitive). */
@@ -115,6 +150,12 @@ export function jobPageState(p: Platform, doc: Document = document): { apply: HT
     const external = !apply && !!buttonByText(/apply on company site/i, doc);
     return { apply: apply && /^apply$/i.test(label) ? apply : null, applied: /^applied$/i.test(label) || /you have (already )?applied/i.test(doc.body?.innerText ?? ''), external };
   }
+  if (p === 'foundit') {
+    const btn = doc.querySelector<HTMLElement>('#jdPageHeader #applyBtn, .jobMainInfoCard #applyBtn');
+    const label = clean(btn?.textContent);
+    const quick = !!btn && /^quick apply$/i.test(label) && !(btn as HTMLButtonElement).disabled;
+    return { apply: quick ? btn : null, applied: /^applied$/i.test(label), external: !!btn && /^apply( now)?$/i.test(label) };
+  }
   // Cutshort's job page says "Apply to this job". Its "Apply now" buttons belong to the similar
   // jobs listed further down: never press those (found on the first live dry run).
   const apply = buttonByText(/^(apply to this job|apply for this job|apply)$/i, doc);
@@ -126,6 +167,7 @@ export function sentNotice(p: Platform, doc: Document = document, href = locatio
   if (p === 'naukri' && /\/myapply\/(saveApply|)/i.test(href)) return true;
   const t = (doc.body?.innerText ?? '').slice(0, 30000);
   if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted))/i.test(t)) return true;
+  if (p === 'foundit') return /^applied$/i.test(clean(doc.querySelector('#jdPageHeader #applyBtn, .jobMainInfoCard #applyBtn')?.textContent));
   return p === 'naukri' ? /^applied$/i.test(clean(doc.querySelector('button#apply-button')?.textContent)) : !!buttonByText(/^applied$/i, doc);
 }
 
@@ -133,6 +175,7 @@ export function sentNotice(p: Platform, doc: Document = document, href = locatio
 export function sitePushback(p: Platform, doc: Document = document, href = location.href): string {
   if (p === 'naukri' && /naukri\.com\/(nlogin|login)/.test(href)) return 'Naukri wants you to sign in';
   if (p === 'cutshort' && /cutshort\.io\/(login|signin|signup)/.test(href)) return 'Cutshort wants you to sign in';
+  if (p === 'foundit' && /foundit\.in\/(rio\/)?(login|signin|register)/.test(href)) return 'Foundit wants you to sign in';
   const t = (doc.body?.innerText ?? '').slice(0, 20000);
   const m = t.match(/(daily (apply|application) limit|reached (the|your) (daily )?limit|too many (requests|applications)|verify (that )?you are (a )?human|captcha|unusual activity|access denied)/i);
   return m ? `${PLATFORM_NAME[p]} says: "${m[0]}"` : '';

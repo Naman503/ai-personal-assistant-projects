@@ -1133,6 +1133,47 @@ test('autopilot on Naukri: an Apply that goes straight to the confirmation page 
   await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
 });
 
+test('autopilot on Foundit (live): only Quick Apply jobs, the header button, recruiter questions answered, Applied counted', async ({ context, sw, extId }) => {
+  test.setTimeout(240_000);
+  await configure(sw, {
+    tracker: { enabled: true, url: 'http://localhost:4176', autoRecord: false, includeAnswers: true, walkToSubmit: false },
+    behavior: { enabled: false },
+    autopilot: {
+      titles: 'React Native Developer',
+      batchMin: 1,
+      batchMax: 1,
+      gapMinMin: 30,
+      gapMaxMin: 30,
+      startTime: '00:00',
+      endTime: '24:00',
+      days: [0, 1, 2, 3, 4, 5, 6],
+      skipWords: '',
+      linkedinEnabled: false,
+      naukri: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5, mode: 'search' },
+      foundit: { enabled: true, dryRun: false, dailyCap: 5, maxExpMin: 5 },
+      cutshort: { enabled: false, dryRun: true, dailyCap: 5, maxExpMin: 5 },
+      searchUrl: 'http://localhost:4173/{platform}-search.html?q={title}',
+    },
+  });
+  await sw.evaluate(() => chrome.storage.local.remove(['fpAutopilot']));
+  const ui = await context.newPage();
+  await ui.goto(`chrome-extension://${extId}/popup.html`);
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'start' }));
+  type St = { day: { byPlatform: Record<string, { sent: number; skipped: number }>; seen: string[] }; history: { msg: string }[] };
+  const state = () => sw.evaluate(async () => (await chrome.storage.local.get('fpAutopilot')).fpAutopilot as St);
+  await expect.poll(async () => (await state()).day.byPlatform.foundit.sent, { timeout: 180_000 }).toBe(1);
+  const job = context.pages().find((p) => p.url().includes('foundit-job.html?id=101'))!;
+  expect(await job.evaluate(() => (window as unknown as { __applied: boolean }).__applied)).toBe(true);
+  expect(await job.evaluate(() => (window as unknown as { __other: boolean }).__other)).toBe(false); // a similar job's "Apply Now" was never pressed
+  const answers = await job.evaluate(() => (window as unknown as { __answers: string[] }).__answers);
+  expect(answers.every((a) => a.trim().length > 0)).toBe(true);
+  const st = await state();
+  // "Apply Now" (applies elsewhere) and the 9+ years job were never opened.
+  expect(st.day.seen.some((u) => u.includes('id=102') || u.includes('id=103'))).toBe(false);
+  expect(st.history.map((h) => h.msg).join('\n')).toContain('Foundit · Applied: React Native Developer · Valuelabs');
+  await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'autopilot', action: 'pause' }));
+});
+
 test('autopilot: when the AI\'s daily quota is used up, it waits for the reset instead of skipping jobs', async ({ context, sw, extId }) => {
   test.setTimeout(180_000);
   await configure(sw, {

@@ -67,6 +67,7 @@ export function Autopilot({ settings, update }: PageProps) {
               [
                 ['LinkedIn', a.linkedinEnabled, a.dryRun],
                 ['Naukri', a.naukri.enabled, a.naukri.dryRun],
+                ['Foundit', a.foundit.enabled, a.foundit.dryRun],
                 ['Cutshort', a.cutshort.enabled, a.cutshort.dryRun],
               ] as const
             )
@@ -89,6 +90,7 @@ export function Autopilot({ settings, update }: PageProps) {
                   [
                     ['LinkedIn', 'linkedin', a.linkedinEnabled, a.dailyCap],
                     ['Naukri', 'naukri', a.naukri.enabled, a.naukri.dailyCap],
+                    ['Foundit', 'foundit', a.foundit.enabled, a.foundit.dailyCap],
                     ['Cutshort', 'cutshort', a.cutshort.enabled, a.cutshort.dailyCap],
                   ] as const
                 )
@@ -127,12 +129,13 @@ export function Autopilot({ settings, update }: PageProps) {
       <Card className="mb-5">
         <CardHeader icon={<Bot className="size-4" />} title="Platforms" />
         <div className="px-4 pb-1 pt-3 text-xs text-zinc-500">
-          Batches take turns: LinkedIn → Naukri → Cutshort, each with its own daily limit. Dry run: fills to the last step and records “would apply”, sends nothing (on Naukri it stops before Apply, since Apply there sends at once when the recruiter asks nothing). A platform's first live day is best kept small.
+          Batches take turns: LinkedIn → Naukri → Foundit → Cutshort, each with its own daily limit. Dry run: fills to the last step and records “would apply”, sends nothing (on Naukri it stops before Apply, since Apply there sends at once when the recruiter asks nothing). A platform's first live day is best kept small.
         </div>
         {(
           [
             ['linkedin', 'LinkedIn Easy Apply', a.linkedinEnabled, a.dryRun, a.dailyCap, null],
             ['naukri', 'Naukri (Apply + recruiter chatbot)', a.naukri.enabled, a.naukri.dryRun, a.naukri.dailyCap, a.naukri.maxExpMin],
+            ['foundit', 'Foundit (Quick Apply jobs + recruiter questions)', a.foundit.enabled, a.foundit.dryRun, a.foundit.dailyCap, a.foundit.maxExpMin],
             ['cutshort', 'Cutshort (Apply now + its form)', a.cutshort.enabled, a.cutshort.dryRun, a.cutshort.dailyCap, a.cutshort.maxExpMin],
           ] as const
         ).map(([p, name, enabled, dry, cap, exp]) => {
