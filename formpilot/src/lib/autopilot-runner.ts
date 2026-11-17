@@ -706,7 +706,7 @@ export class Autopilot {
   }
 
   /** The Recommended jobs batch on Naukri finished (ticked + Apply + chatbot, or a dry run). */
-  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string; single?: boolean }, tabId?: number) {
+  async onRecDone(result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string; single?: boolean; answers?: { q: string; a: string }[] }, tabId?: number) {
     const st = await loadState();
     const cur = st.current;
     if (tabId !== undefined && tabId !== st.tabId) return;
@@ -762,6 +762,11 @@ export class Autopilot {
         st.day.sent++;
         cur.sent = (cur.sent ?? 0) + 1;
         st.lastRec.counted.push(j.id);
+        // Record it here: Naukri usually replaces the page that pressed Apply with its confirmation
+        // page, so the page can't (17 Nov: 1 of ~35 autopilot applies reached the tracker; the rest
+        // came in later from portal sync labelled "on the portal").
+        const s = this.settings();
+        if (s.tracker.enabled) await recordInTracker(s, 'applied', { url: j.url, role: j.title, company: j.company, location: '', source: 'Naukri', salary: '', description: '' }, result.answers ?? [], 'Autopilot naukri').catch(() => {});
       } else if (outcome === 'dry') {
         counts.dry++;
         st.day.dry++;

@@ -282,12 +282,8 @@ export async function applyNaukriRecommended(opts: { max: number; dryRun: boolea
   }
   const status = multiApplyResult(location.href) ?? undefined;
   const res: RecResult = { picked: out, outcome: r.outcome === 'sent' ? 'sent' : 'skip', reason: r.reason, status, pushback: r.pushback, aiError: r.aiError, answers: r.answers };
-  // Record what went through in the job tracker.
-  for (const p of out) {
-    const ok = status ? status[p.id] === 200 : res.outcome === 'sent';
-    if (!ok) continue;
-    await rpc({ type: 'tracker-record', kind: 'applied', job: { url: p.url, role: p.title, company: p.company, location: '', source: 'Naukri', salary: '', description: '' }, answers: r.answers ?? [], recordedBy: 'Autopilot naukri' }).catch(() => {});
-  }
+  // The autopilot records what went through in the job tracker when this result (or Naukri's
+  // confirmation page) reaches it, so each application is recorded once.
   return res;
 }
 
