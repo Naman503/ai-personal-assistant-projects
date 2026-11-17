@@ -18,7 +18,9 @@ import { titleRelevant, titleSkipped } from '@/lib/queue';
 import { classifyField } from '@/lib/fields/classify';
 import { extractPage } from '@/lib/fields/context';
 import { fillCheckboxGroup, fillElement, fillRadioGroup, bestOption, exactOption } from '@/lib/fields/fill';
-import { radioOptionLabel } from '@/lib/fields/radios';
+import { radioGroupLabel, radioOptionLabel } from '@/lib/fields/radios';
+import { resolveLabel, radioGroups, readValue } from '@/lib/fields/context';
+import { usableFix, type ReviewFix, type ReviewItem } from '@/lib/engine/review';
 import { emptyRequired } from '@/lib/walk';
 import type { FieldContext } from '@/lib/types';
 import { extractJob } from '@/lib/job';
@@ -88,6 +90,104 @@ async function answerFor(question: string, kind: 'text' | 'radio' | 'checkbox' |
   return r.values.f1 ?? '';
 }
 
+// ------------------------------------------------------------------ AI review before sending
+
+/** LinkedIn's step walker checks each step's answers too, but only while the autopilot drives it. */
+let reviewSteps = false;
+export const setReviewSteps = (on: boolean) => void (reviewSteps = on);
+export const reviewStepsOn = () => reviewSteps;
+/** An AI error from the answer check (quota, rate limit): LinkedIn's queue reads it like a fill error and waits. */
+let reviewAiError: string | null = null;
+export const takeReviewError = () => {
+  const e = reviewAiError;
+  reviewAiError = null;
+  return e;
+};
+
+/** The job's title and page text, for the answer check. */
+const jobText = (chars: number) => {
+  const p = extractPage(document.body, { pageChars: chars, otherFields: false, sendUrl: false });
+  return `${p.title} · ${p.pageText}`;
+};
+
+const NOTE_Q = /\b(why|interest|interested|motivat|cover (letter|note)|message|about (you|yourself)|tell us|introduc|note to|reach out)\b/i;
+const NUMBER_Q = /\b(years?|salary|ctc|lpa|lakhs?|notice|days|months|number of|how many|rate|usd|inr|\$)\b/i;
+
+/**
+ * Read every answer in a pop-up again with the AI before it is sent: true for you (your memory),
+ * answers the question, right format (a number, one of the options, the length). Fixes that fit
+ * the field are put in; the rest is left as it was. Returns what changed, for the logs and tracker.
+ */
+export async function reviewBeforeSend(root: HTMLElement, where: string): Promise<{ q: string; from: string; to: string; why: string }[]> {
+  type Target = { item: ReviewItem; apply: (v: string) => boolean };
+  const targets: Target[] = [];
+  const fields = [...root.querySelectorAll<HTMLElement>('textarea, select, input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]), [contenteditable=true]')].filter(visible);
+  fields.forEach((el, i) => {
+    const value = clean(readValue(el as HTMLInputElement));
+    if (!value) return;
+    let q = '';
+    try {
+      q = clean(resolveLabel(el as HTMLInputElement));
+    } catch {
+      /* no label */
+    }
+    q = q || clean(el.getAttribute('aria-label') || (el as HTMLInputElement).placeholder || (el as HTMLInputElement).name) || 'Answer';
+    const sel = el instanceof HTMLSelectElement ? el : null;
+    const options = sel ? [...sel.options].map((o) => clean(o.textContent)).filter((o) => o && !/^(select|choose|--)/i.test(o)) : undefined;
+    const kind: ReviewItem['kind'] = sel ? 'choice' : el.tagName === 'TEXTAREA' && (value.length > 120 || NOTE_Q.test(q)) ? 'note' : (el as HTMLInputElement).type === 'number' || (NUMBER_Q.test(q) && /^[\d.,\s+-]+$/.test(value)) ? 'number' : 'text';
+    const maxLength = (el as HTMLInputElement).maxLength > 0 ? (el as HTMLInputElement).maxLength : undefined;
+    targets.push({ item: { id: `f${i}`, question: q.slice(0, 300), answer: value.slice(0, 3000), options, kind, maxLength }, apply: (v) => fillElement(el, v, 'replace', q).ok });
+  });
+  let g = 0;
+  for (const [, radios] of radioGroups(root)) {
+    const on = radios.find((r) => r.checked);
+    if (!on) continue;
+    const q = clean(radioGroupLabel(radios)) || 'Choice';
+    const options = radios.map((r) => clean(radioOptionLabel(r, radios)));
+    targets.push({ item: { id: `r${g++}`, question: q.slice(0, 300), answer: clean(radioOptionLabel(on, radios)), options, kind: 'choice' }, apply: (v) => fillRadioGroup(radios, v, (x) => radioOptionLabel(x, radios), q).ok });
+  }
+  if (!targets.length) return [];
+  let fixes: ReviewFix[] = [];
+  try {
+    const r = (await rpc({ type: 'review-answers', items: targets.map((t) => t.item), job: jobText(4000) })) as { fixes: ReviewFix[] };
+    fixes = r.fixes ?? [];
+  } catch (e) {
+    const code = (e as { info?: { code?: string } }).info?.code ?? 'unknown';
+    if (AI_BLOCKING.has(code)) {
+      reviewAiError = code;
+      throw new AiUnavailable(code);
+    }
+    // The review itself failed (a bad reply): don't send answers nobody checked.
+    throw new Error(`the answer check failed (${code})`);
+  }
+  const changed: { q: string; from: string; to: string; why: string }[] = [];
+  for (const t of targets) {
+    const f = fixes.find((x) => x.id === t.item.id);
+    if (!f) continue;
+    const v = usableFix(t.item, f);
+    if (v && v !== t.item.answer && t.apply(v)) changed.push({ q: t.item.question, from: t.item.answer, to: v, why: f.why ?? '' });
+    await sleep(between(0.2, 0.5));
+  }
+  log.info(`${where}: AI review of ${targets.length} answer(s), ${changed.length} corrected`, changed.map((c) => `${c.q}: "${c.from.slice(0, 60)}" → "${c.to.slice(0, 60)}" (${c.why})`));
+  return changed;
+}
+
+/** One chatbot answer, checked before it is typed. */
+async function reviewOne(question: string, answer: string, kind: ReviewItem['kind'], options?: string[]): Promise<string> {
+  if (!answer) return answer;
+  const item: ReviewItem = { id: 'a', question, answer, kind, options };
+  try {
+    const r = (await rpc({ type: 'review-answers', items: [item], job: jobText(2500) })) as { fixes: ReviewFix[] };
+    const v = r.fixes?.[0] ? usableFix(item, r.fixes[0]) : null;
+    if (v && v !== answer) log.info(`chatbot review: "${question.slice(0, 80)}": "${answer.slice(0, 60)}" → "${v.slice(0, 60)}" (${r.fixes[0].why ?? ''})`);
+    return v ?? answer;
+  } catch (e) {
+    const code = (e as { info?: { code?: string } }).info?.code ?? 'unknown';
+    if (AI_BLOCKING.has(code)) throw new AiUnavailable(code);
+    return answer;
+  }
+}
+
 // ------------------------------------------------------------------ Naukri chatbot
 
 function drawer(): HTMLElement | null {
@@ -147,6 +247,7 @@ async function answerChatbot(d: HTMLElement, q: string, answers: { q: string; a:
     }
   } else if (text) {
     a = await answerFor(q, 'text');
+    a = await reviewOne(q, a, NUMBER_Q.test(q) && /^[\d.,\s+-]+$/.test(a) ? 'number' : 'text');
     if (a) ok = fillElement(text, a, 'replace', q).ok;
     // Naukri enables Save on key events, not only input.
     if (ok) for (const type of ['keydown', 'keyup'] as const) text.dispatchEvent(new KeyboardEvent(type, { key: 'Unidentified', bubbles: true }));
@@ -362,6 +463,7 @@ async function applyCutshort(dryRun: boolean, fill: (anchor: HTMLElement) => Pro
     await closeDialog(d);
     return { outcome: 'skip', reason: 'no Apply/Submit button in the form' };
   }
+  await reviewBeforeSend(d, 'cutshort');
   if (dryRun) {
     await closeDialog(d);
     return { outcome: 'dry', reason: `form filled; would press "${clean(submit.textContent)}"` };
@@ -416,6 +518,7 @@ async function applyFoundit(dryRun: boolean, fill: (anchor: HTMLElement) => Prom
       await closeDialog(d);
       return { outcome: 'skip', reason: 'the pop-up has no Submit/Next button' };
     }
+    await reviewBeforeSend(d, 'foundit');
     humanClick(next);
     await until(() => sentNotice('foundit') || openDialog() !== d || !d.isConnected, 15_000);
     if (sentNotice('foundit')) return { outcome: 'sent', reason: 'Foundit confirmed' };
@@ -463,6 +566,7 @@ async function followUp(p: Platform, fill: Fill, steps = 6): Promise<JobResult> 
       await closeDialog(d);
       return { outcome: 'skip', reason: 'the pop-up has no Submit/Next button' };
     }
+    await reviewBeforeSend(d, p);
     humanClick(next);
     await until(() => sentNotice(p) || openDialog() !== d || !d.isConnected, 15_000);
     if (sentNotice(p)) return { outcome: 'sent', reason: `${p} confirmed` };
@@ -549,10 +653,11 @@ async function applyWithNote(p: 'wellfound' | 'yc', dryRun: boolean, fill: Fill)
     if (a) fillElement(t, a, 'replace', q);
     await sleep(between(0.4, 0.9));
   }
+  const reviewed = await reviewBeforeSend(d, p);
   const note = d.querySelector<HTMLTextAreaElement>(p === 'yc' ? '#apply-message, textarea' : 'textarea');
   const text = clean(note?.value);
   const answers = [...d.querySelectorAll<HTMLTextAreaElement>('textarea')].map((t) => ({ q: clean(t.labels?.[0]?.textContent || t.getAttribute('aria-label') || t.name || 'note').slice(0, 120), a: t.value }));
-  log.info(`${p}: apply pop-up`, { ...describeDialog(d), note: text });
+  log.info(`${p}: apply pop-up`, { ...describeDialog(d), note: text, corrected: reviewed.length });
   if (note && text.length < (p === 'yc' ? 50 : 20)) {
     await closeDialog(d);
     return { outcome: 'skip', reason: `the note came out too short (${text.length} characters)`, answers };

@@ -1,9 +1,11 @@
 import { applyHere, applyNaukriRecommended } from './sites';
 import { boardResolve, naukriResolve, SitePilotPage } from './sitepilot';
+import { takeReviewError } from './sites';
 import { runOutreach } from './linkedin-outreach';
 import { multiApplyResult, siteJobs, sitePushback } from '@/lib/sites';
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
 import { DEFAULTS, loadSettingsLite, watchSettingsLite } from '@/lib/settings-core';
+import { siteAllowed } from '@/lib/fields/eligibility';
 import type { Settings } from '@/lib/settings';
 import { deepActiveElement, deepElementFromPoint, fieldKind, shadowOf } from '@/lib/fields/context';
 import { Controller, contextAlive } from './controller';
@@ -66,7 +68,7 @@ export default defineContentScript({
       toast: (text, tone, action, ms) => controller.showToast(text, tone, action, ms),
       dryRecord: (dialog) => watcher.recordDryRun(dialog),
       recordSent: () => watcher.markApplied(),
-      aiError: () => controller.takeFillError(),
+      aiError: () => controller.takeFillError() ?? takeReviewError(),
     });
     // Site Pilot: company application forms, answered by the local model only.
     const sitePage = new SitePilotPage((anchor) => controller.fillForm('toolbar', { anchor, quiet: true, engine: 'local' }));
@@ -96,6 +98,8 @@ export default defineContentScript({
       settings = s;
       configureLogger({ level: s.debug.logLevel, console: s.debug.console });
       controller.applyAppearance(s);
+      // Turned off for this site from the popup: close what's open now, not just from the next field.
+      if (!siteAllowed(location.hostname, s)) controller.siteOff();
       log.debug('settings updated');
     });
 

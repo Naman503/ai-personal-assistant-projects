@@ -34,7 +34,7 @@ describe('answers that keep you in the running', () => {
 
   it('skips jobs that are not your kind (Operations Manager on a React Native search)', () => {
     const rel = relevantWords(['React Native Developer', 'React Native Engineer', 'Mobile Engineer', 'Full Stack Engineer', 'Software Engineer']);
-    expect(rel).toEqual(['react native', 'mobile', 'full stack', 'software']);
+    expect(rel).toEqual(expect.arrayContaining(['react native', 'mobile', 'full stack', 'software', 'react', 'node']));
     expect(titleRelevant('AI-Native Developer (Sandbox)', rel)).toBe(false);
     expect(titleRelevant('Python Full-stack developer', rel)).toBe(true);
     expect(titleRelevant('Fullstack Engineer', rel)).toBe(true);
@@ -42,7 +42,8 @@ describe('answers that keep you in the running', () => {
     expect(titleRelevant('Flutter/Dart Developer (Cross-Platform)', rel)).toBe(false);
     expect(titleRelevant('Software Engineer (React Native+AI)', rel)).toBe(true);
     expect(titleRelevant('Frontend Developer (React.js & React Native)', rel)).toBe(true);
-    expect(titleRelevant('Frontend Developer (React.JS + Node.JS)', rel)).toBe(false);
+    // React / Node jobs count for a React Native + Full Stack search (18 Nov: good matches were skipped on Naukri).
+    expect(titleRelevant('Frontend Developer (React.JS + Node.JS)', rel)).toBe(true);
     expect(titleRelevant('Mobile Application Developer', rel)).toBe(true);
     expect(titleRelevant('Anything', [])).toBe(true);
   });

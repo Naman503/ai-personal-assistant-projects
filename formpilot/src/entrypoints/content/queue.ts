@@ -6,6 +6,7 @@
  * cancellable countdown, and only when no step was left for you. A step that needs you (a blank required field, an error) waits;
  * once you move past it, the queue takes over again.
  */
+import { setReviewSteps } from './sites';
 import {
   applyDialog,
   between,
@@ -210,6 +211,8 @@ export class ApplyQueue {
   private async loop() {
     const prefs = this.prefs();
     for (const k of prefs.seen ?? []) this.tried.add(k);
+    // The autopilot drives this queue: check each step's answers with the AI before moving on.
+    setReviewSteps(!!prefs.unattended);
     trace(`queue started on ${location.pathname}`, { cap: prefs.cap, delaySec: prefs.delaySec, skip: prefs.skipTitles, autoSubmit: !!prefs.autoSubmit, batch: prefs.batch ?? null, dryRun: !!prefs.dryRun, unattended: !!prefs.unattended });
     for (let page = 0; page < 10 && !this.stopRequested; page++) {
       await this.loadWholeList();

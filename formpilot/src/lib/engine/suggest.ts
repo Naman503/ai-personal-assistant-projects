@@ -12,13 +12,14 @@ import type { Settings } from '../settings';
 import { db, memoryVersion, bumpMemoryVersion, type Fact } from '../memory/db';
 import { MemoryIndex, fieldQuery, type RetrievedChunk } from '../memory/retrieval';
 import { canonicalKey, factsBlock, matchFacts } from '../memory/facts';
+import { buildReviewPrompt, parseReview, REVIEW_SCHEMA, REVIEW_SYSTEM, type ReviewFix, type ReviewItem } from './review';
 import { matchHistory, recordAccepted, invalidateHistoryCache, questionText } from './history';
 import { updateDocumentText, addDocument } from '../memory/ingest';
 import { cacheGet, cacheSet } from './cache';
 import { BATCH_SCHEMA, FACTS_SCHEMA, FACTS_SYSTEM, SUGGESTION_SCHEMA, buildBatchPrompt, buildFactsPrompt, buildSuggestPrompt, systemPrompt } from './prompt';
 import { parseBatch, parseFacts, parseSuggestions, parseSuggestionsPartial } from './parse';
 import { redactSecrets } from './redact';
-import { answerFitsOptions, experienceAnswer, joinDaysAnswer, keepInAnswer, noneAnswer, notServingNotice, remoteAnswer, screenOutAnswer, startDateAnswer } from '../fields/answers';
+import { answerFitsOptions, experienceAnswer, joinDaysAnswer, keepInAnswer, locationChoiceAnswer, noneAnswer, notServingNotice, remoteAnswer, screenOutAnswer, startDateAnswer } from '../fields/answers';
 import { activeProviders, adapterFor, generateWithFallback, resolveProvider } from '../llm/registry';
 import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
@@ -335,7 +336,7 @@ export class SuggestEngine {
         continue;
       }
       // "Comfortable commuting / relocating / working on-site?": Yes, so you stay in the running.
-      const keep = remoteAnswer(f.field) ?? keepInAnswer(f.field) ?? screenOutAnswer(f.field) ?? noneAnswer(f.field);
+      const keep = locationChoiceAnswer(f.field) ?? remoteAnswer(f.field) ?? keepInAnswer(f.field) ?? screenOutAnswer(f.field) ?? noneAnswer(f.field);
       if (keep) {
         values[f.id] = keep;
         sources[f.id] = 'rule';
@@ -428,6 +429,28 @@ export class SuggestEngine {
     invalidateHistoryCache();
     log.info(`learned answer for "${question}" → ${savedAs.join(' + ')}`);
     return { savedAs, label: question };
+  }
+
+  /** Re-read answers against memory and the job before an unattended send; returns fixes. */
+  async reviewAnswers(items: ReviewItem[], job: string, signal: AbortSignal): Promise<{ fixes: ReviewFix[]; provider: string }> {
+    const s = this.settings();
+    if (!items.length) return { fixes: [], provider: '' };
+    const facts = await this.facts();
+    const { chunks } = await this.retrieve({ label: items.map((i) => i.question).join(' ').slice(0, 400), description: '', placeholder: '', section: '', semantic: 'text' } as unknown as FieldContext, job.slice(0, 300));
+    const docs = chunks.map((c) => c.text).join('\n---\n').slice(0, 12000);
+    const r = await generateWithFallback(s, {
+      system: REVIEW_SYSTEM,
+      prompt: this.prepare(buildReviewPrompt(items, job, factsBlock(facts), docs)),
+      schema: REVIEW_SCHEMA,
+      temperature: 0,
+      maxTokens: 2048,
+      thinking: 'off',
+      stream: false,
+      signal,
+    });
+    const fixes = parseReview(r.text);
+    log.info(`review: ${items.length} answers checked via ${r.provider.label}, ${fixes.filter((f) => !f.ok).length} to fix`);
+    return { fixes, provider: r.provider.label };
   }
 
   /** LLM-extract key facts from a document and upsert them. */

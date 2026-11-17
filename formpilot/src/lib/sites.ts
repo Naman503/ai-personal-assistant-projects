@@ -346,9 +346,13 @@ export function searchUrlFor(p: Platform, title: string): string {
 }
 
 /** "Kutumb - Android Engineer" → company + role. */
+const ROLE_WORDS = /\b(engineer|developer|architect|lead|senior|sr\.?|junior|jr\.?|principal|staff|manager|intern|programmer|consultant|analyst|sde|full[- ]?stack|frontend|front[- ]end|backend|back[- ]end|mobile|react|android|ios|software|web)\b/i;
+
+/** "Kutumb - Android Engineer" → company + role; "Senior Software Engineer - React Native" (company hidden) → role only. */
 function splitCompanyRole(s: string): { company: string; title: string } {
   const m = /^(.{2,60}?)\s+[-–]\s+(.+)$/.exec(clean(s));
-  return m ? { company: m[1], title: m[2] } : { company: '', title: clean(s) };
+  if (!m || ROLE_WORDS.test(m[1])) return { company: '', title: clean(s) };
+  return { company: m[1], title: m[2] };
 }
 
 export function instahyreJobs(doc: ParentNode = document): SiteJob[] {

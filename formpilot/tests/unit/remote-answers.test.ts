@@ -24,3 +24,35 @@ describe('remote job answers', () => {
     expect(remoteAnswer({ label: 'Expected salary', options: [] })).toBeNull();
   });
 });
+
+import { checkEligibility } from '@/lib/fields/eligibility';
+import { DEFAULTS } from '@/lib/settings-core';
+
+describe('site switched off', () => {
+  it('no suggestions on a blocked site, except your own shortcut', () => {
+    const input = document.createElement('input');
+    input.setAttribute('aria-label', 'Your bio');
+    document.body.appendChild(input);
+    const s = structuredClone(DEFAULTS);
+    s.behavior.blockedSites = [location.hostname || 'localhost'];
+    expect(checkEligibility(input, s).ok).toBe(false);
+    expect(checkEligibility(input, s).reason).toMatch(/off on this site/);
+    expect(checkEligibility(input, s, true).ok).toBe(true);
+  });
+});
+
+import { locationChoiceAnswer } from '@/lib/fields/answers';
+const o = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
+describe('location dropdowns', () => {
+  it('picks your city even when spelled Bangalore (Lever, SmartWorking)', () => {
+    expect(locationChoiceAnswer({ label: 'In which location did you find the job?', options: o(['Select...', 'India', 'Delhi NCR', 'Bangalore', 'Hyderabad', 'Chandigarh', 'Pune', 'Indore']) })).toBe('Bangalore');
+  });
+  it('falls back to Remote, then India', () => {
+    expect(locationChoiceAnswer({ label: 'Preferred location', options: o(['London', 'Remote', 'Berlin']) })).toBe('Remote');
+    expect(locationChoiceAnswer({ label: 'Location', options: o(['India', 'Singapore']) })).toBe('India');
+  });
+  it('leaves non-place lists and other questions alone', () => {
+    expect(locationChoiceAnswer({ label: 'How did you hear about us?', options: o(['LinkedIn', 'Referral']) })).toBeNull();
+    expect(locationChoiceAnswer({ label: 'Location', options: o(['Yes', 'No']) })).toBeNull();
+  });
+});
