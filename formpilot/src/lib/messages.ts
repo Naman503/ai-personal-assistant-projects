@@ -49,6 +49,7 @@ export type RpcRequest =
   | { type: 'autopilot'; action: 'start' | 'stop' | 'pause' | 'reset' | 'status' | 'run-now' | 'resume' | 'unblock'; platform?: import('./sites').Platform }
   | { type: 'outreach-done'; result: import('@/entrypoints/content/linkedin-outreach').OutreachResult }
   | { type: 'outreach'; action: 'status' | 'run-now' }
+  | { type: 'portal-sync'; action: 'status' | 'run-now' }
   | { type: 'tracker-test'; url?: string }
   /** Popup: is this job already in the tracker? */
   | { type: 'tracker-lookup'; url: string; company?: string; role?: string }
