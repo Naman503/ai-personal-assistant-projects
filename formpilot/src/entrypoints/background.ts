@@ -2,6 +2,10 @@ import { Autopilot } from '@/lib/autopilot-runner';
 import { Outreach } from '@/lib/outreach-runner';
 import { SitePilot, siteSettings } from '@/lib/sitepilot/runner';
 import { setLocalRun } from '@/lib/llm/local-run';
+import { pilotSettings, type Pilot } from '@/lib/llm/pilot-ai';
+import { recordAiCall, recordOutcome } from '@/lib/ai-stats';
+import { loadState as loadApState } from '@/lib/autopilot-runner';
+import { loadSpState } from '@/lib/sitepilot/runner';
 import { factsBlock } from '@/lib/memory/facts';
 import { PortalSync } from '@/lib/portal-sync';
 import { parseWorkHistory } from '@/lib/fields/workdates';
@@ -59,6 +63,19 @@ export default defineBackground({
       profile: async () => ({ facts: factsBlock(await engine.facts()), profile: settings.generation.persona || '' }),
     });
     autopilot.handOff = (jobs) => sitePilot.add(jobs);
+    /** The model each pilot used last (its applications' outcomes are counted for that model). */
+    const lastModel: Partial<Record<Pilot, string>> = {};
+    /** Which pilot a request came from: the window it was sent from. */
+    const pilotOf = async (tab: chrome.tabs.Tab | undefined, engineHint?: string): Promise<Pilot | null> => {
+      if (engineHint === 'local') return 'sitePilot';
+      if (!tab) return null;
+      const [ap, sp] = await Promise.all([loadApState().catch(() => null), loadSpState().catch(() => null)]);
+      if (sp?.running && (tab.id === sp.tabId || (sp.windowId !== undefined && tab.windowId === sp.windowId))) return 'sitePilot';
+      if (ap?.running && (tab.id === ap.tabId || (ap.windowId !== undefined && tab.windowId === ap.windowId))) return 'autopilot';
+      return null;
+    };
+    sitePilot.onModel = (model) => void (lastModel.sitePilot = model);
+    sitePilot.onFinished = (outcome) => void recordOutcome('sitePilot', lastModel.sitePilot ?? '', outcome);
     /** Once a day: provider mix, memory size and a settings snapshot (enums, booleans, buckets only). */
     const usageDaily = async () => {
       const active = activeProviders(settings);
@@ -264,6 +281,7 @@ export default defineBackground({
           await autopilot.onRecDone(msg.result, sender.tab?.id);
           return null;
         case 'autopilot-job-done':
+          void recordOutcome('autopilot', lastModel.autopilot ?? '', msg.result.outcome === 'dry' ? 'ready' : msg.result.outcome === 'skip' ? 'skipped' : msg.result.outcome);
           await autopilot.onJobDone(msg.result, sender.tab?.id);
           return null;
         case 'autopilot-skip':
@@ -273,6 +291,9 @@ export default defineBackground({
           await autopilot.onProgress(msg.text, sender.tab?.id);
           return null;
         case 'autopilot-batch-done':
+          void recordOutcome('autopilot', lastModel.autopilot ?? '', 'sent', msg.result.sent);
+          void recordOutcome('autopilot', lastModel.autopilot ?? '', 'ready', msg.result.dry);
+          void recordOutcome('autopilot', lastModel.autopilot ?? '', 'skipped', msg.result.skipped);
           await autopilot.onBatchDone(msg.result, sender.tab?.id);
           return null;
         case 'autopilot':
@@ -287,6 +308,8 @@ export default defineBackground({
           if (msg.action === 'start') await sitePilot.start();
           else if (msg.action === 'stop') await sitePilot.stop();
           else if (msg.action === 'run-now') await sitePilot.runNow();
+          else if (msg.action === 'pause') await sitePilot.pause();
+          else if (msg.action === 'resume') await sitePilot.unpause();
           return sitePilot.status();
         case 'sp-add':
           return sitePilot.add(msg.jobs);
@@ -352,10 +375,21 @@ export default defineBackground({
           const signal = AbortSignal.timeout(Math.max(settings.generation.timeoutMs, 60_000));
           const trigger = ['shortcut', 'context_menu', 'popup_menu', 'toolbar'].includes(msg.trigger ?? '') ? msg.trigger! : 'other';
           let out: Awaited<ReturnType<typeof engine.fillForm>>;
+          // The Autopilot and Site Pilot each use their own AI choice; your own fills use AI Providers.
+          const who = await pilotOf(sender.tab, msg.engine);
+          const t0 = Date.now();
           try {
-            // Site Pilot: the local model only, with a long time limit (it is paced while you work).
-            out = msg.engine === 'local' ? await engine.fillForm(msg.fields, msg.page, AbortSignal.timeout(8 * 60_000), siteSettings(settings)) : await engine.fillForm(msg.fields, msg.page, signal);
+            if (who === 'sitePilot') out = await engine.fillForm(msg.fields, msg.page, AbortSignal.timeout(8 * 60_000), siteSettings(settings));
+            else if (who === 'autopilot') out = await engine.fillForm(msg.fields, msg.page, AbortSignal.timeout(5 * 60_000), pilotSettings(settings, 'autopilot'));
+            else out = await engine.fillForm(msg.fields, msg.page, signal);
+            if (who && out.asked) {
+              const cloudFirst = settings.pilotAi[who].mode === 'cloud-then-local';
+              lastModel[who] = out.model;
+              if (who === 'sitePilot') sitePilot.onModel?.(out.model);
+              void recordAiCall(who, out.model, { ms: out.ms, asked: out.asked, answered: Object.values(out.sources).filter((x) => x === 'ai').length, fallback: cloudFirst && out.model.startsWith('local ') });
+            }
           } catch (e) {
+            if (who) void recordAiCall(who, `${settings.pilotAi[who].mode === 'local' ? 'local' : 'cloud'} (failed)`, { ms: Date.now() - t0, asked: msg.fields.length, answered: 0, failed: true });
             const category = isAbort(e) ? 'timeout' : errorCategory((e as LLMError)?.code);
             void usage.count('ai_error', { op: 'form', category, provider: providerFamily(activeProviders(settings)[0]) });
             void usage.event('form_fill_failed', { category, trigger, fields: countBucket(msg.fields.length) });

@@ -96,7 +96,7 @@ describe('runner settings', () => {
     expect(s.providers).toHaveLength(1);
     expect(s.providers[0].kind).toBe('ollama');
     expect(s.providers[0].model).toBe('gemma4:12b');
-    expect(s.generation.fallback).toBe(false);
+    expect(s.generation.fallback).toBe(true); // cloud-then-local needs the chain
   });
   it('is live only on ticked systems', () => {
     const sp = { ...DEFAULT_SETTINGS.sitePilot, liveAts: ['lever'] };
@@ -116,6 +116,12 @@ describe('queue', () => {
     expect((await enqueue([{ url: 'https://other.example/x', title: 'RN Dev', company: 'Acme Pvt Ltd', source: 'naukri' }])).added).toBe(0);
     await enqueue([{ url: 'https://forms.gle/abc', source: 'manual' }]);
     expect((await nextQueued())?.url).toBe('https://forms.gle/abc');
+  });
+  it('after Resume, the paused job comes first', async () => {
+    await enqueue([{ url: 'https://a.example/1', source: 'manual' }, { url: 'https://b.example/2', source: 'board' }]);
+    const b = (await spDb().jobs.toArray()).find((j) => j.url.includes('b.example'))!;
+    expect((await nextQueued())?.url).toBe('https://a.example/1');
+    expect((await nextQueued(b.id))?.url).toBe('https://b.example/2');
   });
   it('counts recent applications per company', async () => {
     await enqueue([{ url: 'https://a.example/1', title: 'A', company: 'Acme', source: 'manual' }]);

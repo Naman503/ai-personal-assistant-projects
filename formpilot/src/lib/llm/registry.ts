@@ -113,6 +113,7 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
   }
   const attempts: ChainResult['attempts'] = [];
   let lastErr: unknown;
+  let limitErr: LLMError | undefined;
   const tryList = s.generation.fallback || only ? chain : chain.slice(0, 1 + chain.filter((x, i) => i > 0 && x.id === chain[0].id).length);
 
   for (const p of tryList) {
@@ -159,6 +160,7 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
         log.info(`✗ ${p.label} failed [${err.code}] after ${ms}ms: ${err.message}`);
         // Out of today's quota for this model: skip it until tomorrow-ish; other models may still work.
         if (err.code === 'quota') cooldown.set(`${p.id}:${p.model}`, Date.now() + 3 * 3600_000);
+        if (err.code === 'quota' || err.code === 'rate-limit') limitErr ??= err;
         if (['auth', 'cors', 'no-provider'].includes(err.code)) {
           cooldown.set(p.id, Date.now() + 5 * 60_000);
         } else if (err.code === 'unavailable' && p.kind === 'chrome-ai') {
@@ -175,6 +177,9 @@ export async function generateWithFallback(s: Settings, req: LLMRequest, only?: 
       }
     }
   }
+  // A used-up quota or a rate limit says more than the fallback that couldn't be reached after it
+  // (the pilots wait for the reset on those, instead of skipping the job).
+  if (limitErr && lastErr instanceof LLMError && !['quota', 'rate-limit'].includes(lastErr.code)) throw limitErr;
   if (lastErr instanceof LLMError) throw lastErr;
   throw new LLMError('unknown', (lastErr as Error)?.message ?? 'All providers failed.');
 }

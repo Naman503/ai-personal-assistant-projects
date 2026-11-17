@@ -135,8 +135,10 @@ export async function enqueue(jobs: NewJob[]): Promise<{ added: number; known: n
 }
 
 /** The next job to work on: yours first, then Google Forms from recruiters, then the rest, oldest first. */
-export async function nextQueued(): Promise<SpJob | undefined> {
+export async function nextQueued(first?: string): Promise<SpJob | undefined> {
   const q = await spDb().jobs.where('status').equals('queued').sortBy('addedAt');
+  const resumed = first ? q.find((j) => j.id === first) : undefined;
+  if (resumed) return resumed;
   const rank = (j: SpJob) => (j.source === 'manual' ? 0 : j.source === 'naukri-form' ? 1 : 2);
   return q.sort((a, b) => rank(a) - rank(b) || a.addedAt - b.addedAt)[0];
 }

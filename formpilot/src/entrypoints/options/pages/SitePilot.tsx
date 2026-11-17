@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Building2, Cpu, FastForward, FileText, History, ListChecks, Play, Square, Upload } from 'lucide-react';
+import { Activity, Building2, Cpu, FastForward, Pause, FileText, History, ListChecks, Play, Square, Upload } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Input, PageHeader, Row, Segmented, Switch, Textarea } from '@/components/ui';
 import { rpc } from '@/lib/messages';
 import { ATS, ATS_NAME, type Ats } from '@/lib/sitepilot/detect';
 import { spDb, type SpJob, type SpShot, type SpStatus } from '@/lib/sitepilot/db';
 import { learnedBoards, type SpState } from '@/lib/sitepilot/runner';
 import type { PageProps } from '../App';
+import { PilotAiCard, PilotAiReport } from './PilotAi';
 
 const BRIEF_EXAMPLE = `You apply for jobs on my behalf. I am a software engineer looking for my next role.
 
@@ -36,7 +37,7 @@ const TONE: Record<SpStatus, 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'b
 
 function useSitePilot(every = 2000) {
   const [st, setSt] = useState<Status | null>(null);
-  const call = (action: 'start' | 'stop' | 'status' | 'run-now') => rpc<Status>({ type: 'sp', action }).then(setSt).catch(() => {});
+  const call = (action: 'start' | 'stop' | 'status' | 'run-now' | 'pause' | 'resume') => rpc<Status>({ type: 'sp', action }).then(setSt).catch(() => {});
   useEffect(() => {
     void call('status');
     const t = setInterval(() => void call('status'), every);
@@ -217,19 +218,30 @@ export function SitePilot({ settings, update }: PageProps) {
 
   const c = st?.counts;
   const live = sp.liveAts;
-  const phase = !st?.running ? 'Off' : st.phase === 'working' ? 'Working' : st.phase === 'pause' ? 'Pause between jobs' : st.phase === 'waiting' ? 'Waiting for you to be away' : 'Idle (queue empty)';
+  const phase = !st?.running ? 'Off' : st.paused ? 'Paused' : st.phase === 'working' ? 'Working' : st.phase === 'pause' ? 'Pause between jobs' : st.phase === 'waiting' ? 'Waiting for you to be away' : 'Idle (queue empty)';
 
   return (
     <>
       <PageHeader
         title="Site Pilot"
-        description="Applies on company career sites and Google Forms in its own Brave window, using only your local model. Separate from the Autopilot; both can run at once. No daily limit."
+        description="Applies on company career sites and Google Forms in its own Brave window. Separate from the Autopilot; both can run at once. No daily limit."
         actions={
           st?.running ? (
             <div className="flex gap-2">
-              <Button onClick={() => void call('run-now')} disabled={!!st.cur} title="Skip the pause and start the next job">
-                <FastForward className="size-4" /> Next job now
-              </Button>
+              {st.paused ? (
+                <Button variant="primary" onClick={() => void call('resume')}>
+                  <Play className="size-4" /> Resume
+                </Button>
+              ) : (
+                <>
+                  <Button onClick={() => void call('pause')} title="Stop now and keep the queue; Resume carries on">
+                    <Pause className="size-4" /> Pause
+                  </Button>
+                  <Button onClick={() => void call('run-now')} disabled={!!st.cur} title="Skip the pause and start the next job">
+                    <FastForward className="size-4" /> Next job now
+                  </Button>
+                </>
+              )}
               <Button variant="danger" onClick={() => void call('stop')}>
                 <Square className="size-4" /> Stop
               </Button>
@@ -395,9 +407,12 @@ export function SitePilot({ settings, update }: PageProps) {
         </Row>
       </Card>
 
+      <PilotAiCard who="sitePilot" settings={settings} update={update} />
+      <PilotAiReport who="sitePilot" />
+
       <Card className="mb-5">
-        <CardHeader icon={<Cpu className="size-4" />} title="Local model" description="Site Pilot never uses a cloud model. These settings also apply when the Autopilot falls back to the local model." />
-        <Row label="Model" description={`Installed: ${installed.join(', ') || 'Ollama not reachable'}. gemma4:12b scored 15/15 on real application questions and can read screenshots.`}>
+        <CardHeader icon={<Cpu className="size-4" />} title="Local model" description="How the local model runs on this Mac. These settings apply to every local model call, by either pilot." />
+        <Row label="Default local model" description={`Used when the AI card above leaves the local model empty. Installed: ${installed.join(', ') || 'Ollama not reachable'}. gemma4:12b scored 15/15 on real application questions and can read screenshots.`}>
           <Input className="w-48" value={model} onChange={(e) => setModel(e.target.value)} onBlur={() => set('model', model.trim() || 'gemma4:12b')} />
         </Row>
         <Row label="While you're using the Mac" description="Go slow: fewer model calls and the model is unloaded sooner. Pause: no new job starts until you've been away (a job in progress is finished slowly). The model always runs on the GPU: CPU-only took over 10 minutes per answer here.">

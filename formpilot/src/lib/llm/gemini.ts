@@ -40,7 +40,7 @@ function buildBody(req: LLMRequest, model: string, v: Variant) {
   if (tc) generationConfig.thinkingConfig = tc;
   return {
     systemInstruction: { parts: [{ text: req.system }] },
-    contents: [{ role: 'user', parts: [{ text: req.prompt }] }],
+    contents: [{ role: 'user', parts: [{ text: req.prompt }, ...(req.images ?? []).map((data) => ({ inline_data: { mime_type: data.startsWith('/9j') ? 'image/jpeg' : 'image/png', data } }))] }],
     generationConfig,
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },

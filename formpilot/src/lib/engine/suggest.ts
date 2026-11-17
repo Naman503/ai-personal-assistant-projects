@@ -301,6 +301,8 @@ export class SuggestEngine {
     const facts = await this.facts();
     const values: Record<string, string> = {};
     const sources: Record<string, string> = {};
+    /** Which model answered (for the pilots' AI report). */
+    let model = '';
     const remaining: { id: string; field: FieldContext }[] = [];
 
     const notice = facts.find((x) => x.key === 'notice-period')?.value;
@@ -358,6 +360,7 @@ export class SuggestEngine {
         signal,
         onWait: extra?.onWait,
       });
+      model = r.provider.id === 'pilot-local' || r.provider.kind === 'ollama' ? `local ${r.model}` : `${r.provider.label.replace(/\s*\(.*\)$/, '')} ${r.model}`;
       const parsed = parseBatch(r.text);
       for (const f of remaining) {
         const v = parsed[f.id];
@@ -375,7 +378,7 @@ export class SuggestEngine {
       }
       log.info(`fill-form model answered ${Object.keys(parsed).length} fields via ${r.provider.label}`);
     }
-    return { values, sources, ms: Math.round(performance.now() - t0) };
+    return { values, sources, ms: Math.round(performance.now() - t0), model, asked: remaining.length };
   }
 
   /**
