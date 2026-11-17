@@ -223,6 +223,29 @@ export class SitePilot {
   }
 
   /** The page in Site Pilot's tab finished loading. */
+  /**
+   * A page in Site Pilot's tab opened another tab (an "Apply" that opens in a new tab, a popup):
+   * Site Pilot works in one tab, so it closes the new one and, if it was the way to the form,
+   * goes there in its own tab.
+   */
+  async onTabCreated(tab: chrome.tabs.Tab) {
+    if (tab.openerTabId === undefined || tab.id === undefined) return;
+    const st = await loadSpState();
+    if (!st.running || tab.openerTabId !== st.tabId) return;
+    await new Promise((r) => setTimeout(r, 1500)); // let it get its address
+    const t = await chrome.tabs.get(tab.id).catch(() => null);
+    const url = t?.pendingUrl || t?.url || '';
+    await chrome.tabs.remove(tab.id).catch(() => {});
+    if (!st.cur || !/^https?:/i.test(url)) return;
+    await addStep(st.cur.jobId, `closed a tab the page opened (${url.slice(0, 100)})`);
+    if (st.cur.stage === 'resolve' && !/naukri\.com/i.test(url)) return this.resolved({ url });
+    if (st.cur.stage === 'apply' && !st.cur.submitted) {
+      st.cur.busy = false;
+      await save(st);
+      await chrome.tabs.update(st.tabId!, { url, active: true }).catch(() => {});
+    }
+  }
+
   /** Site Pilot's tab, remembered so other tabs' updates don't each read the state. */
   private knownTab: number | null | undefined;
 
@@ -568,8 +591,13 @@ export class SitePilot {
         .catch((e) => log.info(`tracker: ${(e as Error).message}`));
     }
     st.cur = undefined;
-    // Leave the page (stops its scripts and timers) but keep the window for the next job.
+    // Leave the page (stops its scripts and timers) but keep the window for the next job; any other
+    // tab that ended up in its window is closed.
     if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: 'about:blank' }).catch(() => {});
+    if (st.windowId !== undefined) {
+      const extra = (await chrome.tabs.query({ windowId: st.windowId }).catch(() => [])).filter((t) => t.id !== st.tabId && t.id !== undefined);
+      if (extra.length) await chrome.tabs.remove(extra.map((t) => t.id!)).catch(() => {});
+    }
     if (!st.running) return save(st, `${label}: ${job?.title ?? ''} · ${reason}`);
     const sp = this.s.sitePilot;
     const wait = outcome === 'skipped' ? 5_000 : rand(sp.pauseMinSec, sp.pauseMaxSec) * 1000;

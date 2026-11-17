@@ -850,6 +850,10 @@ export class SitePilotPage {
           await settled(document.body, 800, 8000);
           if (!formScope()) return this.result({ kind: 'continue', note: `opened "${buttonText(el).slice(0, 60)}"` }, ats, actions);
           scope = formScope();
+        } else if (a && ['fill', 'choose', 'check', 'upload', 'submit', 'next'].includes(a.do)) {
+          // The model sees a form our form finder missed (few fields, no <form>): work on the whole page.
+          this.history.push('the page itself is the form');
+          scope = document.body;
         } else if (a?.do === 'stop') {
           await rpc({ type: 'sp-shot', kind: 'stuck' }).catch(() => null);
           return done('needs-you', a.why || `couldn't find "${ctx.title}" on this careers page`);
