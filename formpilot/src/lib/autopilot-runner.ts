@@ -250,7 +250,9 @@ export class Autopilot {
     st.nextAt = undefined;
     st.progress = { text: `Opening the ${PLATFORM_NAME[c.platform]} search`, at: Date.now() };
     await at(GO, Date.now() + loadWait());
-    await at(WATCHDOG, Date.now() + 60 * 60_000);
+    // A batch that stops moving is closed early: LinkedIn runs a whole batch in one page (35 min),
+    // Naukri / Cutshort re-arm this for every job (see openJob).
+    await at(WATCHDOG, Date.now() + (c.platform === 'linkedin' ? 35 : 15) * 60_000);
     await save(st, `${PLATFORM_NAME[c.platform]}: searching "${c.title}" (batch of ${c.size}${c.dryRun ? ', dry run' : ''})`);
   }
 
@@ -379,6 +381,7 @@ export class Autopilot {
     st.progress = { text: `Opening ${job.title} · ${job.company}`, at: Date.now() };
     if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: job.url }).catch(() => {});
     await at(GO, Date.now() + loadWait());
+    await at(WATCHDOG, Date.now() + 12 * 60_000);
     await save(st);
   }
 
@@ -593,8 +596,8 @@ export class Autopilot {
     const st = await loadState();
     if (!st.running || !st.current) return;
     if (st.tabId !== undefined) await chrome.tabs.sendMessage(st.tabId, { type: 'command', name: 'apply-queue-stop' }, { frameId: 0 }).catch(() => {});
-    if (st.current.platform && st.current.platform !== 'linkedin') return this.finishBatch(st, 'timed out after an hour');
-    await this.onBatchDone({ sent: 0, dry: 0, skipped: 0, reason: 'timed out after an hour' }, st.tabId);
+    if (st.current.platform && st.current.platform !== 'linkedin') return this.finishBatch(st, 'stopped moving (page left or stuck); moved on');
+    await this.onBatchDone({ sent: 0, dry: 0, skipped: 0, reason: 'stopped moving (page left or stuck); moved on' }, st.tabId);
   }
 
   async onWindowRemoved(windowId: number) {
