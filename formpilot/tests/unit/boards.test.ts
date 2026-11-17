@@ -55,3 +55,24 @@ describe('boards', () => {
     expect(fitting([...lv, ...gh], { relevant: ['react native', 'software'], skipWords: '', days: 21 })).toHaveLength(1);
   });
 });
+
+describe('stack and level', () => {
+  const stack = 'react native, react, javascript, typescript, node, frontend, full stack, mobile, python';
+  it('keeps your stack, drops other specialisms', async () => {
+    const { stackFits } = await import('@/lib/sitepilot/boards');
+    expect(stackFits({ title: 'React Native Developer' }, stack)).toBe(true);
+    expect(stackFits({ title: 'Senior Software Engineer - Security Platform' }, stack)).toBe(false);
+    expect(stackFits({ title: 'Software Engineer, Kubernetes platform' }, stack)).toBe(false);
+    expect(stackFits({ title: 'Software Engineer', description: 'We use TypeScript, React and Node across the product.' }, stack)).toBe(true);
+    expect(stackFits({ title: 'Software Engineer', description: 'Go and Ruby on Rails services.' }, stack)).toBe(false);
+  });
+  it('leaves Senior roles out unless asked', () => {
+    const jobs = [
+      { title: 'Senior Software Engineer', company: 'A', location: 'Bengaluru', url: 'u1', description: 'react typescript node' },
+      { title: 'Software Engineer II', company: 'A', location: 'Bengaluru', url: 'u2', description: 'react typescript node' },
+    ];
+    const o = { relevant: ['software'], skipWords: '', days: 30, stack };
+    expect(fitting(jobs, { ...o, senior: false }).map((j) => j.url)).toEqual(['u2']);
+    expect(fitting(jobs, { ...o, senior: true })).toHaveLength(2);
+  });
+});

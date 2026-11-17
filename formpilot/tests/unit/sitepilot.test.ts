@@ -137,3 +137,25 @@ describe('local run', () => {
     expect(ollamaSettings('m', false, { ...c, keepAlive: '0' }).keep_alive).toBe(0);
   });
 });
+
+describe('truthful answers and the brief', () => {
+  it('prompts truthfully for Site Pilot, keep-in for the Autopilot', async () => {
+    const { buildBatchPrompt } = await import('@/lib/engine/prompt');
+    const field = { id: 'f1', field: { fid: 'x', kind: 'text', inputType: 'text', label: 'Years writing Go?', name: '', htmlId: '', placeholder: '', autocomplete: '', description: '', section: '', required: true, currentValue: '', semantic: 'text', longForm: false } } as never;
+    const page = { url: '', host: '', title: '', heading: '', formTitle: '', pageText: '', otherFields: [] } as never;
+    const site = siteSettings({ ...DEFAULT_SETTINGS, sitePilot: { ...DEFAULT_SETTINGS.sitePilot, brief: 'I am Jane, a React Native engineer.' } });
+    const strict = buildBatchPrompt([field], page, '', [], site);
+    expect(strict).toContain('answer 0');
+    expect(strict).not.toContain('otherwise answer 3');
+    expect(site.generation.customInstructions).toContain('CANDIDATE BRIEF');
+    expect(buildBatchPrompt([field], page, '', [], DEFAULT_SETTINGS)).toContain('otherwise answer 3');
+  });
+  it('puts the brief and the truthful rule in the agent instructions', async () => {
+    const { agentSystem } = await import('@/lib/sitepilot/agent');
+    const sys = agentSystem('truthful', 'I am Jane.');
+    expect(sys).toContain('Be truthful');
+    expect(sys).toContain('CANDIDATE BRIEF');
+    expect(sys).not.toContain('{{CLAIMS}}');
+    expect(agentSystem('keep-in')).toContain('else 3');
+  });
+});

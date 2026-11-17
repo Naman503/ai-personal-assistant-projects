@@ -156,6 +156,7 @@ export const DEFAULTS: Settings = {
     timeoutMs: 45000,
     maxRetries: 2,
     fallback: true,
+    claims: 'keep-in',
   },
   memory: {
     enabled: true,
@@ -249,6 +250,10 @@ export const DEFAULTS: Settings = {
     boardDays: 21,
     fromAutopilot: true,
     resumeLink: '',
+    answerStyle: 'truthful',
+    brief: '',
+    seniorRoles: false,
+    stack: 'react native, react, javascript, typescript, node, frontend, front-end, full stack, fullstack, full-stack, mobile, web, python, fastapi',
     maxActions: 30,
     maxMinutes: 15,
   },

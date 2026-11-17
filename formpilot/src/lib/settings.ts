@@ -59,6 +59,8 @@ const GenerationSchema = z.object({
   timeoutMs: z.number().int().min(3000).max(180000).catch(45000),
   maxRetries: z.number().int().min(0).max(5).catch(2),
   fallback: z.boolean().catch(true),
+  /** Skill and experience claims: "keep-in" answers 3 years / Yes when memory doesn't say (stays in the running); "truthful" only claims what memory shows. */
+  claims: z.enum(['keep-in', 'truthful']).catch('keep-in'),
 });
 
 const MemorySchema = z.object({
@@ -281,6 +283,14 @@ const SitePilotSchema = z.object({
   boardDays: z.number().int().min(1).max(90).catch(21),
   /** Take the Autopilot's company-site jobs and outside forms. */
   fromAutopilot: z.boolean().catch(true),
+  /** "truthful": skills and years only when your resume/memory shows them (0 / No otherwise). "keep-in": 3 years / Yes like the Autopilot. */
+  answerStyle: z.enum(['truthful', 'keep-in']).catch('truthful'),
+  /** The brief the local model always gets: who it is, who you are, what you want, what never to do. */
+  brief: z.string().max(6000).catch(''),
+  /** Apply to Senior / Sr. roles from job boards (off: they usually ask 5+ years). */
+  seniorRoles: z.boolean().catch(false),
+  /** Your stack: board jobs must mention one of these (title or description). */
+  stack: z.string().catch('react native, react, javascript, typescript, node, frontend, front-end, full stack, fullstack, full-stack, mobile, web, python, fastapi'),
   /** A shareable link to your resume (Google Drive…), for forms that ask for a link instead of a file. */
   resumeLink: z.string().catch(''),
   /** Most actions and minutes per job before it's left for you. */

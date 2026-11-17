@@ -181,8 +181,18 @@ export function buildBatchPrompt(fields: BatchField[], page: PageContext, facts:
     `Today is ${new Date().toISOString().slice(0, 10)}. Dates you give (start dates, availability) must not be in the past.`,
     'For choice fields, answer with the exact text of the option(s).',
     'These are job applications: give the answer that keeps the user in the running.',
-    '- Years of experience with any skill, tool, platform or domain: use the number from memory if it is there; otherwise answer 3. Never 0, never blank.',
-    '- Yes/No questions about having worked with a skill, technology or kind of project the role needs: Yes, unless memory clearly says otherwise.',
+    ...(s.generation.claims === 'truthful'
+      ? [
+          '- Years of experience with a skill, tool, language or platform: the number from memory or the resume. If memory never mentions that skill, answer 0 (or the lowest option). Never invent experience.',
+          '- Yes/No questions about having worked with a skill, technology or kind of work: Yes only when memory shows it; otherwise No.',
+          '- Questions that start "If you answered / selected …", "If yes", "If other", "If applicable": answer only when that condition is true given the other answers; otherwise an empty string.',
+          '- Link fields (website, portfolio, GitHub, LinkedIn): the exact URL from memory, or an empty string. Never a number or a piece of a link.',
+          '- Free-text questions about your work: only real experience from memory, specific and honest; never claim technologies or projects memory does not show.',
+        ]
+      : [
+          '- Years of experience with any skill, tool, platform or domain: use the number from memory if it is there; otherwise answer 3. Never 0, never blank.',
+          '- Yes/No questions about having worked with a skill, technology or kind of project the role needs: Yes, unless memory clearly says otherwise.',
+        ]),
     '- Willingness questions (commute, relocate, on-site, hybrid, shifts, weekends, travel, joining on time): Yes.',
     '- Facts about the user (current city, education, visa or work authorisation, salary, notice period, name, contact): only from memory, never made up.',
     '',

@@ -7,6 +7,20 @@ import { spDb, type SpJob, type SpShot, type SpStatus } from '@/lib/sitepilot/db
 import { learnedBoards, type SpState } from '@/lib/sitepilot/runner';
 import type { PageProps } from '../App';
 
+const BRIEF_EXAMPLE = `You apply for jobs on my behalf. I am a software engineer looking for my next role.
+
+About me: [years] years of experience. Primary stack: [e.g. React Native, React, TypeScript, Node.js]. Also: [other real skills]. Current company: [company], since [month year]. Based in [city]; open to [cities / remote].
+
+What I want: [titles]. Expected CTC [amount], current CTC [amount], notice period [days].
+
+How to answer:
+- Be accurate. Only claim skills, years and projects that are in my resume or facts.
+- Short, specific free-text answers in first person, based on real work from my resume.
+- Willing to relocate, work on-site or hybrid: yes. Visa sponsorship: not needed.
+- Demographic questions: decline to self-identify. Marketing / newsletter / job alerts: no.
+
+Never: create accounts, type passwords, solve CAPTCHAs, take tests, or pay.`;
+
 type Status = SpState & { counts: Record<SpStatus, number> };
 const time = (ms: number) => new Date(ms).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
@@ -174,6 +188,8 @@ export function SitePilot({ settings, update }: PageProps) {
   const [light, setLight] = useState(la.lightModel);
   const [link, setLink] = useState(sp.resumeLink);
   const [boards, setBoards] = useState(sp.boards);
+  const [brief, setBrief] = useState(sp.brief);
+  const [stack, setStack] = useState(sp.stack);
   const [learned, setLearned] = useState<string[]>([]);
   useEffect(() => void learnedBoards().then(setLearned).catch(() => {}), []);
   const [installed, setInstalled] = useState<string[]>([]);
@@ -311,6 +327,20 @@ export function SitePilot({ settings, update }: PageProps) {
       <Card className="mb-5">
         <CardHeader icon={<Building2 className="size-4" />} title="Applying" />
         <ResumeFile />
+        <Row label="Brief for the model" description="Always sent to the local model first: who it works for, what you want, how to answer, what never to do. Write it like instructions to an assistant applying for you. Your facts and resume are added on their own." stacked>
+          <Textarea rows={10} value={brief} placeholder={BRIEF_EXAMPLE} onChange={(e) => setBrief(e.target.value)} onBlur={() => set('brief', brief)} />
+          <div className="mt-1 flex gap-2">
+            {!brief.trim() ? (
+              <Button size="sm" onClick={() => (setBrief(BRIEF_EXAMPLE), set('brief', BRIEF_EXAMPLE))}>
+                Start from the example
+              </Button>
+            ) : null}
+            <span className="text-xs text-zinc-500">{brief.length}/6000</span>
+          </div>
+        </Row>
+        <Row label="How to answer skill questions" description="Truthful: years and “have you worked with X” come only from your resume and memory (0 / No when they don't mention it). Keep in the running: 3 years / Yes when memory doesn't say, like the Autopilot. Willingness questions (relocate, on-site, shifts) are Yes either way.">
+          <Segmented value={sp.answerStyle} onChange={(v) => set('answerStyle', v as typeof sp.answerStyle)} options={[{ value: 'truthful', label: 'Truthful' }, { value: 'keep-in', label: 'Keep in the running' }]} />
+        </Row>
         <Row label="Resume link" description="For forms that ask for a link to your resume (Google Drive / Dropbox, viewable by anyone with the link). Empty: such forms are left for you.">
           <Input className="w-72" placeholder="https://drive.google.com/…" value={link} onChange={(e) => setLink(e.target.value)} onBlur={() => set('resumeLink', link.trim())} />
         </Row>
@@ -332,6 +362,12 @@ export function SitePilot({ settings, update }: PageProps) {
         </Row>
         <Row label="Job boards" description={`"system:company", comma separated. Boards Site Pilot meets on the way are added by itself${learned.length ? ` (learned so far: ${learned.join(', ')})` : ''}. Posted within ${sp.boardDays} days.`} stacked>
           <Textarea rows={3} value={boards} onChange={(e) => setBoards(e.target.value)} onBlur={() => set('boards', boards)} />
+        </Row>
+        <Row label="Your stack" description="Board jobs must name one of these in the title, or at least two in the description. Roles in other specialisms (security, infrastructure, data, Go, Java, iOS-only…) are left out." stacked>
+          <Input value={stack} onChange={(e) => setStack(e.target.value)} onBlur={() => set('stack', stack)} />
+        </Row>
+        <Row label="Senior roles" description="Include Senior / Sr. roles from job boards. They usually ask for 5+ years.">
+          <Switch checked={sp.seniorRoles} onCheckedChange={(v) => set('seniorRoles', v)} />
         </Row>
         <Row label="Find jobs on Naukri" description="When the queue is empty, searches Naukri for your Autopilot job titles (newest first) and queues the ones that apply on the company site.">
           <Switch checked={sp.harvestNaukri} onCheckedChange={(v) => set('harvestNaukri', v)} />
