@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>React Native Developer at Valuelabs | foundit</title>
+<style>.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50}.modal>div{background:#fff;margin:80px auto;width:420px;padding:16px}</style></head>
+<body>
+<!-- A Foundit job page (structure read live 2026-11-17): the real button is #jdPageHeader #applyBtn;
+     the similar jobs below have their own #applyBtn "Apply Now" that must never be pressed.
+     Quick Apply opens recruiter questions here; the live pop-up's shape is not known yet. -->
+<div class="jobMainInfoCard" id="jdPageHeader"><h1>React Native Developer</h1><div>Valuelabs</div><div>2-4 Years</div>
+  <div class="jobMainInfoCard__applySection" id="applyJobJD"><div class="jobMainInfoCard__applyContainer"><div class="jobMainInfoCard__applyContent" id="applyJobDiv"><div class="applyJob__anchor"><button class="button" id="applyBtn">Quick Apply</button></div></div></div></div></div>
+<div class="jobDescription"><h2>Job Description</h2><p>Build React Native apps.</p></div>
+<div class="similar-jobs__list" id="similarJobSection"><div class="similar-job-card"><div class="jobCard" id="jobCard"><div>Mobile Developer · OtherCo</div><div class="jobCard__footer"><div class="jobCard__actions"><button class="button" id="applyBtn">Apply Now</button></div></div></div></div></div>
+<script>
+window.__other = false; window.__applied = false; window.__answers = [];
+const [main, other] = document.querySelectorAll('#applyBtn');
+other.addEventListener('click', () => { window.__other = true; });
+main.addEventListener('click', () => {
+  if (main.textContent === 'Applied') return;
+  const m = document.createElement('div');
+  m.className = 'modal'; m.setAttribute('role', 'dialog');
+  m.innerHTML = `<div><h3>Recruiter questions</h3>
+    <label for="q1">How many years of experience do you have in React Native?*</label>
+    <input id="q1" name="q1" required>
+    <label for="q2">What is your notice period?*</label>
+    <input id="q2" name="q2" required>
+    <button type="button" id="submitQ">Submit</button><button type="button" aria-label="Close">x</button></div>`;
+  document.body.appendChild(m);
+  m.querySelector('#submitQ').addEventListener('click', () => {
+    const a = [m.querySelector('#q1').value, m.querySelector('#q2').value];
+    if (a.some((v) => !v.trim())) return;
+    window.__answers = a; window.__applied = true;
+    m.remove(); main.textContent = 'Applied';
+  });
+});
+</script>
+</body></html>

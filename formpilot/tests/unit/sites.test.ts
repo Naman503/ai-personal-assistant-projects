@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cutshortJobs, cutshortSearchUrl, expMinOf, jobPageState, naukriJobs, naukriSearchUrl, sentNotice, sitePushback } from '@/lib/sites';
+import { cutshortJobs, cutshortSearchUrl, expMinOf, founditJobs, founditSearchUrl, jobPageState, naukriJobs, naukriSearchUrl, platformOf, sentNotice, sitePushback } from '@/lib/sites';
 
 const fixture = (f: string) => readFileSync(resolve(__dirname, '../fixtures', f), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
 
@@ -66,5 +66,36 @@ describe('Naukri and Cutshort pages', () => {
     expect(sitePushback('naukri', document, 'https://www.naukri.com/job-listings-x')).toMatch(/limit/);
     document.body.innerHTML = '<p>React Native Developer</p>';
     expect(sitePushback('cutshort', document, 'https://cutshort.io/job/x')).toBe('');
+  });
+});
+
+describe('Foundit', () => {
+  const load = (file: string) => {
+    document.body.innerHTML = readFileSync(`tests/fixtures/${file}`, 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
+    return document;
+  };
+  it('reads the search cards: title, company, years, Quick Apply or not', () => {
+    const jobs = founditJobs(load('foundit-search.html'));
+    expect(jobs.map((j) => [j.title, j.company, j.expMin, j.quick])).toEqual([
+      ['React Native Developer', 'Valuelabs', 2, true],
+      ['React Native Developer', 'Flexiple', 4, false],
+      ['Senior React Native Developer', 'BigCo', 9, true],
+    ]);
+    expect(jobs[0].url).toMatch(/foundit-job\.html\?id=101$|foundit\.in\/job\/101$/);
+  });
+  it('presses only the header Quick Apply, never a similar job\'s Apply Now', () => {
+    const doc = load('foundit-job.html');
+    const st = jobPageState('foundit', doc);
+    expect(st.apply?.closest('#jdPageHeader')).toBeTruthy();
+    expect(st.external).toBe(false);
+    doc.querySelector('#jdPageHeader #applyBtn')!.textContent = 'Apply Now';
+    expect(jobPageState('foundit', doc)).toMatchObject({ apply: null, external: true });
+    doc.querySelector('#jdPageHeader #applyBtn')!.textContent = 'Applied';
+    expect(jobPageState('foundit', doc).applied).toBe(true);
+    expect(sentNotice('foundit', doc, 'https://www.foundit.in/job/101')).toBe(true);
+  });
+  it('knows the site and the search link', () => {
+    expect(platformOf('https://www.foundit.in/srp/results?query=x')).toBe('foundit');
+    expect(founditSearchUrl('React Native Developer')).toBe('https://www.foundit.in/srp/results?query=React+Native+Developer&locations=India');
   });
 });

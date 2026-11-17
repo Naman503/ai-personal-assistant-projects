@@ -224,6 +224,10 @@ const AutopilotSchema = z.object({
       recUrl: z.string().catch(''),
     })
     .prefault(EMPTY),
+  /** Foundit: "Quick Apply" jobs only (applies on Foundit); off until you turn it on, dry run first. */
+  foundit: z
+    .object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(15), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) })
+    .prefault(EMPTY),
   /** Cutshort: Apply now + its application form. Off until you turn it on; dry run first. */
   cutshort: z
     .object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(10), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) })

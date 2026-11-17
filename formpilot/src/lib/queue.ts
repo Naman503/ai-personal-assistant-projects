@@ -183,9 +183,14 @@ export function titleRelevant(title: string, relevant: string[]): boolean {
 
 export const cardKey = (c: Pick<JobCard, 'title' | 'company'>) => `${c.company}|${c.title}`.toLowerCase();
 
-/** The job pane's Easy Apply button, once the selected job has loaded. */
+/**
+ * The job pane's Easy Apply control, once the selected job has loaded. Since the evening of
+ * 17 Nov 2026 LinkedIn renders it as a link (`<a aria-label="Easy Apply to this job" href=<this
+ * search>>`), before that as a button; both open the dialog in place.
+ */
 export function easyApplyButton(doc: Document = document): HTMLElement | null {
-  const b = [...doc.querySelectorAll<HTMLElement>('button[aria-label="Easy Apply to this job"], button[aria-label^="Easy Apply to "]')].find((x) => isVisible(x) && !(x as HTMLButtonElement).disabled);
+  const sel = ['button', 'a'].map((t) => `${t}[aria-label="Easy Apply to this job"], ${t}[aria-label^="Easy Apply to "]`).join(', ');
+  const b = [...doc.querySelectorAll<HTMLElement>(sel)].find((x) => isVisible(x) && !(x as HTMLButtonElement).disabled && x.getAttribute('aria-disabled') !== 'true');
   return b ?? null;
 }
 
