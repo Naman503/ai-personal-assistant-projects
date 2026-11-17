@@ -145,10 +145,9 @@ describe('truthful answers and the brief', () => {
     const page = { url: '', host: '', title: '', heading: '', formTitle: '', pageText: '', otherFields: [] } as never;
     const site = siteSettings({ ...DEFAULT_SETTINGS, sitePilot: { ...DEFAULT_SETTINGS.sitePilot, brief: 'I am Jane, a React Native engineer.' } });
     const strict = buildBatchPrompt([field], page, '', [], site);
-    expect(strict).toContain('answer 0');
-    expect(strict).not.toContain('otherwise answer 3');
+    expect(strict).toContain('If memory never mentions that skill, answer 0');
     expect(site.generation.customInstructions).toContain('CANDIDATE BRIEF');
-    expect(buildBatchPrompt([field], page, '', [], DEFAULT_SETTINGS)).toContain('otherwise answer 3');
+    expect(buildBatchPrompt([field], page, '', [], DEFAULT_SETTINGS)).not.toContain('If memory never mentions that skill');
   });
   it('puts the brief and the truthful rule in the agent instructions', async () => {
     const { agentSystem } = await import('@/lib/sitepilot/agent');

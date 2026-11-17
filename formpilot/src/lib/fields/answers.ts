@@ -26,20 +26,69 @@ export function startDateAnswer(f: Pick<FieldContext, 'label' | 'kind' | 'inputT
 /** "How many years of (work) experience do you have with Flutter / in Sales / overall?" */
 export const YEARS_Q = /\b(how many|number of|total)\b[^?]*\byears?\b|\byears? of (work |professional |relevant |hands-on )?experience\b|\bexperience\b[^?]*\(in years\)/i;
 
-/** Experience you didn't state: 3 years (your rule), never 0 or blank. */
+/** Experience you didn't state, for skills you have: 3 years (your rule). */
 export const DEFAULT_YEARS = 3;
 
 /**
- * Fix an experience answer: blank, 0, "none", "N/A" or "less than a year" becomes 3 years.
- * Numbers the AI took from your resume (1+) stay as they are.
+ * The skill a "years of experience" question asks about ("…with Ruby on Rails?" → "ruby on rails"),
+ * or null when it asks about your overall / professional experience.
  */
-export function experienceAnswer(f: Pick<FieldContext, 'label' | 'options'>, answer: string | undefined): string | null {
+export function askedSkill(label: string): string | null {
+  const q = label.toLowerCase().replace(/[“”"']/g, '');
+  const m = q.match(/^.*\b(?:with|in|using)\s+([^?:*]+?)\s*(?:\?|:|\*|$|\(only|\(in years)/);
+  if (!m) return null;
+  const skill = m[1].replace(/^(the|a|an)\s+/, '').replace(/\b(development|programming( language)?|framework|experience|hands-on|professional|work)\b/g, ' ').replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!skill || /^(total|overall|years?|it|industry|the industry|software( development| engineering)?|engineering|this (role|field|domain)|the role you'?re applying for.*|your (field|domain|role)|work|professional|relevant)$/.test(skill)) return null;
+  return skill;
+}
+
+/** Broad areas that fit any software engineer's resume: never answered 0. */
+const BROAD = /\b(software|full[- ]?stack|backend|back-end|frontend|front-end|web|mobile|apps?|api|rest|databases?|sql|cloud|devops|git|agile|scrum|testing|debugging|ai|llms?|genai|generative|rag|agentic|chatbots?|machine learning|ml|javascript|typescript|programming|coding|engineering|microservices?|linux|data structures|algorithms|system design|product)\b/;
+const ALIAS: [RegExp, string][] = [[/\breact\.?js\b|\breactjs\b/, 'react'], [/\bnode\.?js\b|\bnodejs\b/, 'node'], [/\bpostgres(ql)?\b/, 'postgresql'], [/\bnext\.?js\b/, 'next'], [/\bamazon web services\b/, 'aws'], [/\bgolang\b/, 'go']];
+const norm = (t: string) => ALIAS.reduce((x, [re, to]) => x.replace(re, to), t.toLowerCase());
+
+/** Is this skill on your resume / in your saved skills? Broad areas count as yes. */
+export function knowsSkill(skill: string, skills: string): boolean {
+  const s = norm(skill);
+  if (BROAD.test(s)) return true;
+  const mine = norm(skills).split(/[,;|/\n]+|\band\b/).map((x) => x.replace(/[^a-z0-9+#. ]/g, '').trim()).filter((x) => x.length > 0);
+  const words = s.split(/[^a-z0-9+#.]+/).filter((w) => w.length > 1 && !/^(and|or|with|like|such|as|using|etc|any|public|apps?)$/.test(w));
+  return mine.some((m) => (m.length > 1 && (s === m || new RegExp(`(^|[^a-z0-9])${m.replace(/[.+#]/g, '\\$&')}([^a-z0-9]|$)`).test(s))) || words.some((w) => w === m));
+}
+
+/**
+ * Fix an experience answer. A skill that isn't on your resume or in your saved skills: 0 (17 Nov:
+ * "3 years" of Ruby on Rails, C#, PHP and Beckhoff went out). Your skills and your overall
+ * experience: blank, 0, "none" or "less than a year" becomes 3 years; numbers from your resume stay.
+ */
+export function experienceAnswer(f: Pick<FieldContext, 'label' | 'options'>, answer: string | undefined, skills = ''): string | null {
   if (!YEARS_Q.test(f.label ?? '')) return null;
+  const opts = (f.options ?? []).map((o) => o.label || o.value);
+  const skill = askedSkill(f.label ?? '');
+  if (skill && skills && !knowsSkill(skill, skills)) {
+    if (!opts.length) return '0';
+    const zero = opts.find((o) => /^\s*(0|none|no experience|less than 1|< ?1|0\s*-|fresher)/i.test(o));
+    return zero ?? null;
+  }
   const a = (answer ?? '').trim();
   const n = parseFloat(a.replace(/,/g, ''));
   const weak = !a || /^(0+(\.0+)?|none|no|nil|n\/?a|not applicable|-|less than (a|1) year|fresher)\b/i.test(a) || (Number.isFinite(n) && n < 1);
   if (!weak) return null;
-  return f.options?.length ? `${DEFAULT_YEARS} years` : String(DEFAULT_YEARS);
+  return opts.length ? `${DEFAULT_YEARS} years` : String(DEFAULT_YEARS);
+}
+
+/** "In how many days can you join?" / "We need immediate joiners: your notice period?" → your notice, in days. */
+const JOIN_DAYS_Q = /\b(how many days|within how many days|how soon|how quickly)\b[^?]*\b(join|start|onboard)|\bimmediate joiners?\b[^?]*\bnotice\b|\bjoining (time|period)\b/i;
+export function joinDaysAnswer(f: Pick<FieldContext, 'label' | 'options' | 'kind'>, notice?: string): string | null {
+  if (!JOIN_DAYS_Q.test(f.label ?? '') || f.options?.length || f.kind === 'textarea') return null;
+  const days = (notice ? parseDurationDays(notice) : null) ?? 30;
+  return String(days);
+}
+
+/** "Last working day (if serving notice)": you aren't serving notice, so it stays empty (never a made-up date). */
+const LWD_Q = /\b(last working day|lwd|relieving date)\b/i;
+export function notServingNotice(f: Pick<FieldContext, 'label'>, serving?: string): boolean {
+  return LWD_Q.test(f.label ?? '') && !(serving && /\b(yes|serving)\b/i.test(serving));
 }
 
 /**

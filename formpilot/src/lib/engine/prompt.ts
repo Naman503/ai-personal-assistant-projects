@@ -190,9 +190,10 @@ export function buildBatchPrompt(fields: BatchField[], page: PageContext, facts:
           '- Free-text questions about your work: only real experience from memory, specific and honest; never claim technologies or projects memory does not show.',
         ]
       : [
-          '- Years of experience with any skill, tool, platform or domain: use the number from memory if it is there; otherwise answer 3. Never 0, never blank.',
-          '- Yes/No questions about having worked with a skill, technology or kind of project the role needs: Yes, unless memory clearly says otherwise.',
+          '- Years of experience with a skill, tool or platform: the number from memory if it is there; if the skill is in the user\'s skills or resume, 3; if it is NOT in their skills or resume, 0. Never invent experience with a technology the user does not have.',
+          '- Yes/No questions about having worked with a skill or technology: Yes only when it is in the user\'s skills, resume or memory; otherwise No.',
         ]),
+    '- Joining / start questions in days: the user\'s notice period (30 days unless memory says otherwise). The user is NOT serving notice: leave "last working day" questions empty.',
     '- Willingness questions (commute, relocate, on-site, hybrid, shifts, weekends, travel, joining on time): Yes.',
     '- Facts about the user (current city, education, visa or work authorisation, salary, notice period, name, contact): only from memory, never made up.',
     '',

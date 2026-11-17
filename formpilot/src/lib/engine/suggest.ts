@@ -18,7 +18,7 @@ import { cacheGet, cacheSet } from './cache';
 import { BATCH_SCHEMA, FACTS_SCHEMA, FACTS_SYSTEM, SUGGESTION_SCHEMA, buildBatchPrompt, buildFactsPrompt, buildSuggestPrompt, systemPrompt } from './prompt';
 import { parseBatch, parseFacts, parseSuggestions, parseSuggestionsPartial } from './parse';
 import { redactSecrets } from './redact';
-import { answerFitsOptions, experienceAnswer, keepInAnswer, noneAnswer, screenOutAnswer, startDateAnswer } from '../fields/answers';
+import { answerFitsOptions, experienceAnswer, joinDaysAnswer, keepInAnswer, noneAnswer, notServingNotice, screenOutAnswer, startDateAnswer } from '../fields/answers';
 import { activeProviders, adapterFor, generateWithFallback, resolveProvider } from '../llm/registry';
 import { LLMError } from '../llm/types';
 import { isFactual, isSensitive, semanticLabel } from '../fields/classify';
@@ -304,8 +304,19 @@ export class SuggestEngine {
     const remaining: { id: string; field: FieldContext }[] = [];
 
     const notice = facts.find((x) => x.key === 'notice-period')?.value;
+    const serving = facts.find((x) => x.key === 'serving-notice')?.value;
+    const skills = facts.filter((x) => /^skills?$|skill/.test(x.key)).map((x) => x.value).join(', ');
     for (const f of fields) {
       if (isSensitive(f.field.semantic)) continue;
+      // "Last working day if serving notice": you aren't, so it stays empty.
+      if (notServingNotice(f.field, serving)) continue;
+      // "In how many days can you join?": your notice period, the same everywhere.
+      const join = joinDaysAnswer(f.field, notice);
+      if (join) {
+        values[f.id] = join;
+        sources[f.id] = 'rule';
+        continue;
+      }
       // "Earliest start date": today + your notice period, never a date in the past.
       const start = startDateAnswer(f.field, notice);
       if (start) {
@@ -355,8 +366,8 @@ export class SuggestEngine {
           values[f.id] = fitLength(v, f.field.maxLength);
           sources[f.id] = 'ai';
         }
-        // Years of experience the AI didn't know (blank or 0): 3 years (not in truthful mode).
-        const yrs = s.generation.claims === 'truthful' ? null : experienceAnswer(f.field, values[f.id]);
+        // Years with a skill you don't have: 0. Your skills, unknown years: 3.
+        const yrs = experienceAnswer(f.field, values[f.id], skills);
         if (yrs) {
           values[f.id] = yrs;
           sources[f.id] = 'rule';
