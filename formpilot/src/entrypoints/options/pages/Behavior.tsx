@@ -219,7 +219,7 @@ function JobTracker({ settings, update }: Pick<PageProps, 'settings' | 'update'>
         <Switch checked={t.outreach} disabled={!t.enabled} onCheckedChange={(v) => set('outreach', v)} />
       </Row>
       {t.outreach && <OutreachStatus />}
-      <Row label="Sync applications from Naukri and Cutshort" description="Every 2 hours FormPilot reads your own “applied” lists on Naukri and Cutshort (using your signed-in session) and adds anything missing to the tracker, with each one’s recruiter status: viewed, shortlisted, not shortlisted. Catches applications you made on the site itself. Read-only on the sites; the list goes only to your tracker.">
+      <Row label="Sync applications from Naukri and Cutshort" description="FormPilot records each application in the tracker the moment it's sent. Every 3 days it also checks your own “applied” lists on Naukri and Cutshort (using your signed-in session): it adds anything missing to the tracker, with each one’s recruiter status: viewed, shortlisted, not shortlisted. Catches applications you made on the site itself, and flags any FormPilot application the site doesn't list (shown under “Check these” in the tracker). Read-only on the sites; the list goes only to your tracker.">
         <Switch checked={t.portalSync} disabled={!t.enabled} onCheckedChange={(v) => set('portalSync', v)} />
       </Row>
       {t.enabled && t.portalSync && <PortalSyncStatus />}
