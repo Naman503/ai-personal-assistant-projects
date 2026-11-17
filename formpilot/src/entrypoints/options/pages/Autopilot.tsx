@@ -5,6 +5,7 @@ import { describe, time, useAutopilot } from '@/hooks/useAutopilot';
 import { relevantWords } from '@/lib/queue';
 import { titlesOf } from '@/lib/autopilot';
 import type { PageProps } from '../App';
+import { PilotAiCard, PilotAiReport } from './PilotAi';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function Autopilot({ settings, update }: PageProps) {
@@ -93,6 +94,9 @@ export function Autopilot({ settings, update }: PageProps) {
           ) : null}
         </div>
       </Card>
+
+      <PilotAiCard who="autopilot" settings={settings} update={update} />
+      <PilotAiReport who="autopilot" />
 
       <Card className="mb-5">
         <CardHeader icon={<History className="size-4" />} title="What it did" />

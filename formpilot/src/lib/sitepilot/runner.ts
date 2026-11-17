@@ -18,6 +18,8 @@ import { relevantWords, titleRelevant, titleSkipped } from '../queue';
 import { naukriSearchUrl, type SiteJob } from '../sites';
 import { generateWithFallback } from '../llm/registry';
 import { userActive, localRun } from '../llm/local-run';
+import { pilotProviders } from '../llm/pilot-ai';
+import { recordAiCall } from '../ai-stats';
 import { keepTabAwake, releaseTab } from '../tab-awake';
 import { addShot, addStep, companyCount, companyWall, counts, enqueue, nextQueued, spDb, type NewJob, type SpJob } from './db';
 import { ACTION_SCHEMA, agentSystem, buildAgentPrompt, describeAction, parseAction } from './agent';
@@ -31,7 +33,7 @@ const TICK = 'fp-sp-tick';
 const WATCH = 'fp-sp-watch';
 const LOAD = 'fp-sp-load';
 
-export type SpPhase = 'stopped' | 'idle' | 'working' | 'pause' | 'waiting';
+export type SpPhase = 'stopped' | 'idle' | 'working' | 'pause' | 'waiting' | 'paused';
 
 export interface SpState {
   running: boolean;
@@ -56,6 +58,10 @@ export interface SpState {
   waiting?: string;
   history: { t: number; msg: string }[];
   harvest?: { i: number; at: number };
+  /** Paused by you: nothing runs until you press Resume. */
+  paused?: boolean;
+  /** The job that was in progress when you paused: it goes first after Resume. */
+  resumeJob?: string;
   /** Last read of the company job boards. */
   boardsAt?: number;
 }
@@ -115,11 +121,11 @@ export function siteProvider(sp: Settings['sitePilot']): ProviderConfig {
 export function siteSettings(s: Settings): Settings {
   return {
     ...s,
-    providers: [siteProvider(s.sitePilot)],
+    providers: pilotProviders(s, 'sitePilot'),
     privacy: { ...s.privacy, localOnly: false },
     generation: {
       ...s.generation,
-      fallback: false,
+      fallback: true, // cloud-then-local falls back to the local model
       streaming: false,
       maxRetries: 1,
       thinking: 'off',
@@ -144,6 +150,10 @@ export interface SpDeps {
 
 export class SitePilot {
   constructor(private deps: SpDeps) {}
+  /** Told which model answered (for the AI report). */
+  onModel?: (model: string) => void;
+  /** Told how each job ended (for the AI report). */
+  onFinished?: (outcome: SpOutcome) => void;
 
   private get s() {
     return this.deps.settings();
@@ -195,6 +205,37 @@ export class SitePilot {
     st.cur = undefined;
     await save(st, 'Picking up after Brave or FormPilot restarted');
     await this.tick();
+  }
+
+  /** Pause: stop now (the page in progress is closed), keep the queue; Resume carries on. */
+  async pause() {
+    const st = await loadSpState();
+    if (!st.running || st.paused) return;
+    await Promise.all([TICK, WATCH, LOAD].map((a) => chrome.alarms.clear(a)));
+    if (st.cur?.jobId) {
+      await spDb().jobs.where('id').equals(st.cur.jobId).modify((j) => {
+        if (j.status === 'working') j.status = 'queued';
+      });
+      await addStep(st.cur.jobId, 'paused by you; starts again from the beginning after Resume');
+      st.resumeJob = st.cur.jobId;
+    }
+    st.cur = undefined;
+    st.paused = true;
+    st.phase = 'paused';
+    st.nextAt = undefined;
+    st.waiting = undefined;
+    if (st.tabId !== undefined) await chrome.tabs.update(st.tabId, { url: 'about:blank' }).catch(() => {});
+    await save(st, 'Paused by you. Resume carries on with the queue.');
+  }
+
+  async unpause() {
+    const st = await loadSpState();
+    if (!st.running) return this.start();
+    if (!st.paused) return;
+    st.paused = false;
+    st.phase = 'idle';
+    await save(st, 'Resumed');
+    await this.tick(true);
   }
 
   async runNow() {
@@ -325,7 +366,7 @@ export class SitePilot {
 
   private async tick(force = false) {
     const st = await loadSpState();
-    if (!st.running) return;
+    if (!st.running || st.paused) return;
     if (st.cur) return;
     const sp = this.s.sitePilot;
     // "Pause while you're using the Mac": wait to start a job until you're away (a job already
@@ -337,7 +378,8 @@ export class SitePilot {
       await at(TICK, st.nextAt);
       return;
     }
-    const job = await nextQueued();
+    const job = await nextQueued(st.resumeJob);
+    if (st.resumeJob) st.resumeJob = undefined;
     if (!job) {
       if (sp.harvestBoards && Date.now() - (st.boardsAt ?? 0) > 4 * 3600_000) return this.harvestBoards(st);
       if (sp.harvestNaukri && Date.now() - (st.harvest?.at ?? 0) > 45 * 60_000) return this.harvest(st);
@@ -595,6 +637,9 @@ export class SitePilot {
         onWait: (why) => void this.waiting(why),
       });
       const a = parseAction(r.text, snap);
+      const model = r.provider.id === 'pilot-local' || r.provider.kind === 'ollama' ? `local ${r.model}` : `${r.provider.label.replace(/\s*\(.*\)$/, '')} ${r.model}`;
+      this.onModel?.(model);
+      void recordAiCall('sitePilot', model, { ms: Date.now() - t0, asked: 1, answered: a.do === 'stop' && /no usable|unknown|bad /.test(a.why) ? 0 : 1, fallback: this.s.pilotAi.sitePilot.mode === 'cloud-then-local' && model.startsWith('local ') });
       await this.waiting(undefined);
       await addStep(st.cur.jobId, `model (${Math.round((Date.now() - t0) / 1000)} s): ${describeAction(a, snap)}${'why' in a ? '' : ''}`);
       return a;
@@ -635,6 +680,7 @@ export class SitePilot {
     await spDb().jobs.update(cur.jobId, { status: outcome, reason, doneAt: Date.now(), updatedAt: Date.now(), ats, dry: outcome === 'ready' });
     await learnBoard(job?.applyUrl ?? job?.url).catch(() => {});
     await addStep(cur.jobId, `${outcome}: ${reason}`);
+    this.onFinished?.(outcome);
     const label = { sent: 'Sent', ready: 'Ready (dry run, not sent)', 'needs-you': 'Needs you', skipped: 'Skipped', failed: 'Failed', unsure: 'Submitted, no confirmation seen' }[outcome];
     if (outcome === 'sent' && job && this.s.tracker.enabled && this.s.tracker.url) {
       const u = job.applyUrl || job.url;

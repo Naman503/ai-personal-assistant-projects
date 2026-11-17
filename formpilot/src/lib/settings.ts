@@ -252,6 +252,16 @@ const LocalAiSchema = z.object({
   rpmIdle: z.number().int().min(1).max(60).catch(6),
 });
 
+/** Which AI a pilot uses. Separate from FormPilot's own provider list (which stays for your own form filling). */
+const PilotAiSchema = z.object({
+  /** "cloud-then-local": the cloud model, and the local model when it's rate-limited or out of quota. */
+  mode: z.enum(['cloud-then-local', 'cloud', 'local']).catch('cloud-then-local'),
+  /** Cloud provider id from AI Providers (empty: the first configured cloud provider, Gemini first). */
+  cloud: z.string().catch(''),
+  /** Local (Ollama) model (empty: Site Pilot's model). */
+  localModel: z.string().catch(''),
+});
+
 /** Site Pilot: applies on company career sites and Google Forms with the local model only. */
 const SitePilotSchema = z.object({
   /** The local model Site Pilot uses (never a cloud model). "openai" is for tests (an OpenAI-compatible local server). */
@@ -311,6 +321,12 @@ export const SettingsSchema = z.object({
   tracker: TrackerSchema.prefault(EMPTY),
   autopilot: AutopilotSchema.prefault(EMPTY),
   localAi: LocalAiSchema.prefault(EMPTY),
+  pilotAi: z
+    .object({
+      autopilot: PilotAiSchema.prefault(EMPTY),
+      sitePilot: PilotAiSchema.prefault({ mode: 'local' } as never),
+    })
+    .prefault(EMPTY),
   sitePilot: SitePilotSchema.prefault(EMPTY),
   debug: DebugSchema.prefault(EMPTY),
 });

@@ -55,7 +55,7 @@ export type RpcRequest =
   /** Popup: today's counts from the tracker (to apply, to send, follow-ups, interviews). */
   | { type: 'tracker-summary' }
   /** Site Pilot (company sites, local model): control, queue, and the page's calls during a round. */
-  | { type: 'sp'; action: 'start' | 'stop' | 'status' | 'run-now' }
+  | { type: 'sp'; action: 'start' | 'stop' | 'status' | 'run-now' | 'pause' | 'resume' }
   | { type: 'sp-add'; jobs: import('./sitepilot/db').NewJob[] }
   | { type: 'sp-round-done'; result: import('./sitepilot/types').RoundResult }
   | { type: 'sp-resolved'; url?: string; naukriApply?: boolean; reason?: string }

@@ -233,6 +233,7 @@ export const DEFAULTS: Settings = {
     cutshort: { enabled: false, dailyCap: 10, dryRun: true, maxExpMin: 5 },
     searchUrl: '',
   },
+  pilotAi: { autopilot: { mode: 'cloud-then-local', cloud: '', localModel: '' }, sitePilot: { mode: 'local', cloud: '', localModel: '' } },
   localAi: { whenActive: 'slow', idleMinutes: 3, keepAlive: '5m', numCtx: 8192, lightModel: '', rpmActive: 2, rpmIdle: 6 },
   sitePilot: {
     kind: 'ollama',
