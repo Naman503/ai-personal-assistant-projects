@@ -247,6 +247,9 @@ export default defineBackground({
         case 'autopilot-job-done':
           await autopilot.onJobDone(msg.result, sender.tab?.id);
           return null;
+        case 'autopilot-skip':
+          await autopilot.onSkip(msg.job, msg.reason, sender.tab?.id);
+          return null;
         case 'autopilot-progress':
           await autopilot.onProgress(msg.text, sender.tab?.id);
           return null;

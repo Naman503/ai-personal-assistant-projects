@@ -656,6 +656,13 @@ export class Autopilot {
     await save(st, `${summary}. Next batch at ${fmt(next)}`);
   }
 
+  /** LinkedIn skipped a job inside its batch: say which and why in the history (Naukri does per job already). */
+  async onSkip(job: string, reason: string, tabId?: number) {
+    const st = await loadState();
+    if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
+    await save(st, `${st.current.platform ? PLATFORM_NAME[st.current.platform] : "LinkedIn"} · Skipped: ${job} (${reason || 'no reason given'})`);
+  }
+
   async onProgress(text: string, tabId?: number) {
     const st = await loadState();
     if (!st.running || !st.current || (tabId !== undefined && tabId !== st.tabId)) return;
