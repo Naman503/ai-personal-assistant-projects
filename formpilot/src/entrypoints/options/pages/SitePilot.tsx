@@ -267,6 +267,28 @@ export function SitePilot({ settings, update }: PageProps) {
             </button>
           ))}
         </div>
+        {tab === 'ready' && jobs.length ? (
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-2 text-xs text-zinc-500">
+            <Button
+              size="sm"
+              disabled={!live.length}
+              onClick={async () => {
+                const ids = jobs.filter((j) => j.ats && (live.includes(j.ats) || (live.includes('other') && !(ATS as readonly string[]).includes(j.ats)))).map((j) => j.id);
+                await spDb().jobs.where('id').anyOf(ids).modify((j) => {
+                  j.status = 'queued';
+                  j.reason = 'sending for real';
+                  j.dry = false;
+                  j.updatedAt = Date.now();
+                });
+                setBump((n) => n + 1);
+                if (st?.running) void call('run-now');
+              }}
+            >
+              Send these for real
+            </Button>
+            {live.length ? `Fills each one again and presses Submit on the systems ticked under “Really submit on” (${live.map((a) => ATS_NAME[a as Ats] ?? a).join(', ')}).` : 'Tick systems under “Really submit on” first.'}
+          </div>
+        ) : null}
         <div className="mt-2 max-h-[560px] overflow-auto">
           {jobs.map((j) => (
             <JobRow key={j.id} job={j} onChange={() => setBump((n) => n + 1)} />
