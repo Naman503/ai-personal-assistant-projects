@@ -173,9 +173,9 @@ export async function reviewBeforeSend(root: HTMLElement, where: string): Promis
 }
 
 /** One chatbot answer, checked before it is typed. */
-async function reviewOne(question: string, answer: string, kind: ReviewItem['kind'], options?: string[]): Promise<string> {
+async function reviewOne(question: string, answer: string, kind: ReviewItem['kind'], options?: string[], maxLength?: number): Promise<string> {
   if (!answer) return answer;
-  const item: ReviewItem = { id: 'a', question, answer, kind, options };
+  const item: ReviewItem = { id: 'a', question, answer, kind, options, maxLength };
   try {
     const r = (await rpc({ type: 'review-answers', items: [item], job: jobText(2500) })) as { fixes: ReviewFix[] };
     const v = r.fixes?.[0] ? usableFix(item, r.fixes[0]) : null;
@@ -247,7 +247,9 @@ async function answerChatbot(d: HTMLElement, q: string, answers: { q: string; a:
     }
   } else if (text) {
     a = await answerFor(q, 'text');
-    a = await reviewOne(q, a, NUMBER_Q.test(q) && /^[\d.,\s+-]+$/.test(a) ? 'number' : 'text');
+    // Naukri's chat boxes are short (a long rewrite wasn't accepted, 18 Nov): keep the check within the box.
+    const max = (text as HTMLInputElement).maxLength > 0 ? (text as HTMLInputElement).maxLength : 250;
+    a = await reviewOne(q, a, NUMBER_Q.test(q) && /^[\d.,\s+-]+%?$/.test(a) ? 'number' : 'text', undefined, max);
     if (a) ok = fillElement(text, a, 'replace', q).ok;
     // Naukri enables Save on key events, not only input.
     if (ok) for (const type of ['keydown', 'keyup'] as const) text.dispatchEvent(new KeyboardEvent(type, { key: 'Unidentified', bubbles: true }));
