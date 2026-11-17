@@ -44,7 +44,11 @@ const log = createLogger('content:queue');
  * Log a queue step and send it to Options → Logs too (content-script info logs normally stay
  * in the page console), so a run that went wrong can be read back afterwards.
  */
+/** The last step written to the log: why a job was skipped, for the autopilot's history. */
+let lastTrace = '';
+
 function trace(msg: string, data?: unknown) {
+  lastTrace = msg;
   log.info(msg, data);
   try {
     void chrome.runtime.sendMessage({ type: 'log', entry: { t: Date.now(), level: 'info', ns: 'queue', msg, data, ctx: 'content' } }).catch(() => {});
@@ -219,7 +223,14 @@ export class ApplyQueue {
         this.tried.add(cardKey(card));
         const dryBefore = this.dry;
         const sent = await this.one(card, prefs);
-        if (!sent && this.dry === dryBefore && !this.aiError) this.skipped++;
+        if (!sent && this.dry === dryBefore && !this.aiError) {
+          this.skipped++;
+          if (prefs.unattended && !this.stopRequested) {
+            const job = `${card.title}${card.company ? ` · ${card.company}` : ''}`;
+            const why = lastTrace.replace(/^(skip|skipped)[^:]*:\s*/i, '').replace(job, 'it').slice(0, 200);
+            chrome.runtime.sendMessage({ type: 'autopilot-skip', job, reason: why }).catch(() => {});
+          }
+        }
         if (this.stopRequested) break;
         if (sent && ++this.sinceBreak >= this.breakAfter) {
           await this.rest(between(60, 150));

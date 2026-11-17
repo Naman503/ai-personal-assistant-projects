@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fieldErrors, decideStep, emptyRequired, firstEmptyField, stepScope } from '@/lib/walk';
+import { consentBoxes, fieldErrors, decideStep, emptyRequired, firstEmptyField, stepScope } from '@/lib/walk';
 
 const page = (html: string) => {
   document.body.innerHTML = html;
@@ -102,5 +102,38 @@ describe('walking a multi-step form', () => {
     expect(firstEmptyField(scope)?.id).toBe('y');
     (document.getElementById('y') as HTMLSelectElement).value = '2025';
     expect(firstEmptyField(scope)).toBeNull();
+  });
+});
+
+describe('consent boxes', () => {
+  const labels = (html: string) => consentBoxes(page(html)).map((c) => c.box.id);
+
+  it('picks declarations and privacy consent, required or not', () => {
+    expect(labels(`<form>
+      <input type="checkbox" id="a"><label for="a">I agree to the Terms of Use and Privacy Policy</label>
+      <input type="checkbox" id="b"><label for="b">I hereby declare that the information provided is true and correct</label>
+      <input type="checkbox" id="c" required><label for="c">Relocation assistance needed</label>
+    </form>`)).toEqual(['a', 'b', 'c']);
+  });
+
+  it("leaves marketing opt-ins and LinkedIn's Follow box alone", () => {
+    expect(labels(`<div role="dialog">
+      <input type="checkbox" id="f"><label for="f">Follow Acme to stay up to date with their page.</label>
+      <input type="checkbox" id="n"><label for="n">I agree to receive marketing emails and job alerts</label>
+      <input type="checkbox" id="w"><label for="w">Send me updates on WhatsApp</label>
+    </div>`)).toEqual([]);
+  });
+
+  it('ticks a required opt-in (the form will not send without it)', () => {
+    expect(labels(`<form><input type="checkbox" id="r" aria-required="true"><label for="r">I consent to be contacted by SMS</label></form>`)).toEqual(['r']);
+  });
+
+  it('skips boxes already ticked, disabled ones and "select all that apply" lists', () => {
+    expect(labels(`<form>
+      <input type="checkbox" id="t" checked><label for="t">I agree to the terms</label>
+      <input type="checkbox" id="d" disabled><label for="d">I agree to the terms</label>
+      <input type="checkbox" name="skills" id="s1"><label for="s1">I accept remote work</label>
+      <input type="checkbox" name="skills" id="s2"><label for="s2">I accept on-site work</label>
+    </form>`)).toEqual([]);
   });
 });

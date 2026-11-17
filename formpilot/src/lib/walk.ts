@@ -49,6 +49,42 @@ export function emptyRequired(scope: Element): HTMLElement[] {
   return out;
 }
 
+/** A declaration you tick to be allowed to send: terms, privacy, "the information is accurate". */
+const CONSENT_RE = /\b(agree|consent|accept|acknowledge|confirm|certify|declare|authori[sz]e|understand)\b|terms|privacy|data protection|gdpr|true and (correct|accurate)|best of my knowledge/i;
+/** Ticks that only ask for more mail or a follow: left as they are unless the form requires them. */
+const OPT_IN_RE = /newsletter|marketing|promotion|special offers|job alerts?|subscribe|\bfollow\b|keep me (informed|updated|posted)|send me|\bsms\b|whatsapp|text messages?|talent (community|network|pool)|future (opportunities|roles|openings)/i;
+
+function boxLabel(b: HTMLInputElement): string {
+  let text = '';
+  try {
+    text = resolveLabel(b as FillableElement);
+  } catch {
+    /* ignore */
+  }
+  if (!text) text = (b.labels?.[0]?.textContent ?? b.closest('label')?.textContent ?? b.getAttribute('aria-label') ?? '').trim();
+  return text.replace(/\s+/g, ' ').slice(0, 300);
+}
+
+/**
+ * Lone checkboxes on this step that a person ticks before sending: every required one, and
+ * declarations / terms / privacy consent even when not marked required (sites often only say so
+ * after Submit). Marketing opt-ins and LinkedIn's "Follow <company>" are left as they are, and
+ * boxes that belong to a "select all that apply" list are the fill's job.
+ */
+export function consentBoxes(scope: Element): { box: HTMLInputElement; label: string }[] {
+  const boxes = [...scope.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+  const out: { box: HTMLInputElement; label: string }[] = [];
+  for (const box of boxes) {
+    if (box.checked || box.disabled || !isVisibleControl(box)) continue;
+    if (box.name && boxes.filter((x) => x.name === box.name).length > 1) continue;
+    const label = boxLabel(box);
+    const required = box.required || box.getAttribute('aria-required') === 'true' || /\*\s*$/.test(label);
+    if (OPT_IN_RE.test(label) && !required) continue;
+    if (required || CONSENT_RE.test(label)) out.push({ box, label });
+  }
+  return out;
+}
+
 /** A visible validation error on this step, if any. */
 export function visibleError(scope: Element): HTMLElement | null {
   for (const el of scope.querySelectorAll<HTMLElement>('[aria-invalid="true"], [role="alert"], [class*="error"], [class*="invalid"]')) {

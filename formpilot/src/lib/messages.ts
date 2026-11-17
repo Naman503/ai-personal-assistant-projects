@@ -42,6 +42,7 @@ export type RpcRequest =
   | { type: 'tracker-record'; kind: 'applied' | 'saved'; job: JobInfo; answers: GivenAnswer[]; recordedBy?: string }
   | { type: 'autopilot-batch-done'; result: { sent: number; dry: number; skipped: number; reason: string; pushback?: string; aiError?: string } }
   | { type: 'autopilot-progress'; text: string }
+  | { type: 'autopilot-skip'; job: string; reason: string }
   | { type: 'autopilot-rec-picked'; picked: { id: string; title: string; company: string; url: string }[] }
   | { type: 'autopilot-rec-done'; result: { picked: { id: string; title: string; company: string; url: string }[]; outcome: 'sent' | 'dry' | 'skip' | 'none'; reason: string; status?: Record<string, number>; pushback?: string; aiError?: string } }
   | { type: 'autopilot-job-done'; result: { outcome: 'sent' | 'dry' | 'skip'; reason: string; pushback?: string; aiError?: string } }

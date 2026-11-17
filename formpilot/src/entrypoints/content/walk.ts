@@ -3,7 +3,7 @@
  * and the like), press Next/Review for the user, fill the next step, and stop at the Submit
  * button, highlighted. It never presses Submit, and it stops the moment a step needs the user.
  */
-import { decideStep, fieldErrors, firstEmptyField, isUnchosen, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
+import { consentBoxes, decideStep, fieldErrors, firstEmptyField, isUnchosen, settled, stepFingerprint, stepScope, type FieldError } from '@/lib/walk';
 import { createLogger } from '@/lib/logger';
 import { quietFocus } from '@/lib/automation';
 import { fillElement } from '@/lib/fields/fill';
@@ -73,6 +73,15 @@ export class ApplyWalker {
             await settled(scope.getRootNode(), 300, 1500);
           }
         }
+        // Consent / declaration boxes ("I agree to the privacy policy", "the information is
+        // accurate"): ticked, or Submit fails on them and the job is skipped.
+        const consent = consentBoxes(scope);
+        for (const { box, label } of consent) {
+          box.click();
+          if (!box.checked) (box.labels?.[0] ?? box.closest('label'))?.click();
+          log.info(`walk: ticked "${label.slice(0, 100)}"${box.checked ? '' : ' (did not stay ticked)'}`);
+        }
+        if (consent.length) await settled(scope.getRootNode(), 300, 1500);
         const d = decideStep(scope, { ignoreErrors: repaired });
         repaired = false;
         if (d.kind === 'blocked') {

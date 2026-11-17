@@ -4,6 +4,14 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.19.4] - 2026-11-17
+
+### Fixed
+- **Jobs skipped over a consent box.** The form walk left every lone checkbox for you, so an application that needs "I agree to the privacy policy" or "the information I've given is accurate" failed at Submit and the autopilot skipped it. It now ticks every required checkbox and every declaration / terms / privacy box on the way. Marketing opt-ins (newsletters, job alerts, WhatsApp/SMS updates) and LinkedIn's "Follow <company>" stay as they are unless the form requires them.
+
+### Added
+- **Why each LinkedIn job was skipped**, in the autopilot's history ("LinkedIn · Skipped: <job> (<reason>)"), as Naukri already shows. Before, a LinkedIn batch only said "9 skipped".
+
 ## [1.19.3] - 2026-11-17
 
 ### Fixed
