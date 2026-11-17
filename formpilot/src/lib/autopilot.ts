@@ -77,7 +77,7 @@ export interface DayState {
   /** Titles whose search had nothing left today ("naukri:Mobile Engineer" for other sites). */
   exhausted: string[];
   /** Per platform: sent / would apply / skipped. */
-  byPlatform: Record<'linkedin' | 'naukri' | 'foundit' | 'cutshort', { sent: number; dry: number; skipped: number }>;
+  byPlatform: Record<import('./sites').Platform, { sent: number; dry: number; skipped: number }>;
   /** Naukri / Cutshort job pages already tried today. */
   seen: string[];
   /** Titles whose last-N-days search ran out today: searched over the past week from then on. */
@@ -85,11 +85,11 @@ export interface DayState {
   /** When Naukri's Recommended list last had nothing that fits (it refreshes during the day). */
   recEmptyAt?: number;
   /** Portals stopped for the rest of today (their daily limit, a sign-in or security wall). */
-  blocked?: Partial<Record<'linkedin' | 'naukri' | 'foundit' | 'cutshort', { reason: string; at: number; kind: 'limit' | 'security' }>>;
+  blocked?: Partial<Record<import('./sites').Platform, { reason: string; at: number; kind: 'limit' | 'security' }>>;
 }
 
 const zero = () => ({ sent: 0, dry: 0, skipped: 0 });
-export const freshDay = (date: string): DayState => ({ date, sent: 0, dry: 0, skipped: 0, perTitle: {}, exhausted: [], byPlatform: { linkedin: zero(), naukri: zero(), foundit: zero(), cutshort: zero() }, seen: [] });
+export const freshDay = (date: string): DayState => ({ date, sent: 0, dry: 0, skipped: 0, perTitle: {}, exhausted: [], byPlatform: { linkedin: zero(), naukri: zero(), foundit: zero(), cutshort: zero(), instahyre: zero(), hirist: zero(), uplers: zero(), wellfound: zero(), yc: zero() }, seen: [] });
 
 /** A stored day from an older version: fill in what it lacks. */
 export function normalizeDay(d: Partial<DayState> & { date: string }): DayState {

@@ -136,3 +136,36 @@ export function screenOutAnswer(f: Pick<FieldContext, 'label' | 'options'>): str
   const no = opts.find((o) => /^\s*no\b/i.test(o.label || o.value));
   return no ? no.label || no.value : null;
 }
+
+/**
+ * Remote jobs from abroad (17 Nov 2026, the remote plan). Facts about you that global forms ask
+ * and that don't change: you work from India (IST), 2 PM – 11 PM IST, and you aren't authorized
+ * to work in the US / UK / EU / Canada / Australia. Saved facts and answers still win (checked
+ * first). Overlap or working-hours yes/no questions are answered Yes (you can).
+ */
+export const TIMEZONE_TEXT = 'India (IST, UTC+5:30). Available 2 PM – 11 PM IST: full overlap with Europe and the Middle East, 3–4 hours with US Eastern.';
+const TZ_Q = /\b(time ?zone|timezone|which hours|working hours|hours of overlap|overlap (with|hours)|located in which (country|region))\b/i;
+const OVERLAP_YN = /\b(able|willing|comfortable|available|can you|open)\b[^?]*\b(overlap|work|be available)\b[^?]*\b(us|u\.s\.|est|edt|pst|pdt|cet|gmt|utc|europe|european|eastern|pacific|central)\b[^?]*\b(hours?|time ?zone|business hours|working hours|time)\b/i;
+const AUTH_Q = /\b(legally )?(authori[sz]ed|eligible|permitted|right) to work (in|for) (the )?(us|u\.s\.|usa|united states|uk|u\.k\.|united kingdom|eu|european union|canada|australia|germany|netherlands|ireland|singapore)\b/i;
+
+export function remoteAnswer(f: Pick<FieldContext, 'label' | 'options'>): string | null {
+  const q = f.label ?? '';
+  const opts = f.options ?? [];
+  const pick = (re: RegExp) => opts.find((o) => re.test(o.label || o.value));
+  if (AUTH_Q.test(q)) {
+    if (!opts.length) return 'No';
+    const no = pick(/^\s*no\b/i);
+    return no ? no.label || no.value : null;
+  }
+  if (OVERLAP_YN.test(q)) {
+    if (!opts.length) return /\bhow many\b/i.test(q) ? '4' : 'Yes';
+    const yes = pick(/^\s*yes\b/i);
+    if (yes) return yes.label || yes.value;
+  }
+  if (TZ_Q.test(q)) {
+    if (!opts.length) return /\bhow many\b/i.test(q) ? '4' : TIMEZONE_TEXT;
+    const ist = pick(/\b(ist|india|asia\/kolkata|utc ?\+ ?5:?30|gmt ?\+ ?5:?30|\+05:30)\b/i);
+    return ist ? ist.label || ist.value : null;
+  }
+  return null;
+}

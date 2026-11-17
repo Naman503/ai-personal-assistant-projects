@@ -69,6 +69,11 @@ export function Autopilot({ settings, update }: PageProps) {
                 ['Naukri', a.naukri.enabled, a.naukri.dryRun],
                 ['Foundit', a.foundit.enabled, a.foundit.dryRun],
                 ['Cutshort', a.cutshort.enabled, a.cutshort.dryRun],
+                ['Instahyre', a.instahyre.enabled, a.instahyre.dryRun],
+                ['Hirist', a.hirist.enabled, a.hirist.dryRun],
+                ['Uplers', a.uplers.enabled, a.uplers.dryRun],
+                ['Wellfound', a.wellfound.enabled, a.wellfound.dryRun],
+                ['YC', a.yc.enabled, a.yc.dryRun],
               ] as const
             )
               .filter(([, on]) => on)
@@ -92,6 +97,11 @@ export function Autopilot({ settings, update }: PageProps) {
                     ['Naukri', 'naukri', a.naukri.enabled, a.naukri.dailyCap],
                     ['Foundit', 'foundit', a.foundit.enabled, a.foundit.dailyCap],
                     ['Cutshort', 'cutshort', a.cutshort.enabled, a.cutshort.dailyCap],
+                    ['Instahyre', 'instahyre', a.instahyre.enabled, a.instahyre.dailyCap],
+                    ['Hirist', 'hirist', a.hirist.enabled, a.hirist.dailyCap],
+                    ['Uplers', 'uplers', a.uplers.enabled, a.uplers.dailyCap],
+                    ['Wellfound', 'wellfound', a.wellfound.enabled, a.wellfound.dailyCap],
+                    ['YC', 'yc', a.yc.enabled, a.yc.dailyCap],
                   ] as const
                 )
                   .filter(([, , on]) => on)
@@ -129,7 +139,7 @@ export function Autopilot({ settings, update }: PageProps) {
       <Card className="mb-5">
         <CardHeader icon={<Bot className="size-4" />} title="Platforms" />
         <div className="px-4 pb-1 pt-3 text-xs text-zinc-500">
-          Batches take turns: LinkedIn → Naukri → Foundit → Cutshort, each with its own daily limit. Dry run: fills to the last step and records “would apply”, sends nothing (on Naukri it stops before Apply, since Apply there sends at once when the recruiter asks nothing). A platform's first live day is best kept small.
+          Batches take turns: LinkedIn → Naukri → Foundit → Cutshort → Instahyre → Hirist → Uplers → Wellfound → YC, each with its own daily limit. Instahyre, Uplers, Wellfound and YC use one list (your matches or saved search); jobs not open to someone in India are skipped. Dry run: fills to the last step and records “would apply”, sends nothing (on Naukri it stops before Apply, since Apply there sends at once when the recruiter asks nothing). A platform's first live day is best kept small.
         </div>
         {(
           [
@@ -137,6 +147,11 @@ export function Autopilot({ settings, update }: PageProps) {
             ['naukri', 'Naukri (Apply + recruiter chatbot)', a.naukri.enabled, a.naukri.dryRun, a.naukri.dailyCap, a.naukri.maxExpMin],
             ['foundit', 'Foundit (Quick Apply jobs + recruiter questions)', a.foundit.enabled, a.foundit.dryRun, a.foundit.dailyCap, a.foundit.maxExpMin],
             ['cutshort', 'Cutshort (Apply now + its form)', a.cutshort.enabled, a.cutshort.dryRun, a.cutshort.dailyCap, a.cutshort.maxExpMin],
+            ['instahyre', 'Instahyre (your matches → job pop-up → apply)', a.instahyre.enabled, a.instahyre.dryRun, a.instahyre.dailyCap, a.instahyre.maxExpMin],
+            ['hirist', 'Hirist (one-click Apply + recruiter questions)', a.hirist.enabled, a.hirist.dryRun, a.hirist.dailyCap, a.hirist.maxExpMin],
+            ['uplers', 'Uplers (APPLY NOW on matched jobs)', a.uplers.enabled, a.uplers.dryRun, a.uplers.dailyCap, a.uplers.maxExpMin],
+            ['wellfound', 'Wellfound (saved search; a note to the company)', a.wellfound.enabled, a.wellfound.dryRun, a.wellfound.dailyCap, a.wellfound.maxExpMin],
+            ['yc', 'YC Work at a Startup (a message to the founder)', a.yc.enabled, a.yc.dryRun, a.yc.dailyCap, a.yc.maxExpMin],
           ] as const
         ).map(([p, name, enabled, dry, cap, exp]) => {
           const today = day?.byPlatform?.[p];

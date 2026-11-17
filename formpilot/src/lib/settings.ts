@@ -237,6 +237,16 @@ const AutopilotSchema = z.object({
   cutshort: z
     .object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(10), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) })
     .prefault(EMPTY),
+  /** Instahyre: your matched opportunities ("View job" → apply). Off until you turn it on; dry run first. */
+  instahyre: z.object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(10), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) }).prefault(EMPTY),
+  /** Hirist: title searches, one-click Apply + recruiter questions. Off until you turn it on; dry run first. */
+  hirist: z.object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(15), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) }).prefault(EMPTY),
+  /** Uplers: jobs matched to your profile, "APPLY NOW". Off until you turn it on; dry run first. */
+  uplers: z.object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(10), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) }).prefault(EMPTY),
+  /** Wellfound: your saved search; Apply → a short note to the company → Send. Off until you turn it on; dry run first. */
+  wellfound: z.object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(10), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) }).prefault(EMPTY),
+  /** YC Work at a Startup: engineering jobs open to India; Apply → a message to the founder → Send. Off until you turn it on; dry run first. */
+  yc: z.object({ enabled: z.boolean().catch(false), dailyCap: z.number().int().min(1).max(100).catch(5), dryRun: z.boolean().catch(true), maxExpMin: z.number().min(0).max(30).catch(5) }).prefault(EMPTY),
   /** Advanced/tests: a search page to use instead of LinkedIn's ("{title}" is replaced). */
   searchUrl: z.string().catch(''),
 });
@@ -279,6 +289,8 @@ const SitePilotSchema = z.object({
   harvestBoards: z.boolean().catch(true),
   /** Job boards to read, "system:company" separated by commas (e.g. greenhouse:gitlab, lever:paytm). */
   boards: z.string().catch(DEFAULT_BOARDS),
+  /** Also read the remote job boards (Himalayas, Remotive, Remote OK, We Work Remotely) for jobs open to India. */
+  remoteBoards: z.boolean().catch(true),
   /** Only board jobs posted in the last N days. */
   boardDays: z.number().int().min(1).max(90).catch(21),
   /** Take the Autopilot's company-site jobs and outside forms. */

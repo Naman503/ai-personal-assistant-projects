@@ -4,6 +4,19 @@ All notable changes to FormPilot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and FormPilot uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.23.0] - 2026-11-17
+
+### Added
+- **Five more portals in the autopilot**, for remote and India-remote jobs (Settings → Autopilot → Platforms; each off by default, dry run first):
+  - **Instahyre**: your matched opportunities; opens the job's pop-up from its row and applies there, answering any questions. Dry run doesn't open the pop-up (opening it may count as interest on Instahyre).
+  - **Hirist**: searches your job titles (2–4 years); one-click Apply, then any recruiter questions.
+  - **Uplers**: jobs matched to your profile; APPLY NOW, then any questions.
+  - **Wellfound**: your saved search (roles, India/Asia, remote); only "Apply on Wellfound" jobs. Apply opens a note to the company: FormPilot writes it from the job and your profile, answers any extra questions, and presses Send application.
+  - **YC Work at a Startup**: engineering jobs open to someone in India (India, or remote with "US Citizenship/Visa Not Required"). Apply opens a message to the founder (50+ characters): FormPilot writes it, unticks the pre-ticked "open to relocating — update my profile" box, and presses Send.
+  Instahyre, Uplers, Wellfound and YC use one list each (your matches / saved search) instead of one search per title. Batches take turns across all nine portals.
+- **Jobs open to India only.** On YC and Wellfound, jobs tied to another country (US-only, "Will Sponsor" US office jobs, Berlin on-site…) are skipped before they're opened.
+- **Remote job boards for Site Pilot** (Settings → Site Pilot → Read remote job boards, on): when it reads job boards it also reads **Himalayas** (its search, only jobs open to India), **Remotive**, **Remote OK** and **We Work Remotely** for your titles, keeps remote jobs open to India at your level, and queues them. For each one Site Pilot opens the board's page and follows its Apply link to the company's own form (on Himalayas: Apply now → "I'm ready to apply"), then fills it as usual.
+- **Answers for jobs abroad**, by rule (your saved answers still win): "Authorized to work in the US / UK / EU / Canada…?" → No; time zone → "India (IST, UTC+5:30). Available 2 PM – 11 PM IST: full overlap with Europe and the Middle East, 3–4 hours with US Eastern." (or the IST option); "Able to overlap with US / EST hours?" → Yes.
 ## [Unreleased]
 
 ### Fixed
