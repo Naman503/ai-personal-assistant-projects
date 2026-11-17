@@ -1136,3 +1136,33 @@ export async function naukriResolve(): Promise<{ url?: string; naukriApply?: boo
   }
   return { reason: 'Naukri did not open the company link' };
 }
+
+/**
+ * Remote job boards: follow the job's Apply link to the company's own form.
+ *  - Himalayas (read live 17 Nov): "Apply now" opens a pop-up selling its AI tools; its
+ *    "I'm ready to apply" link (himalayas.app/apply/<id>) redirects to the company's form.
+ *  - Remote OK, Remotive, We Work Remotely: an "Apply" link on the job page.
+ * Links that open a new tab are caught by the runner (it closes the tab and takes its address).
+ */
+export async function boardResolve(): Promise<{ url?: string; reason?: string }> {
+  const abs = (a: HTMLAnchorElement) => (a.href && /^https?:/i.test(a.href) ? a.href : '');
+  const applyLink = () =>
+    [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].find((a) => {
+      const t = textOf(a);
+      return isVisible(a) && /\/apply\/[\w-]+|\/l\/\d+/.test(a.getAttribute('href') ?? '') && /apply|ready/i.test(t);
+    }) ??
+    [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].find((a) => isVisible(a) && /^(apply( now)?|apply for (this|the) (job|position|role)|i'?m ready to apply)$/i.test(textOf(a)) && !/^#|javascript:/i.test(a.getAttribute('href') ?? '') && abs(a));
+  for (let i = 0; i < 20; i++) {
+    const a = applyLink();
+    if (a) return { url: abs(a) };
+    if (/himalayas\.app/i.test(location.hostname) && i === 2) {
+      const btn = [...document.querySelectorAll<HTMLElement>('button, a')].find((b) => /^apply now$/i.test(textOf(b)) && isVisible(b));
+      if (btn) humanClick(btn);
+    } else if (i === 4) {
+      const btn = [...document.querySelectorAll<HTMLElement>('button, a')].find((b) => /^(apply( now)?|apply for (this|the) (job|position))$/i.test(textOf(b)) && isVisible(b));
+      if (btn) humanClick(btn); // may open the company's page in a new tab (the runner catches it)
+    }
+    await sleep(600);
+  }
+  return { reason: 'no Apply link on the job board page' };
+}

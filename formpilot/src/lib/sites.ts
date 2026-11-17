@@ -17,10 +17,23 @@
  */
 
 import { isVisible } from './fields/context';
+import { locationOk } from './sitepilot/boards';
 
-export type Platform = 'linkedin' | 'naukri' | 'foundit' | 'cutshort';
-export const PLATFORMS: Platform[] = ['linkedin', 'naukri', 'foundit', 'cutshort'];
-export const PLATFORM_NAME: Record<Platform, string> = { linkedin: 'LinkedIn', naukri: 'Naukri', foundit: 'Foundit', cutshort: 'Cutshort' };
+export type Platform = 'linkedin' | 'naukri' | 'foundit' | 'cutshort' | 'instahyre' | 'hirist' | 'uplers' | 'wellfound' | 'yc';
+export const PLATFORMS: Platform[] = ['linkedin', 'naukri', 'foundit', 'cutshort', 'instahyre', 'hirist', 'uplers', 'wellfound', 'yc'];
+export const PLATFORM_NAME: Record<Platform, string> = {
+  linkedin: 'LinkedIn',
+  naukri: 'Naukri',
+  foundit: 'Foundit',
+  cutshort: 'Cutshort',
+  instahyre: 'Instahyre',
+  hirist: 'Hirist',
+  uplers: 'Uplers',
+  wellfound: 'Wellfound',
+  yc: 'YC Work at a Startup',
+};
+/** Portals whose list already comes from your profile / saved search: the title isn't used. */
+export const ONE_LIST: Platform[] = ['instahyre', 'uplers', 'wellfound', 'yc'];
 
 export interface SiteJob {
   url: string;
@@ -48,6 +61,11 @@ export function platformOf(href: string): Platform | null {
   if (h.endsWith('naukri.com')) return 'naukri';
   if (h.endsWith('cutshort.io')) return 'cutshort';
   if (h.endsWith('foundit.in')) return 'foundit';
+  if (h.endsWith('instahyre.com')) return 'instahyre';
+  if (h.endsWith('hirist.tech')) return 'hirist';
+  if (h.endsWith('uplers.com')) return 'uplers';
+  if (h.endsWith('wellfound.com')) return 'wellfound';
+  if (h.endsWith('workatastartup.com')) return 'yc';
   return null;
 }
 
@@ -129,7 +147,26 @@ export function founditJobs(doc: ParentNode = document): SiteJob[] {
 }
 
 export function siteJobs(p: Platform, doc: ParentNode = document): SiteJob[] {
-  return p === 'naukri' ? naukriJobs(doc) : p === 'cutshort' ? cutshortJobs(doc) : p === 'foundit' ? founditJobs(doc) : [];
+  switch (p) {
+    case 'naukri':
+      return naukriJobs(doc);
+    case 'cutshort':
+      return cutshortJobs(doc);
+    case 'foundit':
+      return founditJobs(doc);
+    case 'instahyre':
+      return instahyreJobs(doc);
+    case 'hirist':
+      return hiristJobs(doc);
+    case 'uplers':
+      return uplersJobs(doc);
+    case 'wellfound':
+      return wellfoundJobs(doc);
+    case 'yc':
+      return ycJobs(doc);
+    default:
+      return [];
+  }
 }
 
 /** A button or link whose own text is exactly one of these (case-insensitive). */
@@ -156,6 +193,7 @@ export function jobPageState(p: Platform, doc: Document = document): { apply: HT
     const quick = !!btn && /^quick apply$/i.test(label) && !(btn as HTMLButtonElement).disabled;
     return { apply: quick ? btn : null, applied: /^applied$/i.test(label), external: !!btn && /^apply( now)?$/i.test(label) };
   }
+  if (p === 'instahyre' || p === 'hirist' || p === 'uplers' || p === 'wellfound' || p === 'yc') return remotePageState(p, doc);
   // Cutshort's job page says "Apply to this job". Its "Apply now" buttons belong to the similar
   // jobs listed further down: never press those (found on the first live dry run).
   const apply = buttonByText(/^(apply to this job|apply for this job|apply)$/i, doc);
@@ -166,7 +204,7 @@ export function jobPageState(p: Platform, doc: Document = document): { apply: HT
 export function sentNotice(p: Platform, doc: Document = document, href = location.href): boolean {
   if (p === 'naukri' && /\/myapply\/(saveApply|)/i.test(href)) return true;
   const t = (doc.body?.innerText ?? '').slice(0, 30000);
-  if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted))/i.test(t)) return true;
+  if (/(successfully applied|applied successfully|application (was )?(sent|submitted)|you have applied|your application has been (sent|submitted)|message sent|you applied|application received)/i.test(t)) return true;
   // Foundit: Quick Apply lands on foundit.in/srp/applied-success?id=<job> (seen 17 Nov), or the
   // header button turns into "Applied".
   if (p === 'foundit') return /\/srp\/applied-success/i.test(href) || /^applied$/i.test(clean(doc.querySelector('#jdPageHeader #applyBtn, .jobMainInfoCard #applyBtn')?.textContent));
@@ -178,6 +216,11 @@ export function sitePushback(p: Platform, doc: Document = document, href = locat
   if (p === 'naukri' && /naukri\.com\/(nlogin|login)/.test(href)) return 'Naukri wants you to sign in';
   if (p === 'cutshort' && /cutshort\.io\/(login|signin|signup)/.test(href)) return 'Cutshort wants you to sign in';
   if (p === 'foundit' && /foundit\.in\/(rio\/)?(login|signin|register)/.test(href)) return 'Foundit wants you to sign in';
+  if (p === 'instahyre' && /instahyre\.com\/(login|signup)/.test(href)) return 'Instahyre wants you to sign in';
+  if (p === 'hirist' && /hirist\.tech\/(login|signup|register)/.test(href)) return 'Hirist wants you to sign in';
+  if (p === 'uplers' && /uplers\.com\/talent\/(login|joinus|signin)/.test(href)) return 'Uplers wants you to sign in';
+  if (p === 'wellfound' && /wellfound\.com\/(login|join)/.test(href)) return 'Wellfound wants you to sign in';
+  if (p === 'yc' && /(account\.ycombinator\.com|workatastartup\.com\/(signin|login|users\/sign_in))/.test(href)) return 'YC Work at a Startup wants you to sign in';
   const t = (doc.body?.innerText ?? '').slice(0, 20000);
   const m = t.match(/(daily (apply|application) limit|reached (the|your) (daily )?limit|too many (requests|applications)|verify (that )?you are (a )?human|captcha|unusual activity|access denied)/i);
   return m ? `${PLATFORM_NAME[p]} says: "${m[0]}"` : '';
@@ -235,3 +278,191 @@ export function multiApplyResult(href: string): Record<string, number> | null {
 
 /** Same job listed twice (different links): company + title is the key. */
 export const jobKey = (j: Pick<SiteJob, 'company' | 'title'>) => `${clean(j.company).toLowerCase()}|${clean(j.title).toLowerCase()}`;
+
+// ------------------------------------------------------------------ Remote and India-remote portals
+
+/**
+ * Five portals added for remote jobs (markup read live 2026-11-17, signed in, nothing submitted):
+ *  - Instahyre candidate/opportunities/?matching=true: rows .employer-row; h2.company-name
+ *    "<Company> - <Role>"; .chip-location; ul#job-skills-<jobId>; buttons "View job »"
+ *    (.btn-interested, opens the job in a pop-up with its apply button) and "Not interested".
+ *    A job's "page" is that list with #opp-<jobId>: the pop-up is opened from the row.
+ *  - Hirist search hirist.tech/search/<words>?minexp=2&maxexp=4: a[href*="/j/"] cards with
+ *    [data-testid=job_title] "<Company> - <Role>", job_experience "2 - 4 yrs", job_location.
+ *    Job page: a one-click "Apply" (iimjobs style), sometimes recruiter questions after it.
+ *  - Uplers platform.uplers.com/talent/all-opportunities: .jobCardContainer › h6 (title),
+ *    .companyName, ul.jobAttribs li ("2 - 4 Years Exp", "Remote" / "Onsite - Bengaluru"), the
+ *    job id in #skills_<id>. Picking a card shows it on the right (?activeJob=<id>) with
+ *    button[id$=singleOppAppyBtn] "APPLY NOW".
+ *  - Wellfound /jobs (your saved search: roles, India/Asia, remote): [data-test=StartupResult]
+ *    per company (h2 = name), each job a[class*=jobLink] /jobs/<id> with span[class*=title],
+ *    span[class*=location], span[class*=compensation]; a badge "Apply on Wellfound" (or "on the
+ *    company's site"). Job page: "Apply" opens a dialog: a note box ("What interests you about
+ *    working for this company?", sometimes customQuestionAnswers[<id>][answer]) and "Send
+ *    application".
+ *  - YC workatastartup.com/companies?role=eng: job links a[href^="/jobs/<id>"] with a details line
+ *    "<locations> · Fulltime · US Citizenship/Visa Not Required · $80K - $150K · 3+ Years"; the
+ *    company is the a[href^="/companies/<slug>"] above them. Job page: "Apply" opens "Reach out to
+ *    <founder>": textarea#apply-message (50+ characters), a pre-ticked
+ *    #apply-open-to-relocation box, and "Send".
+ */
+
+export function instahyreSearchUrl(): string {
+  return 'https://www.instahyre.com/candidate/opportunities/?matching=true';
+}
+export function hiristSearchUrl(title: string): string {
+  return `https://www.hirist.tech/search/${slug(title)}?minexp=2&maxexp=4`;
+}
+export function uplersSearchUrl(): string {
+  return 'https://platform.uplers.com/talent/all-opportunities';
+}
+export function wellfoundSearchUrl(): string {
+  return 'https://wellfound.com/jobs';
+}
+export function ycSearchUrl(): string {
+  return 'https://www.workatastartup.com/companies?role=eng&sortBy=created_desc&layout=list-compact';
+}
+
+/** The list page for a portal and title. */
+export function searchUrlFor(p: Platform, title: string): string {
+  switch (p) {
+    case 'instahyre':
+      return instahyreSearchUrl();
+    case 'hirist':
+      return hiristSearchUrl(title);
+    case 'uplers':
+      return uplersSearchUrl();
+    case 'wellfound':
+      return wellfoundSearchUrl();
+    case 'yc':
+      return ycSearchUrl();
+    default:
+      return '';
+  }
+}
+
+/** "Kutumb - Android Engineer" → company + role. */
+function splitCompanyRole(s: string): { company: string; title: string } {
+  const m = /^(.{2,60}?)\s+[-–]\s+(.+)$/.exec(clean(s));
+  return m ? { company: m[1], title: m[2] } : { company: '', title: clean(s) };
+}
+
+export function instahyreJobs(doc: ParentNode = document): SiteJob[] {
+  const base = typeof location !== 'undefined' ? location.href.split('#')[0] : instahyreSearchUrl();
+  return [...doc.querySelectorAll<HTMLElement>('.employer-row')].flatMap((r) => {
+    const id = r.querySelector('[id^="job-skills-"]')?.id.replace('job-skills-', '') ?? '';
+    const head = clean(r.querySelector('h2.company-name, .employer-job-name')?.textContent);
+    if (!id || !head) return [];
+    const { company, title } = splitCompanyRole(head);
+    return [{ url: `${base}#opp-${id}`, title, company, location: clean(r.querySelector('.chip-location')?.textContent) }];
+  });
+}
+
+export function hiristJobs(doc: ParentNode = document): SiteJob[] {
+  const seen = new Set<string>();
+  return [...doc.querySelectorAll<HTMLAnchorElement>('a[href*="/j/"]')].flatMap((a) => {
+    const t = clean(a.querySelector('[data-testid=job_title]')?.textContent);
+    const url = a.href.split('?')[0];
+    if (!t || seen.has(url)) return [];
+    seen.add(url);
+    const { company, title } = splitCompanyRole(t);
+    return [{ url, title, company, expMin: expMinOf(clean(a.querySelector('[data-testid=job_experience]')?.textContent)), location: clean(a.querySelector('[data-testid=job_location]')?.textContent) }];
+  });
+}
+
+export function uplersJobs(doc: ParentNode = document): SiteJob[] {
+  const base = typeof location !== 'undefined' && /uplers/.test(location.hostname) ? `${location.origin}${location.pathname}` : uplersSearchUrl();
+  return [...doc.querySelectorAll<HTMLElement>('.jobCardContainer')].flatMap((c) => {
+    const id = (c.querySelector('[id^="skills_"]')?.id ?? c.querySelector('[id^="partner"]')?.id ?? '').replace(/^(skills_|partner)/, '');
+    const title = clean(c.querySelector('h6, .jobTitle .main > :first-child')?.textContent);
+    if (!id || !title) return [];
+    const attrs = [...c.querySelectorAll('ul.jobAttribs li')].map((li) => clean(li.textContent));
+    return [{ url: `${base}?activeJob=${encodeURIComponent(id)}`, title, company: clean(c.querySelector('.companyName')?.textContent), expMin: expMinOf(attrs.find((a) => /exp/i.test(a)) ?? ''), location: attrs.find((a) => /remote|onsite|hybrid|office/i.test(a)) ?? '' }];
+  });
+}
+
+export function wellfoundJobs(doc: ParentNode = document): SiteJob[] {
+  return [...doc.querySelectorAll<HTMLElement>('[data-test=StartupResult]')].flatMap((c) => {
+    const company = clean(c.querySelector('a[href^="/company/"] h2, h2')?.textContent);
+    return [...c.querySelectorAll<HTMLAnchorElement>('a[class*="jobLink"], a[href^="/jobs/"]')].flatMap((a) => {
+      if (!/\/jobs\/\d+/.test(a.getAttribute('href') ?? '')) return [];
+      const row = a.closest('div')?.parentElement ?? a;
+      const badge = clean(row.querySelector('[class*="badge"]')?.textContent);
+      const loc = clean(a.querySelector('[class*="location"]')?.parentElement?.textContent ?? a.querySelector('[class*="location"]')?.textContent);
+      return [
+        {
+          url: a.href.split('?')[0],
+          title: clean(a.querySelector('[class*="title"]')?.textContent) || clean(a.textContent).slice(0, 80),
+          company,
+          location: loc,
+          // "Apply on Wellfound": the application goes through Wellfound. Others send you to the company.
+          quick: !badge || /wellfound/i.test(badge),
+        },
+      ];
+    });
+  });
+}
+
+export function ycJobs(doc: ParentNode = document): SiteJob[] {
+  const seen = new Set<string>();
+  return [...doc.querySelectorAll<HTMLAnchorElement>('a[href*="/jobs/"]')].flatMap((a) => {
+    if (!/\/jobs\/\d+$/.test(a.getAttribute('href') ?? '') || a.getAttribute('aria-label') || seen.has(a.href)) return [];
+    const title = clean(a.textContent);
+    if (!title || /^view job$/i.test(title)) return [];
+    seen.add(a.href);
+    let c: HTMLElement | null = a.parentElement;
+    while (c && !c.querySelector('a[href*="/companies/"]')) c = c.parentElement;
+    const company = clean([...(c?.querySelectorAll<HTMLAnchorElement>('a[href*="/companies/"]') ?? [])].map((x) => clean(x.textContent)).find((t) => t && !/website/i.test(t)));
+    const meta = clean((a.parentElement?.nextElementSibling as HTMLElement | null)?.textContent);
+    const parts = meta.split('·').map(clean);
+    return [{ url: a.href, title, company, location: meta, expMin: expMinOf(parts.find((x) => /year/i.test(x)) ?? ''), quick: /visa not required/i.test(meta) || !/sponsor|us citizen/i.test(meta) || /remote/i.test(parts[0] ?? '') }];
+  });
+}
+
+/**
+ * Can someone in India take this job? India (any city), or remote that isn't tied to another
+ * country. YC: a "Remote" job that says "US Citizenship/Visa Not Required" counts too.
+ */
+export function openToIndia(p: Platform, j: Pick<SiteJob, 'location'>): boolean {
+  const loc = clean(j.location);
+  if (!loc) return true;
+  if (p === 'yc') {
+    const where = loc.split('·')[0] ?? '';
+    if (/\b(india|bengaluru|bangalore|remote \(?(in|india|apac|asia)|anywhere|worldwide)\b/i.test(where)) return true;
+    return /\bremote\b/i.test(where) && /visa not required/i.test(loc) && !/remote \((us|ca|uk|eu)\b/i.test(where);
+  }
+  if (p === 'wellfound') return /india|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurugram|gurgaon|noida|chennai|indore|remote/i.test(loc);
+  if (p === 'uplers' || p === 'hirist' || p === 'instahyre') return true; // India portals
+  return locationOk(loc);
+}
+
+function remotePageState(p: Platform, doc: Document): { apply: HTMLElement | null; applied: boolean; external: boolean } {
+  switch (p) {
+    case 'uplers': {
+      const b = doc.querySelector<HTMLElement>('button[id$="singleOppAppyBtn"]');
+      const label = clean(b?.textContent);
+      return { apply: b && /^apply now$/i.test(label) && !(b as HTMLButtonElement).disabled ? b : null, applied: /^applied$/i.test(label) || !!buttonByText(/^applied$/i, doc), external: false };
+    }
+    case 'hirist': {
+      const apply = buttonByText(/^apply$/i, doc);
+      return { apply, applied: !apply && !!buttonByText(/^applied$/i, doc), external: !apply && !!buttonByText(/^apply on company (site|website)$/i, doc) };
+    }
+    case 'wellfound': {
+      const apply = buttonByText(/^apply$/i, doc) ?? buttonByText(/^apply now$/i, doc);
+      const t = clean(doc.body?.innerText).slice(0, 20000);
+      return { apply, applied: !apply && (!!buttonByText(/^applied$/i, doc) || /you applied|application sent/i.test(t)), external: !apply && /apply on (the )?company('s)? (site|website)/i.test(t) };
+    }
+    case 'yc': {
+      const apply = buttonByText(/^apply$/i, doc);
+      return { apply, applied: !apply && !!buttonByText(/^(applied|message sent|reached out)$/i, doc), external: false };
+    }
+    case 'instahyre': {
+      const id = /#opp-(\d+)/.exec(typeof location !== 'undefined' ? location.hash : '')?.[1] ?? '';
+      const row = id ? (doc.getElementById(`job-skills-${id}`)?.closest<HTMLElement>('.employer-row') ?? null) : null;
+      const view = row?.querySelector<HTMLElement>('.btn-interested') ?? null;
+      return { apply: view, applied: !!row && !view && /applied|interested/i.test(clean(row.innerText)), external: false };
+    }
+    default:
+      return { apply: null, applied: false, external: false };
+  }
+}

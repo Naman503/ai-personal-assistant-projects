@@ -423,6 +423,151 @@ async function applyFoundit(dryRun: boolean, fill: (anchor: HTMLElement) => Prom
   return { outcome: 'skip', reason: 'no confirmation after Quick Apply' };
 }
 
+// ------------------------------------------------------------------ Hirist, Uplers, Instahyre, Wellfound, YC
+
+type Fill = (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>;
+
+/** Buttons that move a pop-up on or send it. */
+const GO_ON = /^(submit|apply|apply now|send|send application|submit application|confirm|done|next|continue|save (and|&) (continue|apply)|i'?m interested|interested|proceed)$/i;
+
+/**
+ * After the first press: answer any pop-ups (recruiter questions) until the site confirms.
+ * Used by the one-click portals (Hirist, Uplers) and Instahyre's job pop-up.
+ */
+async function followUp(p: Platform, fill: Fill, steps = 6): Promise<JobResult> {
+  for (let step = 0; step < steps; step++) {
+    await until(() => sentNotice(p) || !!openDialog() || !!sitePushback(p), 15_000);
+    const push = sitePushback(p);
+    if (push) return { outcome: 'skip', reason: push, pushback: push };
+    if (sentNotice(p)) return { outcome: 'sent', reason: step ? `${p} confirmed after the questions` : `${p} applied in one click` };
+    const d = openDialog();
+    if (!d) return { outcome: 'skip', reason: 'nothing happened after Apply' };
+    await sleep(between(1, 2));
+    log.info(`${p}: pop-up after Apply (step ${step + 1})`, describeDialog(d));
+    const first = d.querySelector<HTMLElement>('input:not([type=hidden]), textarea, select, [contenteditable=true]');
+    if (first) {
+      const f = await fill(first);
+      if (f.error && AI_BLOCKING.has(f.error)) {
+        await closeDialog(d);
+        return { outcome: 'skip', reason: `the AI isn't answering (${f.error})`, aiError: f.error };
+      }
+    }
+    await sleep(between(0.8, 1.6));
+    const missing = emptyRequired(d);
+    if (missing.length) {
+      await closeDialog(d);
+      return { outcome: 'skip', reason: `${missing.length} required question(s) FormPilot couldn't answer` };
+    }
+    const next = buttonByText(GO_ON, d);
+    if (!next) {
+      await closeDialog(d);
+      return { outcome: 'skip', reason: 'the pop-up has no Submit/Next button' };
+    }
+    humanClick(next);
+    await until(() => sentNotice(p) || openDialog() !== d || !d.isConnected, 15_000);
+    if (sentNotice(p)) return { outcome: 'sent', reason: `${p} confirmed` };
+  }
+  return { outcome: 'skip', reason: 'no confirmation after Apply' };
+}
+
+/** Hirist and Uplers: one press applies (questions may follow). Dry run stops before it. */
+async function applyOneClick(p: Platform, dryRun: boolean, fill: Fill): Promise<JobResult> {
+  const st = jobPageState(p);
+  if (st.applied) return { outcome: 'skip', reason: 'already applied' };
+  if (st.external) return { outcome: 'skip', reason: 'applies on the company site' };
+  if (!st.apply) return { outcome: 'skip', reason: 'no Apply button' };
+  if (dryRun) return { outcome: 'dry', reason: `would press "${clean(st.apply.textContent)}"` };
+  st.apply.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  await sleep(between(0.6, 1.2));
+  humanClick(st.apply);
+  return followUp(p, fill);
+}
+
+/** Instahyre: the job opens in a pop-up from its row ("View job »"); its apply button is inside. */
+async function applyInstahyre(dryRun: boolean, fill: Fill): Promise<JobResult> {
+  const st = jobPageState('instahyre');
+  if (st.applied) return { outcome: 'skip', reason: 'already applied' };
+  if (!st.apply) return { outcome: 'skip', reason: 'the job is no longer in your opportunities' };
+  // "View job" may count as interest on Instahyre: a dry run doesn't press it.
+  if (dryRun) return { outcome: 'dry', reason: 'would open the job and apply' };
+  st.apply.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  await sleep(between(0.6, 1.2));
+  humanClick(st.apply);
+  await until(() => !!openDialog() || !!document.querySelector('.modal.in, .modal[style*="block"]'), 10_000);
+  const d = openDialog() ?? document.querySelector<HTMLElement>('.modal.in, .modal[style*="block"]');
+  if (!d) return { outcome: 'skip', reason: "the job pop-up didn't open" };
+  await sleep(between(2, 4));
+  log.info('instahyre: job pop-up', describeDialog(d));
+  const go = buttonByText(/^(apply|apply now|i'?m interested|interested|apply for this job)$/i, d);
+  if (!go) {
+    await closeDialog(d);
+    return { outcome: 'skip', reason: 'no Apply button in the job pop-up' };
+  }
+  humanClick(go);
+  return followUp('instahyre', fill);
+}
+
+/**
+ * Wellfound and YC: "Apply" opens a pop-up with a note to the company / founder. FormPilot writes
+ * the note from the job and your profile (and answers any other questions), unticks boxes that
+ * would change your profile (YC's pre-ticked "open to relocating"), then sends.
+ */
+async function applyWithNote(p: 'wellfound' | 'yc', dryRun: boolean, fill: Fill): Promise<JobResult> {
+  const st = jobPageState(p);
+  if (st.applied) return { outcome: 'skip', reason: 'already applied' };
+  if (st.external) return { outcome: 'skip', reason: 'applies on the company site' };
+  if (!st.apply) return { outcome: 'skip', reason: 'no Apply button' };
+  st.apply.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  await sleep(between(0.6, 1.2));
+  humanClick(st.apply);
+  await until(() => !!openDialog() || !!sitePushback(p) || jobPageState(p).applied, 12_000);
+  const push = sitePushback(p);
+  if (push) return { outcome: 'skip', reason: push, pushback: push };
+  const d = openDialog();
+  if (!d) return { outcome: 'skip', reason: jobPageState(p).applied ? 'already applied' : "the apply pop-up didn't open" };
+  await sleep(between(1.5, 3));
+  if (p === 'yc') {
+    const reloc = d.querySelector<HTMLInputElement>('#apply-open-to-relocation');
+    if (reloc?.checked) humanClick((reloc.closest('label') as HTMLElement | null) ?? reloc);
+  }
+  const first = d.querySelector<HTMLElement>('textarea, input:not([type=hidden]):not([type=checkbox]), [contenteditable=true]');
+  if (first) {
+    const f = await fill(first);
+    if (f.error && AI_BLOCKING.has(f.error)) {
+      await closeDialog(d);
+      return { outcome: 'skip', reason: `the AI isn't answering (${f.error})`, aiError: f.error };
+    }
+  }
+  await sleep(between(0.8, 1.6));
+  const note = d.querySelector<HTMLTextAreaElement>(p === 'yc' ? '#apply-message, textarea' : 'textarea');
+  const text = clean(note?.value);
+  const answers = [...d.querySelectorAll<HTMLTextAreaElement>('textarea')].map((t) => ({ q: clean(t.labels?.[0]?.textContent || t.getAttribute('aria-label') || t.name || 'note').slice(0, 120), a: t.value }));
+  log.info(`${p}: apply pop-up`, { ...describeDialog(d), note: text });
+  if (note && text.length < (p === 'yc' ? 50 : 20)) {
+    await closeDialog(d);
+    return { outcome: 'skip', reason: `the note came out too short (${text.length} characters)`, answers };
+  }
+  const missing = emptyRequired(d);
+  if (missing.length) {
+    await closeDialog(d);
+    return { outcome: 'skip', reason: `${missing.length} required question(s) FormPilot couldn't answer`, answers };
+  }
+  const send = buttonByText(/^(send|send application|submit application|submit|apply)$/i, d);
+  if (!send) {
+    await closeDialog(d);
+    return { outcome: 'skip', reason: 'no Send button in the pop-up', answers };
+  }
+  if (dryRun) {
+    await closeDialog(d);
+    return { outcome: 'dry', reason: `note written (${text.length} characters); would press "${clean(send.textContent)}"`, answers };
+  }
+  humanClick(send);
+  const ok = await until(() => sentNotice(p) || !d.isConnected || !openDialog() || jobPageState(p).applied, 20_000);
+  return ok ? { outcome: 'sent', reason: `${PLATFORM_LABEL[p]} sent`, answers } : { outcome: 'skip', reason: 'no confirmation after Send', answers };
+}
+
+const PLATFORM_LABEL: Record<'wellfound' | 'yc', string> = { wellfound: 'Wellfound', yc: 'YC' };
+
 /** Apply to the job on this page; reports back to the autopilot. */
 export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTMLElement) => Promise<{ filled: number; total: number; error?: string }>): Promise<JobResult> {
   await until(() => !!jobPageState(p).apply || jobPageState(p).applied || jobPageState(p).external || !!sitePushback(p), 15_000);
@@ -434,7 +579,18 @@ export async function applyHere(p: Platform, dryRun: boolean, fill: (anchor: HTM
   log.info(`${p}: ${dryRun ? 'dry run on' : 'applying to'} ${job.role} at ${job.company}`);
   let r: JobResult;
   try {
-    r = p === 'naukri' ? await applyNaukri(dryRun) : p === 'foundit' ? await applyFoundit(dryRun, fill) : await applyCutshort(dryRun, fill);
+    r =
+      p === 'naukri'
+        ? await applyNaukri(dryRun)
+        : p === 'foundit'
+          ? await applyFoundit(dryRun, fill)
+          : p === 'hirist' || p === 'uplers'
+            ? await applyOneClick(p, dryRun, fill)
+            : p === 'instahyre'
+              ? await applyInstahyre(dryRun, fill)
+              : p === 'wellfound' || p === 'yc'
+                ? await applyWithNote(p, dryRun, fill)
+                : await applyCutshort(dryRun, fill);
   } catch (e) {
     if (!(e instanceof AiUnavailable)) throw e;
     // Mid-chatbot on Naukri: the half-done application stays as it is; Naukri keeps it for later.

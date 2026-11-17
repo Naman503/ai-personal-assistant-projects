@@ -23,7 +23,25 @@ import { addShot, addStep, companyCount, companyWall, counts, enqueue, nextQueue
 import { ACTION_SCHEMA, AGENT_SYSTEM, buildAgentPrompt, describeAction, parseAction } from './agent';
 import { ATS_NAME, detectAts, needsAccount, type Ats } from './detect';
 import { boardFromUrl, fetchBoard, fitting, parseBoards, type Board } from './boards';
+import { fetchFeeds } from './feeds';
 import type { AgentAction, PageSnapshot, RoundContext, RoundResult, SpOutcome } from './types';
+
+
+/**
+ * Pages that only lead to the real application: Naukri's job page / its company hop, and the
+ * remote job boards (Himalayas, Remote OK, Remotive, We Work Remotely), whose Apply sends you to
+ * the company's own form. While resolving, an address on these isn't the company link yet.
+ */
+const HOP_HOSTS = /(^|\.)(naukri\.com|himalayas\.app|remoteok\.com|remotive\.com|weworkremotely\.com)$/i;
+export const onHop = (u: string) => {
+  try {
+    return HOP_HOSTS.test(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+};
+/** A remote-board job page: Site Pilot first follows its Apply link to the company. */
+export const BOARD_JOB = /himalayas\.app\/companies\/[^/]+\/jobs\/|remoteok\.com\/remote-jobs\/|remotive\.com\/remote-jobs\/|weworkremotely\.com\/remote-jobs\//i;
 
 const log = createLogger('sitepilot');
 export const SP_KEY = 'fpSitePilot';
@@ -275,7 +293,7 @@ export class SitePilot {
     await chrome.tabs.remove(id).catch(() => {});
     if (!st.cur || !/^https?:/i.test(url)) return;
     await addStep(st.cur.jobId, `closed a tab the page opened (${url.slice(0, 100)})`);
-    if (st.cur.stage === 'resolve' && !/naukri\.com/i.test(url)) return this.resolved({ url });
+    if (st.cur.stage === 'resolve' && !onHop(url)) return this.resolved({ url });
     if (st.cur.stage === 'apply' && !st.cur.submitted) {
       st.cur.busy = false;
       await save(st);
@@ -294,7 +312,7 @@ export class SitePilot {
     // Naukri sometimes sends the tab itself to the company site.
     // After a server redirect Chrome may report the final address only on the tab, at "complete".
     const now = info.url ?? (info.status === 'complete' ? tab.url : undefined);
-    if (st.cur.stage === 'resolve' && now && !/naukri\.com/i.test(now) && /^https?:/i.test(now)) {
+    if (st.cur.stage === 'resolve' && now && !onHop(now) && /^https?:/i.test(now)) {
       await this.resolved({ url: now });
       return;
     }
@@ -347,13 +365,13 @@ export class SitePilot {
     if (wall) return this.finishQuick(st, job, 'needs-you', `same company as an earlier job: ${wall}`);
 
     // Known company link from an earlier try: go straight there.
-    const naukri = /naukri\.com\/job-listings/i.test(job.url) && !job.applyUrl;
+    const naukri = (/naukri\.com\/job-listings/i.test(job.url) || BOARD_JOB.test(job.url)) && !job.applyUrl;
     await spDb().jobs.update(job.id, { status: 'working', startedAt: Date.now(), updatedAt: Date.now(), attempts: job.attempts + 1 });
     st.cur = { jobId: job.id, stage: naukri ? 'resolve' : 'apply', startedAt: Date.now(), lastActivity: Date.now(), round: 0, actions: 0, submitted: 0, busy: false, restarts: 0 };
     st.phase = 'working';
     st.nextAt = undefined;
     await save(st, `Working on: ${job.title || job.url}${job.company ? ` · ${job.company}` : ''}`);
-    await addStep(job.id, naukri ? 'opening the Naukri job to follow "Apply on company site"' : `opening ${job.url.slice(0, 120)}`);
+    await addStep(job.id, naukri ? (BOARD_JOB.test(job.url) ? 'opening the job board page to follow its Apply link' : 'opening the Naukri job to follow "Apply on company site"') : `opening ${job.url.slice(0, 120)}`);
     const tabId = await this.ensureTab(st, naukri ? job.url : job.applyUrl || job.url);
     if (tabId === undefined) return this.finish('failed', 'could not open the Site Pilot window');
     // Its window sits behind yours: keep the page running at full speed (same as the Autopilot's tab).
@@ -377,7 +395,7 @@ export class SitePilot {
     const cur = st.cur;
     // Naukri never handed over the link (the load alarm is the time limit for that).
     if (cur.stage === 'resolve' && cur.busy) {
-      if (fromAlarm) return this.resolved({ reason: 'Naukri did not open the company link in time' });
+      if (fromAlarm) return this.resolved({ reason: 'the job page did not lead to the company link in time' });
       return;
     }
     if (cur.busy) return;
@@ -416,8 +434,8 @@ export class SitePilot {
     const id = st.cur.jobId;
     // Naukri's own hop (it records the click, then redirects to the company): follow it; the
     // tab update with the company address finishes this step.
-    if (r.url && /naukri\.com\/.*(saveCompanyApply|apply-services|redirect)/i.test(r.url)) {
-      await addStep(id, 'following Naukri\'s link to the company site');
+    if (r.url && (/naukri\.com\/.*(saveCompanyApply|apply-services|redirect)/i.test(r.url) || (onHop(r.url) && !/naukri\.com/i.test(r.url)))) {
+      await addStep(id, /naukri\.com/i.test(r.url) ? 'following Naukri\'s link to the company site' : `following the job board's Apply link (${r.url.slice(0, 100)})`);
       st.cur.busy = true;
       st.cur.lastActivity = Date.now();
       await save(st);
@@ -425,7 +443,7 @@ export class SitePilot {
       await at(LOAD, Date.now() + 45_000);
       return;
     }
-    if (r.url && /^https?:\/\//i.test(r.url) && !/naukri\.com/i.test(r.url)) {
+    if (r.url && /^https?:\/\//i.test(r.url) && !onHop(r.url)) {
       const job = await spDb().jobs.get(id);
       await spDb().jobs.update(id, { applyUrl: r.url, via: job?.via ?? job?.url, ats: detectAts(r.url), updatedAt: Date.now() });
       await addStep(id, `company link: ${r.url.slice(0, 160)}`);
@@ -670,11 +688,21 @@ export class SitePilot {
       if (fit.length) added += (await enqueue(fit.map((j) => ({ url: j.url, title: j.title, company: j.company, location: j.location, description: j.description, source: 'board' as const })))).added;
       await new Promise((r) => setTimeout(r, 400 + Math.random() * 600)); // one board at a time, politely
     }
+    // Remote job boards (Himalayas, Remotive, Remote OK, We Work Remotely): jobs open to India.
+    let feedNote = '';
+    if (sp.remoteBoards) {
+      const r = await fetchFeeds(titlesOf(ap));
+      const fit = fitting(r.jobs, { relevant, skipWords: ap.skipWords, days: sp.boardDays });
+      const add = fit.length ? (await enqueue(fit.map((j) => ({ url: j.url, title: j.title, company: j.company, location: j.location, description: j.description, source: 'board' as const })))).added : 0;
+      found += fit.length;
+      added += add;
+      feedNote = `; remote boards: ${r.read} read${r.failed ? ` (${r.failed} didn't answer)` : ''}, ${fit.length} fit`;
+    }
     const now = await loadSpState();
     if (!now.running) return;
     now.phase = 'idle';
     now.boardsAt = st.boardsAt;
-    await save(now, `Job boards: ${boards.length} read${failed ? ` (${failed} didn't answer)` : ''}, ${found} jobs fit, ${added} new in the queue`);
+    await save(now, `Job boards: ${boards.length} read${failed ? ` (${failed} didn't answer)` : ''}${feedNote}, ${found} jobs fit, ${added} new in the queue`);
     await at(TICK, Date.now() + (added ? 5_000 : 60_000));
   }
 

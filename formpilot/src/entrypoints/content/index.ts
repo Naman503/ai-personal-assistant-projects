@@ -1,5 +1,5 @@
 import { applyHere, applyNaukriRecommended } from './sites';
-import { naukriResolve, SitePilotPage } from './sitepilot';
+import { boardResolve, naukriResolve, SitePilotPage } from './sitepilot';
 import { runOutreach } from './linkedin-outreach';
 import { multiApplyResult, siteJobs, sitePushback } from '@/lib/sites';
 import { addLogSink, configureLogger, createLogger } from '@/lib/logger';
@@ -218,7 +218,7 @@ export default defineContentScript({
       if (msg?.type === 'sp-resolve') {
         if (window !== window.top) return;
         reply({ pending: true });
-        void naukriResolve()
+        void (/naukri\.com$/i.test(location.hostname) ? naukriResolve() : boardResolve())
           .catch((e) => ({ reason: `error: ${(e as Error).message}` }))
           .then((r) => chrome.runtime.sendMessage({ type: 'sp-resolved', ...r }).catch(() => {}));
         return;

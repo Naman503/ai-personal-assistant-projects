@@ -330,6 +330,9 @@ export function SitePilot({ settings, update }: PageProps) {
         <Row label="Read company job boards" description="When the queue is empty (every 4 hours at most), reads the public job boards companies publish on Greenhouse, Lever, Ashby, Workable, Recruitee and SmartRecruiters, and queues jobs that fit your titles and level, in India or remote and open to India.">
           <Switch checked={sp.harvestBoards} onCheckedChange={(v) => set('harvestBoards', v)} />
         </Row>
+        <Row label="Read remote job boards" description="Also reads Himalayas (only jobs open to India), Remotive, Remote OK and We Work Remotely for your titles, keeps remote jobs open to India, and follows each job's Apply link to the company's own form.">
+          <Switch checked={sp.remoteBoards} onCheckedChange={(v) => set('remoteBoards', v)} />
+        </Row>
         <Row label="Job boards" description={`"system:company", comma separated. Boards Site Pilot meets on the way are added by itself${learned.length ? ` (learned so far: ${learned.join(', ')})` : ''}. Posted within ${sp.boardDays} days.`} stacked>
           <Textarea rows={3} value={boards} onChange={(e) => setBoards(e.target.value)} onBlur={() => set('boards', boards)} />
         </Row>
