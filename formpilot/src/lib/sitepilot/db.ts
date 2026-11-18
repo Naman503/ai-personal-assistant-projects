@@ -8,7 +8,7 @@ import { companyKey, linkKey } from './detect';
 
 export type SpStatus = 'queued' | 'working' | SpOutcome;
 
-export type SpSource = 'naukri' | 'naukri-form' | 'manual' | 'linkedin' | 'autopilot' | 'board';
+export type SpSource = 'naukri' | 'naukri-form' | 'manual' | 'linkedin' | 'autopilot' | 'board' | 'foundit';
 
 export interface SpJob {
   id: string;

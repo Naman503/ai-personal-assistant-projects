@@ -126,3 +126,42 @@ export async function fetchFeeds(titles: string[], f: Fetch = fetch): Promise<{ 
   await run(() => wwrJobs(f));
   return { jobs, read, failed };
 }
+
+/**
+ * LinkedIn's public job search (the guest endpoint its own job pages use; 25 per page, newest
+ * first): India, posted in the last 24 hours. Site Pilot opens each job in your signed-in Brave:
+ * "Easy Apply" jobs are left to the Autopilot, the rest go through "Apply" to the company's site.
+ */
+export function parseLinkedInGuest(html: string): BoardJob[] {
+  return html
+    .split(/<li>/)
+    .slice(1)
+    .flatMap((c) => {
+      const id = /urn:li:jobPosting:(\d+)/.exec(c)?.[1];
+      const title = clip(/base-search-card__title[^>]*>([\s\S]*?)<\/h3>/.exec(c)?.[1]);
+      if (!id || !title) return [];
+      const company = clip(/base-search-card__subtitle[^>]*>([\s\S]*?)<\/h4>/.exec(c)?.[1]);
+      const location = clip(/job-search-card__location[^>]*>([\s\S]*?)<\/span>/.exec(c)?.[1]);
+      const when = /datetime="([\d-]+)"/.exec(c)?.[1];
+      return [{ title, company, location, url: `https://www.linkedin.com/jobs/view/${id}/`, postedAt: when ? Date.parse(when) : undefined }];
+    });
+}
+
+export async function linkedInJobs(titles: string[], f: Fetch = fetch): Promise<{ jobs: BoardJob[]; read: number; failed: number }> {
+  const jobs: BoardJob[] = [];
+  let read = 0;
+  let failed = 0;
+  for (const t of titles.slice(0, 8)) {
+    for (const start of [0, 25]) {
+      try {
+        const q = new URLSearchParams({ keywords: t, location: 'India', f_TPR: 'r86400', start: String(start) });
+        jobs.push(...parseLinkedInGuest(String(await get(f, `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${q}`, false))));
+        read++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500)); // gently: LinkedIn throttles fast readers
+    }
+  }
+  return { jobs, read, failed };
+}

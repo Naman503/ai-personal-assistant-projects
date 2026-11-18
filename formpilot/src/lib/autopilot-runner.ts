@@ -321,7 +321,14 @@ export class Autopilot {
       const p = PLATFORMS[pi];
       const pp = platformPrefs(ap, p);
       if (!pp.enabled) continue;
-      if (st.day.blocked?.[p]) continue; // stopped for today (its limit or a security wall)
+      // A portal's own limit is often a rolling one (LinkedIn's Easy Apply limit, 18 Nov: hit at
+      // 02:00 right after midnight): try it again after 3 hours instead of waiting for tomorrow.
+      const blk = st.day.blocked?.[p];
+      if (blk && blk.kind === 'limit' && Date.now() - blk.at > 3 * 3600_000) {
+        const { [p]: _gone, ...rest } = st.day.blocked!;
+        st.day.blocked = rest;
+      }
+      if (st.day.blocked?.[p]) continue; // stopped for now (its limit or a security wall)
       if ((st.day.restUntil?.[p] ?? 0) > Date.now()) continue; // on its break; the others take turns meanwhile
       const counts = st.day.byPlatform[p];
       if (counts.sent + counts.dry >= pp.dailyCap) continue;
@@ -339,7 +346,8 @@ export class Autopilot {
       // Instahyre, Uplers, Wellfound, YC: one list (your matches / saved search), not one per title.
       if (ONE_LIST.includes(p)) {
         const key = titleKey(p, MATCHES);
-        if (st.day.exhausted.includes(key)) continue;
+        // Their list refreshes during the day: an empty one is looked at again after its break.
+        if (st.day.exhausted.includes(key)) st.day.exhausted = st.day.exhausted.filter((k) => k !== key);
         const size = batchSize({ ...ap, dailyCap: pp.dailyCap, perTitleCap: pp.dailyCap }, view, key);
         if (size > 0) return { platform: p, pi, title: MATCHES, index: -1, size, dryRun: pp.dryRun, rec: false };
         continue;
@@ -375,7 +383,8 @@ export class Autopilot {
    */
   private rest(st: ApState, p: Platform, gapMin?: number): number {
     const ap = this.settings().autopilot;
-    const until = Date.now() + (gapMin ?? gapMinutes(ap)) * 60_000;
+    // A longer break already set (an empty list: 90 min) is kept.
+    const until = Math.max(st.day.restUntil?.[p] ?? 0, Date.now() + (gapMin ?? gapMinutes(ap)) * 60_000);
     st.day.restUntil = { ...(st.day.restUntil ?? {}), [p]: until };
     return Math.min(until, Date.now() + rand(1, 2) * 60_000);
   }
@@ -541,6 +550,14 @@ export class Autopilot {
         if (ok) keys.add(k);
         return ok;
       });
+      // Foundit's "Apply Now" jobs apply on the company's site (or LinkedIn): Site Pilot takes them.
+      if (p === 'foundit' && this.handOff && this.settings().sitePilot.fromAutopilot) {
+        const ext = reply.jobs.filter((j) => j.quick === false && !j.applied && !seen.has(j.url) && titleRelevant(j.title, rel) && !titleSkipped(j.title, ap.skipWords) && (j.expMin === undefined || j.expMin <= pp.maxExpMin));
+        if (ext.length) {
+          await this.handOff(ext.map((j) => ({ url: j.url, title: j.title, company: j.company, location: j.location, source: 'foundit' as const, via: j.url }))).catch(() => {});
+          log.info(`Foundit: ${ext.length} "Apply Now" job(s) handed to Site Pilot`);
+        }
+      }
       log.info(
         `${PLATFORM_NAME[p]} list for "${cur.title}": ${reply.jobs.length} jobs, ${fresh.length} to try`,
         reply.jobs.map((j) => `${fresh.includes(j) ? '+' : '-'} ${j.title} · ${j.company}${j.expMin !== undefined ? ` · ${j.expMin}+ yrs` : ''}${j.applied ? ' · applied' : ''}`),
@@ -705,6 +722,11 @@ export class Autopilot {
    */
   private exhaust(st: ApState, key: string) {
     const ap = this.settings().autopilot;
+    const one = ONE_LIST.find((p) => key === titleKey(p, MATCHES));
+    if (one) {
+      st.day.restUntil = { ...(st.day.restUntil ?? {}), [one]: Math.max(st.day.restUntil?.[one] ?? 0, Date.now() + 90 * 60_000) };
+      return;
+    }
     if (key === 'naukri:rec') {
       st.day.recEmptyAt = Date.now();
       if (!st.day.exhausted.includes(key)) st.day.exhausted = [...st.day.exhausted, key];

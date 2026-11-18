@@ -1229,6 +1229,39 @@ export async function naukriResolve(): Promise<{ url?: string; naukriApply?: boo
  * Links that open a new tab are caught by the runner (it closes the tab and takes its address).
  */
 export async function boardResolve(): Promise<{ url?: string; reason?: string }> {
+  // LinkedIn (signed in): Easy Apply jobs are the Autopilot's; "Apply" (company website) opens the
+  // company's page in a new tab, which the runner catches. Foundit: "Apply Now" does the same.
+  if (/linkedin\.com$/i.test(location.hostname) || /foundit\.in$/i.test(location.hostname)) {
+    const li = /linkedin/i.test(location.hostname);
+    for (let i = 0; i < 25; i++) {
+      const btns = [...document.querySelectorAll<HTMLElement>('button, a')].filter((b) => isVisible(b));
+      if (li && btns.some((b) => /^easy apply$/i.test(textOf(b)) || /^easy apply to /i.test(b.getAttribute('aria-label') ?? ''))) return { reason: 'applies with LinkedIn Easy Apply (the Autopilot handles these)' };
+      if (/no longer accepting applications|this job is closed|job (has )?expired/i.test(deepText(document, 6000))) return { reason: 'the job is closed (no longer accepting applications)' };
+      const header = li ? null : document.querySelector<HTMLElement>('#jdPageHeader #applyBtn, .jobMainInfoCard #applyBtn');
+      if (header && /quick apply/i.test(textOf(header))) return { reason: 'a Foundit Quick Apply job (the Autopilot handles these)' };
+      const apply =
+        header ??
+        btns.find((b) => /apply on company website|apply to .* on company website/i.test(b.getAttribute('aria-label') ?? '')) ??
+        btns.find((b) => /^apply( now)?$/i.test(textOf(b)) && !b.closest('[class*="similar" i], [class*="recommend" i]'));
+      if (apply && i >= 2) {
+        humanClick(apply);
+        // LinkedIn may ask first ("Share your profile?", "Continue to the company site").
+        for (let k = 0; k < 10; k++) {
+          await sleep(800);
+          const go = [...document.querySelectorAll<HTMLElement>('[role=dialog] button, [role=alertdialog] button')].find((b) => isVisible(b) && /^(continue|apply|continue to apply|yes)$/i.test(textOf(b)));
+          if (go) {
+            humanClick(go);
+            break;
+          }
+        }
+        await sleep(8000); // the runner takes the new tab's address
+        const a = [...document.querySelectorAll<HTMLAnchorElement>('a[href^="http"]')].find((x) => /apply/i.test(textOf(x)) && !/linkedin\.com|foundit\.in/i.test(x.href));
+        return a ? { url: a.href } : { reason: 'pressed Apply but no company page opened' };
+      }
+      await sleep(700);
+    }
+    return { reason: 'no Apply button on the job page' };
+  }
   const abs = (a: HTMLAnchorElement) => (a.href && /^https?:/i.test(a.href) ? a.href : '');
   const applyLink = () =>
     [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].find((a) => {

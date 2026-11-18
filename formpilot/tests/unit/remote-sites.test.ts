@@ -123,3 +123,18 @@ describe('remote job boards', () => {
     expect(onHop('https://job-boards.greenhouse.io/acme/jobs/1')).toBe(false);
   });
 });
+
+import { readFileSync } from 'node:fs';
+import { parseLinkedInGuest } from '@/lib/sitepilot/feeds';
+describe('LinkedIn public job search (Site Pilot source)', () => {
+  it('reads id, title, company, location; links to the job page', () => {
+    const jobs = parseLinkedInGuest(readFileSync('tests/fixtures/linkedin-guest-search.html', 'utf8'));
+    expect(jobs.length).toBeGreaterThan(5);
+    expect(jobs[0].url).toMatch(/^https:\/\/www\.linkedin\.com\/jobs\/view\/\d+\/$/);
+    expect(jobs[0].title).toBeTruthy();
+    expect(jobs[0].company).toBeTruthy();
+    expect(jobs.every((j) => j.location)).toBe(true);
+    expect(BOARD_JOB.test(jobs[0].url)).toBe(true);
+    expect(onHop('https://www.linkedin.com/jobs/view/externalApply/1?url=x')).toBe(true);
+  });
+});

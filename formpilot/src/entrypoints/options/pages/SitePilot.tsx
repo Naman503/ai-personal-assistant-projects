@@ -372,6 +372,9 @@ export function SitePilot({ settings, update }: PageProps) {
         <Row label="Read company job boards" description="When the queue is empty (every 90 minutes at most), reads the public job boards companies publish on Greenhouse, Lever, Ashby, Workable, Recruitee and SmartRecruiters, and queues jobs that fit your titles and level, in India or remote and open to India.">
           <Switch checked={sp.harvestBoards} onCheckedChange={(v) => set('harvestBoards', v)} />
         </Row>
+        <Row label="Read LinkedIn jobs" description="Also reads LinkedIn's public job search (India, last 24 hours) for your titles. Each job opens in your signed-in Brave: Easy Apply jobs are left to the Autopilot; the rest go through LinkedIn's Apply to the company's own form.">
+          <Switch checked={sp.harvestLinkedIn} onCheckedChange={(v) => set('harvestLinkedIn', v)} />
+        </Row>
         <Row label="Read remote job boards" description="Also reads Himalayas (only jobs open to India), Remotive, Remote OK and We Work Remotely for your titles, keeps remote jobs open to India, and follows each job's Apply link to the company's own form.">
           <Switch checked={sp.remoteBoards} onCheckedChange={(v) => set('remoteBoards', v)} />
         </Row>

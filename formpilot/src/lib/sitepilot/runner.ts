@@ -25,7 +25,7 @@ import { addShot, addStep, companyCount, companyWall, counts, enqueue, nextQueue
 import { ACTION_SCHEMA, agentSystem, buildAgentPrompt, describeAction, parseAction } from './agent';
 import { ATS_NAME, detectAts, needsAccount, type Ats } from './detect';
 import { boardFromUrl, fetchBoard, fitting, parseBoards, type Board } from './boards';
-import { fetchFeeds } from './feeds';
+import { fetchFeeds, linkedInJobs } from './feeds';
 import type { AgentAction, PageSnapshot, RoundContext, RoundResult, SpOutcome } from './types';
 
 
@@ -34,7 +34,7 @@ import type { AgentAction, PageSnapshot, RoundContext, RoundResult, SpOutcome } 
  * remote job boards (Himalayas, Remote OK, Remotive, We Work Remotely), whose Apply sends you to
  * the company's own form. While resolving, an address on these isn't the company link yet.
  */
-const HOP_HOSTS = /(^|\.)(naukri\.com|himalayas\.app|remoteok\.com|remotive\.com|weworkremotely\.com)$/i;
+const HOP_HOSTS = /(^|\.)(naukri\.com|himalayas\.app|remoteok\.com|remotive\.com|weworkremotely\.com|linkedin\.com|foundit\.in)$/i;
 export const onHop = (u: string) => {
   try {
     return HOP_HOSTS.test(new URL(u).hostname);
@@ -43,7 +43,7 @@ export const onHop = (u: string) => {
   }
 };
 /** A remote-board job page: Site Pilot first follows its Apply link to the company. */
-export const BOARD_JOB = /himalayas\.app\/companies\/[^/]+\/jobs\/|remoteok\.com\/remote-jobs\/|remotive\.com\/remote-jobs\/|weworkremotely\.com\/remote-jobs\//i;
+export const BOARD_JOB = /himalayas\.app\/companies\/[^/]+\/jobs\/|remoteok\.com\/remote-jobs\/|remotive\.com\/remote-jobs\/|weworkremotely\.com\/remote-jobs\/|linkedin\.com\/jobs\/view\/|foundit\.in\/job\//i;
 
 const log = createLogger('sitepilot');
 export const SP_KEY = 'fpSitePilot';
@@ -352,8 +352,14 @@ export class SitePilot {
     const st = await loadSpState();
     if (!st.running || tab.openerTabId !== st.tabId) return;
     await new Promise((r) => setTimeout(r, 1500)); // let it get its address
-    const t = await chrome.tabs.get(id).catch(() => null);
-    const url = t?.pendingUrl || t?.url || '';
+    let t = await chrome.tabs.get(id).catch(() => null);
+    let url = t?.pendingUrl || t?.url || '';
+    // LinkedIn / Foundit open the company's page through their own redirect: wait for the real address.
+    for (let k = 0; k < 12 && (onHop(url) || !/^https?:/i.test(url)) && t; k++) {
+      await new Promise((r) => setTimeout(r, 800));
+      t = await chrome.tabs.get(id).catch(() => null);
+      url = t?.pendingUrl || t?.url || url;
+    }
     await chrome.tabs.remove(id).catch(() => {});
     if (!st.cur || !/^https?:/i.test(url)) return;
     await addStep(st.cur.jobId, `closed a tab the page opened (${url.slice(0, 100)})`);
@@ -524,8 +530,9 @@ export class SitePilot {
       return;
     }
     if (r.naukriApply) return this.finish('skipped', 'applies on Naukri itself (the Autopilot handles these)');
-    // Applied already (on Naukri, or here earlier): nothing for you to do.
-    if (r.reason && /already applied/i.test(r.reason)) return this.finish('skipped', r.reason);
+    // Applied already (on Naukri, or here earlier), or an Easy Apply / Quick Apply job the Autopilot
+    // handles, or a closed job: nothing for you to do.
+    if (r.reason && /already applied|easy apply|quick apply|no longer accepting|closed/i.test(r.reason)) return this.finish('skipped', r.reason);
     return this.finish('needs-you', r.reason || 'could not get the company link from Naukri');
   }
 
@@ -797,6 +804,15 @@ export class SitePilot {
       found += fit.length;
       added += add;
       feedNote = `; remote boards: ${r.read} read${r.failed ? ` (${r.failed} didn't answer)` : ''}, ${fit.length} fit`;
+    }
+    // LinkedIn jobs from the last 24 hours (India) that may apply on the company's site.
+    if (sp.harvestLinkedIn) {
+      const r = await linkedInJobs(titlesOf(ap));
+      const fit = fitting(r.jobs, { relevant, skipWords: ap.skipWords, days: 2 });
+      const add = fit.length ? (await enqueue(fit.map((j) => ({ url: j.url, title: j.title, company: j.company, location: j.location, source: 'linkedin' as const })))).added : 0;
+      found += fit.length;
+      added += add;
+      feedNote += `; LinkedIn: ${r.read} searches${r.failed ? ` (${r.failed} didn't answer)` : ''}, ${fit.length} fit`;
     }
     const now = await loadSpState();
     if (!now.running) return;

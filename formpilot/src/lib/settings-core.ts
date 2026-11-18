@@ -254,6 +254,7 @@ export const DEFAULTS: Settings = {
     harvestBoards: true,
     boards: DEFAULT_BOARDS,
     remoteBoards: true,
+    harvestLinkedIn: true,
     boardDays: 21,
     fromAutopilot: true,
     resumeLink: '',

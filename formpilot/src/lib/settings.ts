@@ -301,6 +301,8 @@ const SitePilotSchema = z.object({
   boards: z.string().catch(DEFAULT_BOARDS),
   /** Also read the remote job boards (Himalayas, Remotive, Remote OK, We Work Remotely) for jobs open to India. */
   remoteBoards: z.boolean().catch(true),
+  /** Also read LinkedIn's public job search (India, last 24 hours) for jobs that apply on the company's site. */
+  harvestLinkedIn: z.boolean().catch(true),
   /** Only board jobs posted in the last N days. */
   boardDays: z.number().int().min(1).max(90).catch(21),
   /** Take the Autopilot's company-site jobs and outside forms. */
