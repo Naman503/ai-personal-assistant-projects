@@ -369,7 +369,7 @@ export function SitePilot({ settings, update }: PageProps) {
         <Row label="Look at the page (screenshots)" description="The model sees each page before Submit and fixes what the normal fill missed. Slower, but it's what makes unknown sites work.">
           <Switch checked={sp.vision} onCheckedChange={(v) => set('vision', v)} />
         </Row>
-        <Row label="Read company job boards" description="When the queue is empty (every 4 hours at most), reads the public job boards companies publish on Greenhouse, Lever, Ashby, Workable, Recruitee and SmartRecruiters, and queues jobs that fit your titles and level, in India or remote and open to India.">
+        <Row label="Read company job boards" description="When the queue is empty (every 90 minutes at most), reads the public job boards companies publish on Greenhouse, Lever, Ashby, Workable, Recruitee and SmartRecruiters, and queues jobs that fit your titles and level, in India or remote and open to India.">
           <Switch checked={sp.harvestBoards} onCheckedChange={(v) => set('harvestBoards', v)} />
         </Row>
         <Row label="Read remote job boards" description="Also reads Himalayas (only jobs open to India), Remotive, Remote OK and We Work Remotely for your titles, keeps remote jobs open to India, and follows each job's Apply link to the company's own form.">

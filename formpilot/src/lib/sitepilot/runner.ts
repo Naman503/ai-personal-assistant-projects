@@ -412,7 +412,7 @@ export class SitePilot {
     const job = await nextQueued(st.resumeJob);
     if (st.resumeJob) st.resumeJob = undefined;
     if (!job) {
-      if (sp.harvestBoards && Date.now() - (st.boardsAt ?? 0) > 4 * 3600_000) return this.harvestBoards(st);
+      if (sp.harvestBoards && Date.now() - (st.boardsAt ?? 0) > 90 * 60_000) return this.harvestBoards(st);
       if (sp.harvestNaukri && Date.now() - (st.harvest?.at ?? 0) > 45 * 60_000) return this.harvest(st);
       st.phase = 'idle';
       st.nextAt = Date.now() + 15 * 60_000;
