@@ -589,7 +589,9 @@ export class Autopilot {
     st.progress = { text: `Opening ${job.title} · ${job.company}`, at: Date.now() };
     if (st.tabId !== undefined && !alreadyOpen) await chrome.tabs.update(st.tabId, { url: job.url, active: true }).catch(() => {});
     await at(GO, Date.now() + loadWait());
-    await at(WATCHDOG, Date.now() + 12 * 60_000);
+    // A job page applies within ~5 min (the chatbot gives up then); a page that moved on without
+    // reporting (18 Nov: Naukri, 4 stalls) is let go after 8 min instead of 12.
+    await at(WATCHDOG, Date.now() + 8 * 60_000);
     await save(st);
   }
 
