@@ -931,9 +931,12 @@ test('autopilot: opens its own unfocused window, runs a dry-run batch on the job
     return (await chrome.tabs.create({ windowId: st.windowId, url: 'http://localhost:4173/form.html', openerTabId: st.tabId, active: false })).id!;
   });
   await expect.poll(() => sw.evaluate(async (id) => !!(await chrome.tabs.get(id).catch(() => null)), opened), { timeout: 10_000 }).toBe(false);
-  // The Autopilot page shows the break and offers to skip it.
-  const page = await context.newPage();
-  await page.goto(`chrome-extension://${extId}/options.html#autopilot`);
+  // The Autopilot page shows the break and offers to skip it. Opened in a window of its own: a new
+  // tab can land in the autopilot's window, which closes stray tabs (CI: "Target page … closed").
+  const opened2 = context.waitForEvent('page');
+  await sw.evaluate((url) => chrome.windows.create({ url, focused: true }), `chrome-extension://${extId}/options.html#autopilot`);
+  const page = await opened2;
+  await page.waitForLoadState();
   await expect(page.getByText('Break between batches', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('button', { name: /Skip break/ })).toBeEnabled();
   await page.close();
